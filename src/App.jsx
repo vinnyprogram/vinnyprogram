@@ -1,0 +1,32 @@
+import { BrowserRouter, Routes, Route } from "react-router-dom";
+import MainLayout from "./layout/MainLayout";
+import CRM from "./pages/CRM";
+import ProjectEstimate from "./pages/ProjectEstimate";
+import EstimateStart from "./pages/EstimateStart";
+import QuotePDF from "./pages/QuotePDF";
+
+function Dashboard() {
+  return <h2>Dashboard</h2>;
+}
+
+function Jobs() {
+  return <h2>Jobs</h2>;
+}
+
+export default function App() {
+  return (
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={<MainLayout />}>
+          <Route index element={<Dashboard />} />
+          <Route path="crm" element={<CRM />} />
+          <Route path="jobs" element={<Jobs />} />
+          <Route path="estimates" element={<EstimateStart />} />
+          <Route path="/project/new" element={<ProjectEstimate />} />
+          <Route path="/project/:id" element={<ProjectEstimate />} />
+          <Route path="/quote/:projectId" element={<QuotePDF />} />
+        </Route>
+      </Routes>
+    </BrowserRouter>
+  );
+}

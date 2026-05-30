@@ -1,0 +1,1133 @@
+import { useState, useEffect, useMemo } from "react";
+import { useSearchParams, useNavigate } from "react-router-dom";
+import { supabase } from "../lib/supabase";
+
+const C = {
+  bg: "#f4f5f7", white: "#fff", ink: "#0f172a",
+  muted: "#64748b", faint: "#94a3b8",
+  border: "#e2e8f0", green: "#059669",
+  greenBg: "#f0fdf4", chip: "#f1f5f9",
+};
+const I = {
+  height: 22, fontSize: 11, borderRadius: 4, border: `1px solid ${C.border}`,
+  background: C.white, padding: "0 5px", width: "100%",
+  boxSizing: "border-box", color: C.ink, outline: "none",
+  MozAppearance: "textfield",
+};
+const noArrow = { WebkitAppearance:"none", MozAppearance:"textfield" };
+const S = {
+  height: 22, fontSize: 11, borderRadius: 4, border: `1px solid ${C.border}`,
+  background: C.white, padding: "0 3px", width: "100%",
+  boxSizing: "border-box", color: C.ink,
+};
+const Btn = {
+  height: 22, fontSize: 11, borderRadius: 4, border: `1px solid ${C.border}`,
+  background: C.white, padding: "0 7px", cursor: "pointer", color: C.ink,
+  whiteSpace: "nowrap", display: "inline-flex", alignItems: "center",
+};
+const BtnD = {
+  height: 22, fontSize: 11, borderRadius: 4, border: "none",
+  background: C.ink, padding: "0 7px", cursor: "pointer", color: "#fff",
+  whiteSpace: "nowrap", fontWeight: 600, display: "inline-flex", alignItems: "center",
+};
+const CARD = {
+  background: C.white, borderRadius: 8, padding: "7px 9px",
+  border: `1px solid ${C.border}`, marginBottom: 5,
+};
+const LBL = {
+  fontSize: 9, fontWeight: 700, color: C.faint, textTransform: "uppercase",
+  letterSpacing: 0.4, display: "block", marginBottom: 1,
+};
+
+function fmt(n) {
+  return Number(n || 0).toLocaleString("en-US", { maximumFractionDigits: 0 });
+}
+
+const DEFAULT_FLOORS = ["Attic","3rd Floor","2nd Floor","1st Floor","Basement","Crawlspace"];
+const AREA_TYPES = [
+  "Roof Rafter w/ Strapping","Roof Rafter behind knee walls","Attic Floor",
+  "Exterior Wall","Demising Wall","Rim Joist","Concrete Wall",
+  "Ceiling","Interior Walls","Fire Blocking","Other",
+];
+const THICK_OPTS = ["2x3","2x4","2x6","2x8","2x10","2x12","I-joist","14in","16in"];
+const THICK_MAP  = { "2x4":3.5,"2x6":5.5,"2x8":7.25,"2x10":9.25,"2x12":11.25,"I-joist":11.875 };
+const R_VALS     = ["R-11","R-13","R-14","R-15","R-19","R-21","R-25","R-30","R-38","R-49","R-60"];
+const OC_OPTS    = ['3"cc','7"oc','8"oc','12"oc','16"oc','24"oc','open cell'];
+const CONST_TYPES = ["New Construction","Remodeling","Addition","Existing Construction","Renovation","Commercial","Other"];
+const LADDER_OPTS = ["5ft","6ft","7ft","10ft","12ft","16ft","20ft","Lift","No ladder needed"];
+
+function calcArea(sqft, thick, mat) {
+  if (!sqft || !mat) return { qty:0, unit:"-", line_total:0, unit_price:0 };
+  const t = THICK_MAP[thick] || 0;
+  const u = mat.unit, p = mat.price_per_unit || 0;
+  let q = u==="board_ft" ? sqft*t : u==="bag" ? Math.ceil((sqft*t)/(mat.coverage_factor||1)) : sqft;
+  q = Math.round(q);
+  return { qty:q, unit:u, unit_price:p, line_total:Math.round(q*p*100)/100 };
+}
+
+// ── CustomerSection ───────────────────────────────────────────────────────────
+function CustomerSection({ leads, selectedLead, selectedLeadId, projectAddress,
+    projectName, onSelect, onClear, onSaveNew, onAddressChange, onNameChange }) {
+  const [query, setQuery]     = useState("");
+  const [mode, setMode]       = useState("search");
+  const [saving, setSaving]   = useState(false);
+  const [newStep, setNewStep] = useState(1); // 1=name+phone, 2=company+email+addr
+  const emptyForm = { name:"", phone:"", company_name:"", email:"", address:"" };
+  const [newForm, setNewForm] = useState(emptyForm);
+
+  function openNew() {
+    setNewForm({ name:"", phone:"", company_name:"", email:"", address:"" });
+    setNewStep(1);
+    setMode("new");
+  }
+  function clear() {
+    onClear(); setQuery("");
+    setNewForm({ name:"", phone:"", company_name:"", email:"", address:"" });
+    setMode("search");
+  }
+  const results = query.trim().length >= 1
+    ? leads.filter(l =>
+        (l.name||"").toLowerCase().includes(query.toLowerCase()) ||
+        (l.phone||"").includes(query)
+      ).slice(0, 5)
+    : [];
+  function selectLead(lead) { onSelect(lead); setQuery(""); setMode("selected"); }
+  async function saveNew() {
+    if (!newForm.name && !newForm.phone) return;
+    setSaving(true);
+    await onSaveNew(newForm);
+    setNewForm({ name:"", phone:"", company_name:"", email:"", address:"" });
+    setMode("selected"); setSaving(false);
+  }
+  const nf = (k,v) => setNewForm(p=>({...p,[k]:v}));
+  const TI = { ...I, fontSize:12, height:26 };
+
+  return (
+    <div style={{...CARD, marginBottom:5}}>
+
+      {/* ── SELECTED: one compact line + address ── */}
+      {mode==="selected" && selectedLead && (
+        <div>
+          {/* customer summary — single row */}
+          <div style={{ display:"flex", alignItems:"center",
+              justifyContent:"space-between", marginBottom:4 }}>
+            <div style={{ fontSize:11, lineHeight:1.5, flex:1, minWidth:0 }}>
+              <span style={{ fontWeight:700 }}>{selectedLead.name}</span>
+              {selectedLead.phone && (
+                <span style={{ color:C.muted, fontSize:10, marginLeft:6 }}>
+                  {selectedLead.phone}
+                </span>
+              )}
+              {selectedLead.company_name && (
+                <span style={{ color:C.muted, fontSize:10, marginLeft:6 }}>
+                  · {selectedLead.company_name}
+                </span>
+              )}
+            </div>
+            <button onClick={clear}
+              style={{ border:"none", background:"none", color:C.faint,
+                fontSize:13, cursor:"pointer", padding:"0 4px", flexShrink:0 }}>✕</button>
+          </div>
+          {/* job address */}
+          <input style={{...TI, width:"100%"}}
+            placeholder="Job address for this project…"
+            value={projectAddress}
+            onChange={e=>onAddressChange(e.target.value)} />
+        </div>
+      )}
+
+      {/* ── SEARCH ── */}
+      {mode==="search" && (
+        <div>
+          <div style={{ display:"flex", gap:4, marginBottom: results.length||query ? 4 : 0 }}>
+            <input style={{ ...TI, flex:1 }}
+              placeholder="Search customer by name or phone…"
+              value={query} onChange={e=>setQuery(e.target.value)} />
+            <button onClick={openNew}
+              style={{ ...BtnD, fontSize:11, height:26, padding:"0 10px", flexShrink:0 }}>
+              + New
+            </button>
+          </div>
+
+          {/* results */}
+          {results.length > 0 && (
+            <div style={{ border:`1px solid ${C.border}`, borderRadius:6,
+                overflow:"hidden", marginBottom:4 }}>
+              {results.map((l,i)=>(
+                <div key={l.id} onClick={()=>selectLead(l)}
+                  style={{ display:"flex", justifyContent:"space-between",
+                    alignItems:"center", padding:"8px 10px", cursor:"pointer",
+                    fontSize:12, background: i%2===0?C.white:"#fafbfc",
+                    borderBottom: i<results.length-1?`1px solid ${C.border}`:"none",
+                    minHeight:40 }}>
+                  <div>
+                    <div style={{ fontWeight:600 }}>{l.name}</div>
+                    {l.company_name && (
+                      <div style={{ color:C.muted, fontSize:10 }}>{l.company_name}</div>
+                    )}
+                  </div>
+                  <span style={{ color:C.faint, fontSize:11 }}>{l.phone}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {query.trim().length >= 2 && results.length === 0 && (
+            <div style={{ fontSize:11, color:C.faint, marginBottom:4,
+                padding:"6px 0", textAlign:"center" }}>
+              No match —{" "}
+              <button onClick={openNew}
+                style={{ border:"none", background:"none", color:C.green,
+                  cursor:"pointer", fontSize:11, padding:0, fontWeight:700 }}>
+                Register new
+              </button>
+            </div>
+          )}
+
+          {/* standalone project name + address (no customer) */}
+          {!query && (
+            <div style={{ display:"flex", gap:4, marginTop:2 }}>
+              <input style={{...TI, flex:1}} placeholder="Project name"
+                value={projectName} onChange={e=>onNameChange(e.target.value)} />
+              <input style={{...TI, flex:2}} placeholder="Job address"
+                value={projectAddress} onChange={e=>onAddressChange(e.target.value)} />
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── NEW CUSTOMER: 2-step to keep it compact ── */}
+      {mode==="new" && (
+        <div>
+          <div style={{ display:"flex", justifyContent:"space-between",
+              alignItems:"center", marginBottom:6 }}>
+            <span style={{ fontSize:10, fontWeight:700, color:C.muted,
+                textTransform:"uppercase", letterSpacing:0.4 }}>
+              New customer {newStep}/2
+            </span>
+            <button onClick={()=>setMode("search")}
+              style={{ border:"none", background:"none", color:C.faint,
+                fontSize:16, cursor:"pointer", padding:0, lineHeight:1 }}>✕</button>
+          </div>
+
+          {newStep===1 && (
+            <>
+              <input style={{...TI, width:"100%", marginBottom:6}}
+                placeholder="Full name" value={newForm.name}
+                onChange={e=>nf("name",e.target.value)} />
+              <input style={{...TI, width:"100%", marginBottom:8}}
+                placeholder="Phone number" value={newForm.phone}
+                onChange={e=>nf("phone",e.target.value)} />
+              <button
+                onClick={()=>setNewStep(2)}
+                disabled={!newForm.name&&!newForm.phone}
+                style={{ ...BtnD, width:"100%", justifyContent:"center",
+                  height:32, fontSize:12,
+                  opacity:(!newForm.name&&!newForm.phone)?0.4:1 }}>
+                Next →
+              </button>
+            </>
+          )}
+
+          {newStep===2 && (
+            <>
+              <input style={{...TI, width:"100%", marginBottom:6}}
+                placeholder="Company name" value={newForm.company_name}
+                onChange={e=>nf("company_name",e.target.value)} />
+              <input style={{...TI, width:"100%", marginBottom:6}}
+                placeholder="Email" value={newForm.email}
+                onChange={e=>nf("email",e.target.value)} />
+              <input style={{...TI, width:"100%", marginBottom:8}}
+                placeholder="Company address" value={newForm.address}
+                onChange={e=>nf("address",e.target.value)} />
+              <div style={{ display:"flex", gap:6 }}>
+                <button onClick={()=>setNewStep(1)}
+                  style={{ ...Btn, flex:1, justifyContent:"center", height:32 }}>
+                  ← Back
+                </button>
+                <button onClick={saveNew} disabled={saving}
+                  style={{ ...BtnD, flex:2, justifyContent:"center",
+                    height:32, fontSize:12, opacity:saving?0.5:1 }}>
+                  {saving?"Saving…":"Save customer"}
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── AreaRow ───────────────────────────────────────────────────────────────────
+function AreaRow({ area, materials, onChange, onDelete }) {
+  const [expanded, setExpanded] = useState(!area._collapsed);
+
+  useEffect(()=>{
+    if(area._collapsed) setExpanded(false);
+  },[area._collapsed]);
+
+  const XS = { height:30, fontSize:12, borderRadius:5, border:`1px solid ${C.border}`,
+    background:C.white, padding:"0 4px", boxSizing:"border-box", color:C.ink,
+    minWidth:0, width:"100%" };
+
+  // material lines — always at least one
+  const matLines = (area.mat_lines && area.mat_lines.length > 0)
+    ? area.mat_lines
+    : [{ id:1, material: area.material||"", thickness_in: area.thickness_in||"",
+         r_value: area.r_value||"", oc: area.oc||"" }];
+
+  function updateMatLine(idx, field, value) {
+    const lines = matLines.map((l,i)=> i===idx ? {...l,[field]:value} : l);
+    onChange("mat_lines", lines);
+    // keep legacy fields in sync with first line
+    if(idx===0){
+      onChange(field, value);
+    }
+  }
+
+  function addMatLine() {
+    const last = matLines[matLines.length-1];
+    const lines = [...matLines, { id:Date.now(),
+      material:last.material||"", thickness_in:last.thickness_in||"",
+      r_value:last.r_value||"", oc:"" }];
+    onChange("mat_lines", lines);
+  }
+
+  function removeMatLine(idx) {
+    if(matLines.length===1) return;
+    const lines = matLines.filter((_,i)=>i!==idx);
+    onChange("mat_lines", lines);
+    onChange("material", lines[0].material||"");
+    onChange("thickness_in", lines[0].thickness_in||"");
+    onChange("r_value", lines[0].r_value||"");
+    onChange("oc", lines[0].oc||"");
+  }
+
+  // total cost = sum of all material lines × shared sqft
+  const totalCost = matLines.reduce((sum, ml) => {
+    const mat = materials.find(m=>m.name===ml.material);
+    return sum + calcArea(area.sqft, ml.thickness_in, mat).line_total;
+  }, 0);
+
+  const isComplete = !!(area.area_type && matLines[0].material && area.sqft > 0);
+
+  function commitMeasurement() {
+    const h = parseFloat(area.mh) || 0;
+    const l = parseFloat(area.ml) || 0;
+    const q = parseFloat(area.mq) || 1;
+    if (!h || !l) return;
+    const sqft = Math.round(h * l * q * 100) / 100;
+    const meas = [...(area.measurements||[]), { h, l, q, sqft }];
+    const d = parseFloat(area.deduct_sqft) || 0;
+    const total = Math.max(0, Math.round(meas.reduce((s,m)=>s+m.sqft,0) - d));
+    onChange("measurements", meas);
+    onChange("sqft", total);
+    onChange("mh", ""); onChange("ml", ""); onChange("mq", "1");
+  }
+
+  function delMeas(i) {
+    const meas = (area.measurements||[]).filter((_,j)=>j!==i);
+    const d = parseFloat(area.deduct_sqft)||0;
+    onChange("measurements", meas);
+    onChange("sqft", Math.max(0, Math.round(meas.reduce((s,m)=>s+m.sqft,0)-d)));
+  }
+
+  const liveH = parseFloat(area.mh)||0;
+  const liveL = parseFloat(area.ml)||0;
+  const liveQ = parseFloat(area.mq)||1;
+  const livePreview = (liveH>0&&liveL>0) ? Math.round(liveH*liveL*liveQ*100)/100 : 0;
+
+  // ── COLLAPSED ──
+  if (isComplete && !expanded) return (
+    <div style={{ background:"#f0fdf4", border:"1px solid #86efac",
+        borderLeft:"3px solid #059669", borderRadius:7, padding:"4px 8px", marginBottom:3 }}>
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:2 }}>
+        <span style={{ fontSize:11, fontWeight:700, color:C.ink }}>{area.area_type||"—"}</span>
+        <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+          <span style={{ fontSize:11, fontWeight:700, color:"#059669" }}>${fmt(totalCost)}</span>
+          <button onClick={()=>setExpanded(true)}
+            style={{ border:"none", background:"none", color:"#059669",
+              cursor:"pointer", fontSize:14, padding:"0 2px", lineHeight:1 }}>✏️</button>
+        </div>
+      </div>
+      {/* one line per material */}
+      {matLines.map((ml,i)=>(
+        <div key={i} style={{ fontSize:10, color:C.muted, lineHeight:1.6 }}>
+          {[ml.material, ml.thickness_in, ml.r_value, ml.oc].filter(Boolean).join(" · ")}
+          {i===0 && (
+            <span style={{ marginLeft:6, color:C.faint }}>
+              {fmt(area.sqft)} ft²
+              {(area.measurements||[]).length>0 && (
+                <span style={{ marginLeft:4 }}>
+                  ({area.measurements.map(m=>`${m.h}×${m.l}${m.q>1?`×${m.q}`:""}`).join("  ")})
+                </span>
+              )}
+              {area.deduct_sqft>0 && <span style={{color:"#ef4444"}}> −{area.deduct_sqft}</span>}
+            </span>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+
+  // ── EXPANDED ──
+  return (
+    <div style={{ background: isComplete ? "#f0fdf4" : "#fafbfc",
+        border:`1px solid ${isComplete?"#86efac":C.border}`,
+        borderLeft: isComplete?"3px solid #059669":`1px solid ${C.border}`,
+        borderRadius:7, padding:"6px 8px", marginBottom:4 }}>
+
+      {/* collapse bar when complete */}
+      {isComplete && (
+        <div onClick={()=>setExpanded(false)}
+          style={{ margin:"-6px -8px 8px -8px", padding:"10px 12px",
+            background:"#059669", borderRadius:"7px 7px 0 0",
+            display:"flex", justifyContent:"space-between", alignItems:"center",
+            cursor:"pointer" }}>
+          <span style={{fontSize:13, fontWeight:700, color:"#fff"}}>✓ Done editing</span>
+          <span style={{fontSize:15, color:"#fff"}}>▼</span>
+        </div>
+      )}
+
+      {/* area type + delete */}
+      <div style={{ display:"flex", gap:6, marginBottom:6, alignItems:"center" }}>
+        <select className="area-select" style={{...XS, flex:1}} value={area.area_type||""}
+          onChange={e=>onChange("area_type",e.target.value)}>
+          <option value="">Area type</option>
+          {AREA_TYPES.map(a=><option key={a}>{a}</option>)}
+        </select>
+        <button onClick={onDelete}
+          style={{ border:"none", background:"none", color:C.faint,
+            cursor:"pointer", fontSize:16, padding:"0 2px", lineHeight:1, flexShrink:0 }}>✕</button>
+      </div>
+
+      {/* material selector — single or combo */}
+      <div style={{marginBottom:6}}>
+
+        {/* main material picker — always shown */}
+        <select className="area-select" style={{...XS, marginBottom:4}} value={matLines[0].material||""}
+          onChange={e=>{
+            const val = e.target.value;
+            if(val==="__combo__"){
+              // start combo: 2 blank material lines, no thick/r/oc on top level
+              onChange("mat_lines",[
+                {id:1,material:"",thickness_in:"",r_value:"",oc:""},
+                {id:2,material:"",thickness_in:"",r_value:"",oc:""},
+              ]);
+              onChange("material","__combo__");
+            } else {
+              onChange("mat_lines",[{id:1,material:val,
+                thickness_in:matLines[0].thickness_in||"",
+                r_value:matLines[0].r_value||"",
+                oc:matLines[0].oc||""}]);
+              onChange("material",val);
+            }
+          }}>
+          <option value="">Material</option>
+          {materials.map(m=><option key={m.id}>{m.name}</option>)}
+          <option value="__combo__">⚡ Combo (2+ materials)</option>
+        </select>
+
+        {/* single material — thick + R + OC */}
+        {matLines[0].material !== "__combo__" && matLines.length===1 && (
+          <>
+            <div style={{ display:"flex", gap:4, marginBottom:4 }}>
+              <select className="area-select" style={{...XS,flex:1}} value={matLines[0].thickness_in||""}
+                onChange={e=>updateMatLine(0,"thickness_in",e.target.value)}>
+                <option value="">Thick</option>{THICK_OPTS.map(t=><option key={t}>{t}</option>)}
+              </select>
+              <select className="area-select" style={{...XS,flex:1}} value={matLines[0].r_value||""}
+                onChange={e=>updateMatLine(0,"r_value",e.target.value)}>
+                <option value="">R-Val</option>{R_VALS.map(r=><option key={r}>{r}</option>)}
+              </select>
+              <select className="area-select" style={{...XS,flex:1}} value={matLines[0].oc||""}
+                onChange={e=>updateMatLine(0,"oc",e.target.value)}>
+                <option value="">OC</option>{OC_OPTS.map(o=><option key={o}>{o}</option>)}
+              </select>
+            </div>
+            {(()=>{
+              const mat=materials.find(m=>m.name===matLines[0].material);
+              const {qty,unit,unit_price,line_total}=calcArea(area.sqft,matLines[0].thickness_in,mat);
+              return line_total>0 ? (
+                <div style={{display:"flex",justifyContent:"flex-end",gap:6,
+                    fontSize:10,color:C.muted,marginBottom:2}}>
+                  <span>{fmt(qty)} {unit?.replace("_"," ")} × ${unit_price}</span>
+                  <span style={{fontWeight:700,color:C.green,fontSize:11}}>${fmt(line_total)}</span>
+                </div>
+              ) : null;
+            })()}
+          </>
+        )}
+
+        {/* COMBO mode — multiple material lines */}
+        {(matLines.length > 1 || matLines[0].material==="__combo__") && (
+          <div style={{background:"#f0f9ff",border:"1px solid #bae6fd",
+              borderRadius:8,padding:"8px 10px",marginTop:2}}>
+            <div style={{fontSize:10,fontWeight:700,color:"#0369a1",
+                marginBottom:6,textTransform:"uppercase",letterSpacing:0.4}}>
+              ⚡ Combo
+              <button onClick={()=>{
+                  onChange("mat_lines",[{id:1,material:"",thickness_in:"",r_value:"",oc:""}]);
+                  onChange("material","");
+                }}
+                style={{border:"none",background:"none",color:"#94a3b8",
+                  cursor:"pointer",fontSize:11,marginLeft:8,padding:0}}>
+                × remove combo
+              </button>
+            </div>
+            {matLines.map((ml,idx)=>(
+              <div key={ml.id||idx} style={{marginBottom:8,
+                  paddingBottom:8,borderBottom:idx<matLines.length-1?`1px solid #e0f2fe`:"none"}}>
+                <div style={{display:"flex",gap:4,marginBottom:4,alignItems:"center"}}>
+                  <select className="area-select" style={{...XS,flex:1}} value={ml.material||""}
+                    onChange={e=>updateMatLine(idx,"material",e.target.value)}>
+                    <option value="">Material {idx+1}</option>
+                    {materials.map(m=><option key={m.id}>{m.name}</option>)}
+                  </select>
+                  {matLines.length>2 && (
+                    <button onClick={()=>removeMatLine(idx)}
+                      style={{border:"none",background:"none",color:C.faint,
+                        cursor:"pointer",fontSize:14,padding:"0 2px",lineHeight:1,flexShrink:0}}>✕</button>
+                  )}
+                </div>
+                <div style={{display:"flex",gap:4,marginBottom:2}}>
+                  <select className="area-select" style={{...XS,flex:1}} value={ml.thickness_in||""}
+                    onChange={e=>updateMatLine(idx,"thickness_in",e.target.value)}>
+                    <option value="">Thick</option>{THICK_OPTS.map(t=><option key={t}>{t}</option>)}
+                  </select>
+                  <select className="area-select" style={{...XS,flex:1}} value={ml.r_value||""}
+                    onChange={e=>updateMatLine(idx,"r_value",e.target.value)}>
+                    <option value="">R-Val</option>{R_VALS.map(r=><option key={r}>{r}</option>)}
+                  </select>
+                  <select className="area-select" style={{...XS,flex:1}} value={ml.oc||""}
+                    onChange={e=>updateMatLine(idx,"oc",e.target.value)}>
+                    <option value="">OC</option>{OC_OPTS.map(o=><option key={o}>{o}</option>)}
+                  </select>
+                </div>
+                {(()=>{
+                  const mat=materials.find(m=>m.name===ml.material);
+                  const {qty,unit,unit_price,line_total}=calcArea(area.sqft,ml.thickness_in,mat);
+                  return line_total>0?(
+                    <div style={{display:"flex",justifyContent:"flex-end",gap:6,
+                        fontSize:10,color:"#0369a1"}}>
+                      <span>{fmt(qty)} {unit?.replace("_"," ")} × ${unit_price}</span>
+                      <span style={{fontWeight:700}}>${fmt(line_total)}</span>
+                    </div>
+                  ):null;
+                })()}
+              </div>
+            ))}
+            <button onClick={addMatLine}
+              style={{width:"100%",padding:"7px",borderRadius:6,
+                border:"1px dashed #7dd3fc",background:"none",color:"#0369a1",
+                cursor:"pointer",fontSize:11,fontWeight:600,height:"auto"}}>
+              + Add material to combo
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* measurements — shared across all lines */}
+      <div style={{ borderTop:`1px solid ${C.border}`, paddingTop:6, marginTop:2 }}>
+        <div style={{ display:"flex", gap:4, alignItems:"center", marginBottom:4 }}>
+          <input placeholder="H" inputMode="decimal" value={area.mh||""}
+            onChange={e=>onChange("mh",e.target.value)}
+            onBlur={commitMeasurement}
+            onKeyDown={e=>e.key==="Enter"&&commitMeasurement()}
+            className="area-hl-input" style={{...I,...noArrow, flex:1, padding:"0 6px", textAlign:"center", height:32, fontSize:14}} />
+          <span style={{fontSize:12,color:C.faint}}>×</span>
+          <input placeholder="L" inputMode="decimal" value={area.ml||""}
+            onChange={e=>onChange("ml",e.target.value)}
+            onBlur={commitMeasurement}
+            onKeyDown={e=>e.key==="Enter"&&commitMeasurement()}
+            className="area-hl-input" style={{...I,...noArrow, flex:1, padding:"0 6px", textAlign:"center", height:32, fontSize:14}} />
+          <span style={{fontSize:12,color:C.faint}}>×</span>
+          <input placeholder="1" inputMode="decimal" value={area.mq||""}
+            onChange={e=>onChange("mq",e.target.value)}
+            onBlur={commitMeasurement}
+            onKeyDown={e=>e.key==="Enter"&&commitMeasurement()}
+            className="area-mq-input" style={{...I,...noArrow, width:42, padding:"0 4px", textAlign:"center", height:32, fontSize:14}} />
+          <span style={{marginLeft:4, fontSize:12, fontWeight:700,
+            color:livePreview>0?C.green:C.ink, whiteSpace:"nowrap"}}>
+            {livePreview>0?`${fmt(livePreview)} → `:""}
+            {fmt(area.sqft)} ft²
+          </span>
+        </div>
+
+        {/* chips */}
+        {(area.measurements||[]).length>0 && (
+          <div style={{ display:"flex", flexWrap:"wrap", gap:3, marginBottom:4 }}>
+            {area.measurements.map((m,i)=>(
+              <span key={i} style={{ display:"inline-flex", alignItems:"center", gap:2,
+                  background:isComplete?"#dcfce7":C.chip,
+                  borderRadius:4, padding:"2px 6px", fontSize:10, color:C.muted }}>
+                {m.h}×{m.l}{m.q>1?`×${m.q}`:""}&nbsp;<b style={{color:C.ink}}>{fmt(m.sqft)}</b>
+                <button onClick={()=>delMeas(i)}
+                  style={{border:"none",background:"none",cursor:"pointer",
+                    color:C.faint,fontSize:11,padding:0,lineHeight:1}}>✕</button>
+              </span>
+            ))}
+          </div>
+        )}
+
+        {/* deduct + total */}
+        <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+          <span style={{fontSize:10,color:C.faint,whiteSpace:"nowrap"}}>− deduct</span>
+          <input placeholder="ft²" inputMode="decimal" value={area.deduct_sqft||""}
+            onChange={e=>{
+              const d=parseFloat(e.target.value)||0;
+              onChange("deduct_sqft",e.target.value);
+              const raw=(area.measurements||[]).reduce((s,m)=>s+m.sqft,0);
+              onChange("sqft",Math.max(0,Math.round(raw-d)));
+            }}
+            className="area-deduct" style={{...I,...noArrow, width:70, padding:"0 6px", height:30, fontSize:12}} />
+          {totalCost>0 && (
+            <div style={{ marginLeft:"auto", fontWeight:700, color:C.green, fontSize:13 }}>
+              Total ${fmt(totalCost)}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── EstimatePanel ─────────────────────────────────────────────────────────────
+function EstimatePanel({ floors, areas, materialMap, crewNotes, projectName, projectAddress, customer }) {
+  function floorTotal(floor) {
+    return (areas[floor]||[]).reduce((s,a)=>s+getAreaTotalCost(a,materialMap),0);
+  }
+  const total = floors.reduce((s,f)=>s+floorTotal(f),0);
+
+  return (
+    <div style={{ fontSize:11, lineHeight:1.55 }}>
+      {customer && (
+        <div style={{ marginBottom:7, paddingBottom:6, borderBottom:`1px solid ${C.border}` }}>
+          <div style={{fontWeight:700,fontSize:12,color:C.ink}}>{customer.name}</div>
+          {customer.phone        && <div style={{color:C.muted}}>{customer.phone}</div>}
+          {customer.company_name && <div style={{color:C.muted}}>{customer.company_name}</div>}
+          {customer.email        && <div style={{color:C.faint,fontSize:10}}>{customer.email}</div>}
+        </div>
+      )}
+      {(projectName||projectAddress) && (
+        <div style={{ marginBottom:6, paddingBottom:6, borderBottom:`1px solid ${C.border}`,
+            fontSize:11, color:C.muted }}>
+          {projectName && <span style={{fontWeight:600,color:C.ink}}>{projectName} </span>}
+          {projectAddress}
+        </div>
+      )}
+      {(crewNotes.const_type||crewNotes.fire_blocking||crewNotes.ladder||
+        crewNotes.parking||crewNotes.units||crewNotes.extra_notes) && (
+        <div style={{ marginBottom:6, paddingBottom:6, borderBottom:`1px solid ${C.border}`,
+            fontSize:10, color:C.muted, lineHeight:1.6 }}>
+          {crewNotes.const_type   && <div style={{fontWeight:700,color:C.ink}}>{crewNotes.const_type}</div>}
+          {crewNotes.fire_blocking && <span>Fire Blocking: <b style={{color:C.ink}}>{crewNotes.fire_blocking}</b> · </span>}
+          {crewNotes.ladder        && <span>Ladder: <b style={{color:C.ink}}>{crewNotes.ladder}</b> · </span>}
+          {crewNotes.parking       && <span>Parking: <b style={{color:C.ink}}>{crewNotes.parking}</b></span>}
+          {crewNotes.units         && <div>{crewNotes.units} units</div>}
+          {crewNotes.extra_notes   && <div style={{marginTop:1,fontStyle:"italic"}}>{crewNotes.extra_notes}</div>}
+        </div>
+      )}
+
+      {(()=>{
+        const allAreas = floors.flatMap(floor=>
+          (areas[floor]||[]).filter(a=>a.area_type&&a.sqft).map(a=>({...a,floor}))
+        );
+        if(!allAreas.length) return (
+          <div style={{color:C.faint,fontSize:10,textAlign:"center",padding:"10px 0"}}>No areas yet</div>
+        );
+        // group by area_type only — collect all mat_lines inside
+        const groupMap = {};
+        allAreas.forEach(a=>{
+          const key = a.area_type;
+          if(!groupMap[key]) groupMap[key]={ area_type:a.area_type, floors:[], lines:{} };
+          const g = groupMap[key];
+          if(!g.floors.includes(a.floor)) g.floors.push(a.floor);
+          // group mat_lines by material+thick+r+oc
+          const mls = (a.mat_lines&&a.mat_lines.length>0)
+            ? a.mat_lines
+            : [{material:a.material||"",thickness_in:a.thickness_in||"",r_value:a.r_value||"",oc:a.oc||""}];
+          mls.forEach(ml=>{
+            const lkey=[ml.material,ml.thickness_in,ml.r_value,ml.oc].join("|");
+            if(!g.lines[lkey]) g.lines[lkey]={...ml,totalSqft:0,totalCost:0};
+            g.lines[lkey].totalSqft += a.sqft||0;
+            const mat=materialMap[ml.material];
+            g.lines[lkey].totalCost += calcArea(a.sqft,ml.thickness_in,mat).line_total;
+          });
+        });
+        return Object.values(groupMap).map((g,i)=>{
+          const groupTotal = Object.values(g.lines).reduce((s,l)=>s+l.totalCost,0);
+          const floorLabel = g.floors.map(f=>f.replace(" Floor","")).join(", ");
+          return (
+            <div key={i} style={{paddingBottom:6,marginBottom:6,borderBottom:`1px solid ${C.chip}`}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:2}}>
+                <div style={{flex:1,paddingRight:4,lineHeight:1.4}}>
+                  <span style={{fontSize:9.5,color:C.muted}}>{floorLabel} </span>
+                  <span style={{fontWeight:700,fontSize:11,color:C.ink}}>{g.area_type}</span>
+                </div>
+                <span style={{fontWeight:700,color:C.green,fontSize:12,flexShrink:0}}>${fmt(groupTotal)}</span>
+              </div>
+              {Object.values(g.lines).map((l,j)=>{
+                const {qty,unit}=calcArea(l.totalSqft,l.thickness_in,materialMap[l.material]);
+                return (
+                  <div key={j} style={{fontSize:10,color:C.faint,lineHeight:1.6,paddingLeft:4}}>
+                    {[l.material,l.thickness_in,l.r_value,l.oc].filter(Boolean).join(" · ")}
+                    {" · "}{fmt(l.totalSqft)} ft²
+                    {qty>0&&` → ${fmt(qty)} ${unit?.replace("_"," ")}`}
+                    {l.totalCost>0&&<span style={{color:C.green,marginLeft:4}}>${fmt(l.totalCost)}</span>}
+                  </div>
+                );
+              })}
+            </div>
+          );
+        });
+      })()}
+
+      <div style={{ display:"flex", justifyContent:"space-between", paddingTop:6,
+          borderTop:`2px solid ${C.ink}`, fontWeight:700 }}>
+        <span style={{fontSize:12}}>Total</span>
+        <span style={{fontSize:17,color:C.green}}>${fmt(total)}</span>
+      </div>
+    </div>
+  );
+}
+
+// ── helpers ──────────────────────────────────────────────────────────────────
+function isAreaComplete(area) {
+  const lines = area.mat_lines && area.mat_lines.length > 0
+    ? area.mat_lines : [{ material: area.material||"" }];
+  return !!(area.area_type && lines[0].material && area.sqft > 0);
+}
+
+function getAreaTotalCost(area, materialMap) {
+  const lines = area.mat_lines && area.mat_lines.length > 0
+    ? area.mat_lines
+    : [{ material:area.material||"", thickness_in:area.thickness_in||"",
+         r_value:area.r_value||"", oc:area.oc||"" }];
+  return lines.reduce((sum,ml)=>{
+    const mat = materialMap[ml.material];
+    return sum + calcArea(area.sqft, ml.thickness_in, mat).line_total;
+  }, 0);
+}
+
+// ── Main ──────────────────────────────────────────────────────────────────────
+export default function ProjectEstimate() {
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const leadId = searchParams.get("leadId");
+
+  const [floors, setFloors]           = useState(["Attic","3rd Floor","2nd Floor","1st Floor","Basement"]);
+  const [activeFloor, setActiveFloor] = useState("Attic");
+  const [areas, setAreas]             = useState(()=>{ const i={}; DEFAULT_FLOORS.forEach(f=>{i[f]=[];}); return i; });
+  const [materials, setMaterials]     = useState([]);
+  const [leads, setLeads]             = useState([]);
+  const [selectedLeadId, setSelectedLeadId] = useState(leadId||"");
+  const [projectName, setProjectName]       = useState("");
+  const [projectAddress, setProjectAddress] = useState("");
+  const [crewNotes, setCrewNotes] = useState({
+    const_type:"", fire_blocking:"", parking:"", ladder:"", units:"", extra_notes:"",
+  });
+  const [saving, setSaving]       = useState(false);
+  const [saved, setSaved]         = useState(false);
+  const [savedProjectId, setSavedProjectId] = useState(null);
+  const [newFloorName, setNewFloorName] = useState("");
+  const [addingFloor, setAddingFloor]   = useState(false);
+  const [panelOpen, setPanelOpen]       = useState(false);
+
+  useEffect(()=>{
+    supabase.from("materials").select("*").then(({data,error})=>{
+      if(error) console.error("materials error:",error);
+      if(data) setMaterials(data);
+    });
+    loadLeads();
+  },[]);
+
+  function loadLeads() {
+    supabase.from("customers").select("id,name,phone,address,email,company_name")
+      .order("name").then(({data,error})=>{
+        if(error){ console.error("leads error:", JSON.stringify(error)); return; }
+        if(data) setLeads(data);
+      });
+  }
+
+  useEffect(()=>{
+    if(leadId&&leads.length>0){
+      const l=leads.find(l=>String(l.id)===String(leadId));
+      if(l?.address) setProjectAddress(l.address);
+      if(l?.name)    setProjectName(l.name);
+    }
+  },[leadId,leads]);
+
+  const materialMap  = useMemo(()=>Object.fromEntries(materials.map(m=>[m.name,m])),[materials]);
+  const selectedLead = leads.find(l=>String(l.id)===String(selectedLeadId));
+
+  function floorTotal(floor) {
+    return (areas[floor]||[]).reduce((s,a)=>s+getAreaTotalCost(a,materialMap),0);
+  }
+  const projectTotal = floors.reduce((s,f)=>s+floorTotal(f),0);
+
+  function addFloor() {
+    const name=newFloorName.trim(); if(!name) return;
+    setFloors(p=>[...p,name]);
+    setAreas(p=>({...p,[name]:[]}));
+    setActiveFloor(name); setNewFloorName(""); setAddingFloor(false);
+  }
+
+  function addArea(floor) {
+    setAreas(prev=>{
+      const ex = prev[floor]||[];
+      // collapse all complete areas
+      const collapsed = ex.map(a=>
+        isAreaComplete(a) ? {...a,_collapsed:true} : a
+      );
+      const last = collapsed[collapsed.length-1];
+      const n = last
+        ? {...last, temp_id:Date.now(), sqft:0, measurements:[], mh:"", ml:"", mq:"1", deduct_sqft:"", _collapsed:false}
+        : { temp_id:Date.now(), floor, area_type:"", material:"", thickness_in:"", r_value:"",
+            oc:"", sqft:0, measurements:[], mh:"", ml:"", mq:"1", deduct_sqft:"", _collapsed:false };
+      return {...prev, [floor]:[...collapsed, n]};
+    });
+  }
+
+  function updateArea(floor,idx,field,value) {
+    setAreas(prev=>{
+      const upd=[...(prev[floor]||[])];
+      upd[idx]={...upd[idx],[field]:value};
+      if(field==="area_type"){
+        const match=Object.values(prev).flat().reverse().find(a=>a.area_type===value&&a.material);
+        if(match) upd[idx]={...upd[idx],material:match.material,thickness_in:match.thickness_in,r_value:match.r_value,oc:match.oc};
+      }
+      return {...prev,[floor]:upd};
+    });
+  }
+
+  function deleteArea(floor,idx) {
+    setAreas(prev=>({...prev,[floor]:prev[floor].filter((_,i)=>i!==idx)}));
+  }
+
+  async function saveNewCustomer(form) {
+    const payload = {
+      name:form.name||"", phone:form.phone||"", company_name:form.company_name||"",
+      email:form.email||"", address:form.address||"", status:"New", estimate_amount:0,
+    };
+    const {data,error}=await supabase.from("customers").insert([payload]).select().single();
+    if(error){
+      console.error("saveNewCustomer error:",JSON.stringify(error));
+      alert("Could not save customer: "+(error.message||JSON.stringify(error)));
+      return;
+    }
+    if(data){
+      loadLeads();
+      setSelectedLeadId(String(data.id));
+      setProjectName(data.name||"");
+      setProjectAddress(data.address||"");
+    }
+  }
+
+  async function saveProject() {
+    setSaving(true);
+    try {
+      const {data:proj,error:pe}=await supabase.from("projects").insert([{
+        lead_id:selectedLeadId?Number(selectedLeadId):null,
+        name:projectName||"New Project", address:projectAddress||"",
+        status:"Active", source:"field",
+      }]).select().single();
+      if(pe) throw pe;
+
+      const {data:floorRows}=await supabase.from("floors")
+        .insert(floors.map((name,i)=>({project_id:proj.id,name,order_index:i+1}))).select();
+      const floorMap={};
+      (floorRows||[]).forEach(f=>{floorMap[f.name]=f.id;});
+
+      const allAreas=floors.flatMap(floor=>
+        (areas[floor]||[]).filter(a=>a.area_type&&a.sqft).flatMap((a,i)=>{
+          const mls = (a.mat_lines&&a.mat_lines.length>0)
+            ? a.mat_lines
+            : [{material:a.material||"",thickness_in:a.thickness_in||"",r_value:a.r_value||"",oc:a.oc||""}];
+          return mls.map((ml,mi)=>{
+            const mat=materialMap[ml.material];
+            const {qty,unit,unit_price,line_total}=calcArea(a.sqft,ml.thickness_in,mat);
+            return { project_id:proj.id, floor_id:floorMap[floor],
+              area_type:a.area_type, material:ml.material, thickness_in:ml.thickness_in||null,
+              r_value:ml.r_value, sqft:a.sqft, qty, unit, unit_price, line_total,
+              order_index:i*10+mi };
+          });
+        })
+      );
+      if(allAreas.length>0){
+        const {data:areaRows,error:ae}=await supabase.from("areas").insert(allAreas).select();
+        if(ae) throw ae;
+        const segs=[];
+        let ai=0;
+        floors.forEach(floor=>{
+          (areas[floor]||[]).filter(a=>a.area_type&&a.sqft).forEach(a=>{
+            const sv=areaRows?.[ai++]; if(!sv) return;
+            (a.measurements||[]).forEach(m=>segs.push({area_id:sv.id,height:m.h,length:m.l,sqft:m.sqft,source:"field"}));
+          });
+        });
+        if(segs.length>0) await supabase.from("segments").insert(segs);
+      }
+      if(selectedLeadId) await supabase.from("customers").update({estimate_amount:projectTotal}).eq("id",selectedLeadId);
+      await supabase.from("quotes").insert([{
+        project_id:proj.id,subtotal:projectTotal,
+        tax_rate:0,tax_total:0,grand_total:projectTotal,status:"Draft",
+      }]);
+      setSaved(true);
+      setSavedProjectId(proj.id);
+    } catch(err) {
+      console.error(err); alert("Error: "+(err.message||JSON.stringify(err)));
+    } finally { setSaving(false); }
+  }
+
+  const currentAreas = areas[activeFloor]||[];
+  const panelProps = { floors, areas, materialMap, crewNotes, projectName, projectAddress, customer:selectedLead };
+
+  useEffect(()=>{
+    if(saved){ const t=setTimeout(()=>setSaved(false),3000); return ()=>clearTimeout(t); }
+  },[saved]);
+
+  return (
+    <div style={{fontFamily:"system-ui,sans-serif",color:C.ink,background:C.bg,
+        minHeight:"100%",display:"flex",flexDirection:"column",
+        WebkitOverflowScrolling:"touch"}}>
+
+      {saved && (
+        <div style={{position:"fixed",top:12,left:"50%",transform:"translateX(-50%)",
+            zIndex:300,display:"flex",alignItems:"center",gap:10,
+            background:"#059669",color:"#fff",padding:"8px 16px",
+            borderRadius:20,fontSize:12,fontWeight:700,
+            boxShadow:"0 4px 16px rgba(0,0,0,.15)"}}>
+          <span>✅ Saved — ${fmt(projectTotal)}</span>
+          {savedProjectId && (
+            <button onClick={()=>navigate(`/quote/${savedProjectId}`)}
+              style={{background:"white",color:"#059669",border:"none",
+                borderRadius:12,padding:"3px 10px",fontSize:11,
+                fontWeight:700,cursor:"pointer"}}>
+              View Quote →
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* top bar */}
+      <div style={{position:"sticky",top:0,zIndex:100,background:C.white,
+          borderBottom:`1px solid ${C.border}`,padding:"8px 12px",
+          display:"flex",justifyContent:"space-between",alignItems:"center",flexShrink:0}}>
+        <span style={{fontWeight:700,fontSize:14,flex:1,
+            overflow:"hidden",whiteSpace:"nowrap",textOverflow:"ellipsis"}}>
+          {projectName||"New Project"}
+        </span>
+        <button onClick={saveProject} disabled={saving}
+          style={{...BtnD, fontSize:13, height:32, padding:"0 14px",
+            background:saving?"#64748b":C.ink, borderRadius:8}}>
+          {saving?"…":`Save $${fmt(projectTotal)}`}
+        </button>
+      </div>
+
+      <div style={{display:"flex",flex:1,overflow:"hidden"}}>
+
+        {/* entry form */}
+        <div style={{flex:1,overflowY:"auto",padding:"8px 12px 200px 12px",minWidth:0,boxSizing:"border-box"}}>
+
+          <CustomerSection
+            key={selectedLeadId||"none"}
+            leads={leads}
+            selectedLead={selectedLead}
+            selectedLeadId={selectedLeadId}
+            projectAddress={projectAddress}
+            projectName={projectName}
+            onSelect={(lead)=>{ setSelectedLeadId(String(lead.id)); setProjectName(lead.name||""); setProjectAddress(""); }}
+            onClear={()=>{ setSelectedLeadId(""); setProjectName(""); setProjectAddress(""); }}
+            onSaveNew={saveNewCustomer}
+            onAddressChange={setProjectAddress}
+            onNameChange={setProjectName}
+          />
+
+          {/* crew notes */}
+          <div style={CARD}>
+            {/* row 1: job type + ladder */}
+            <div style={{display:"flex",gap:6,marginBottom:6}}>
+              <select style={{...S,flex:1,height:32,fontSize:12}} value={crewNotes.const_type}
+                onChange={e=>setCrewNotes(p=>({...p,const_type:e.target.value}))}>
+                <option value="">Job type…</option>
+                {CONST_TYPES.map(t=><option key={t}>{t}</option>)}
+              </select>
+              <select style={{...S,flex:1,height:32,fontSize:12}} value={crewNotes.ladder}
+                onChange={e=>setCrewNotes(p=>({...p,ladder:e.target.value}))}>
+                <option value="">Ladder…</option>
+                {LADDER_OPTS.map(l=><option key={l}>{l}</option>)}
+              </select>
+            </div>
+            {/* row 2: fire block + parking + units */}
+            <div style={{display:"flex",gap:6,alignItems:"center",marginBottom:6}}>
+              <span style={{fontSize:11,color:C.muted,whiteSpace:"nowrap"}}>Fire</span>
+              {["Yes","No"].map(v=>(
+                <button key={v} onClick={()=>setCrewNotes(p=>({...p,fire_blocking:v}))}
+                  style={{...Btn,height:30,fontSize:12,padding:"0 10px",
+                    background:crewNotes.fire_blocking===v?C.ink:C.white,
+                    color:crewNotes.fire_blocking===v?"#fff":C.muted,
+                    borderColor:crewNotes.fire_blocking===v?C.ink:C.border}}>
+                  {v}
+                </button>
+              ))}
+              <span style={{fontSize:11,color:C.muted,whiteSpace:"nowrap",marginLeft:4}}>Park</span>
+              {["Yes","No"].map(v=>(
+                <button key={v} onClick={()=>setCrewNotes(p=>({...p,parking:v}))}
+                  style={{...Btn,height:30,fontSize:12,padding:"0 10px",
+                    background:crewNotes.parking===v?C.ink:C.white,
+                    color:crewNotes.parking===v?"#fff":C.muted,
+                    borderColor:crewNotes.parking===v?C.ink:C.border}}>
+                  {v}
+                </button>
+              ))}
+              <input placeholder="Units" value={crewNotes.units}
+                onChange={e=>setCrewNotes(p=>({...p,units:e.target.value}))}
+                style={{...I,flex:1,height:30,fontSize:12}} />
+            </div>
+            {/* row 3: notes */}
+            <input placeholder="Other info for crew…" value={crewNotes.extra_notes}
+              onChange={e=>setCrewNotes(p=>({...p,extra_notes:e.target.value}))}
+              style={{...I,width:"100%",height:30,fontSize:12}} />
+          </div>
+
+          {/* floor tabs */}
+          <div style={{display:"flex",gap:3,overflowX:"auto",paddingBottom:3,
+              marginBottom:5,WebkitOverflowScrolling:"touch",alignItems:"center"}}>
+            {floors.map(floor=>{
+              const cnt=(areas[floor]||[]).length;
+              const tot=floorTotal(floor);
+              const act=activeFloor===floor;
+              return (
+                <button key={floor} onClick={()=>setActiveFloor(floor)}
+                  style={{flexShrink:0,padding:"2px 8px",borderRadius:6,height:"auto",
+                    border:act?`2px solid ${C.ink}`:`1px solid ${C.border}`,
+                    background:act?C.ink:C.white,color:act?"#fff":C.muted,
+                    cursor:"pointer",fontSize:11,fontWeight:act?700:400,whiteSpace:"nowrap"}}>
+                  {floor}
+                  {cnt>0&&<span style={{marginLeft:3,fontSize:9,opacity:0.7}}>{cnt}·${fmt(tot)}</span>}
+                </button>
+              );
+            })}
+            {addingFloor ? (
+              <div style={{display:"flex",gap:3,flexShrink:0}}>
+                <input autoFocus placeholder="Name" value={newFloorName}
+                  onChange={e=>setNewFloorName(e.target.value)}
+                  onKeyDown={e=>{if(e.key==="Enter")addFloor();if(e.key==="Escape")setAddingFloor(false);}}
+                  style={{...I,width:75}} />
+                <button onClick={addFloor} style={{...BtnD,padding:"0 6px"}}>✓</button>
+                <button onClick={()=>setAddingFloor(false)} style={{...Btn,padding:"0 5px"}}>✕</button>
+              </div>
+            ) : (
+              <button onClick={()=>setAddingFloor(true)}
+                style={{flexShrink:0,padding:"2px 8px",borderRadius:6,height:"auto",
+                  border:`1px dashed ${C.border}`,background:"none",color:C.faint,
+                  cursor:"pointer",fontSize:11,whiteSpace:"nowrap"}}>
+                + Floor
+              </button>
+            )}
+          </div>
+
+          {/* add area — TOP */}
+          <button onClick={()=>addArea(activeFloor)}
+            style={{width:"100%",padding:"7px",borderRadius:7,
+              border:`1px dashed ${C.border}`,background:C.white,color:C.muted,
+              cursor:"pointer",fontSize:11,fontWeight:600,marginBottom:6,height:"auto"}}>
+            + Add area to {activeFloor}
+          </button>
+
+          {currentAreas.length===0 ? (
+            <div style={{textAlign:"center",padding:"14px",color:C.faint,fontSize:11,
+                background:C.white,borderRadius:7,border:`1px solid ${C.border}`,marginBottom:5}}>
+              No areas for {activeFloor} — tap above to add one
+            </div>
+          ) : (
+            <>
+              {/* incomplete first */}
+              {currentAreas.map((area,idx)=>({area,idx}))
+                .filter(({area})=>!isAreaComplete(area))
+                .map(({area,idx})=>(
+                  <AreaRow key={area.id||area.temp_id} area={area} materials={materials}
+                    onChange={(field,value)=>updateArea(activeFloor,idx,field,value)}
+                    onDelete={()=>deleteArea(activeFloor,idx)} />
+                ))}
+              {/* completed label */}
+              {currentAreas.some(a=>isAreaComplete(a)) && (
+                <div style={{fontSize:9,fontWeight:700,color:"#059669",
+                    textTransform:"uppercase",letterSpacing:0.5,
+                    marginBottom:4,marginTop:2,paddingLeft:2}}>
+                  ✓ Completed areas
+                </div>
+              )}
+              {/* complete last */}
+              {currentAreas.map((area,idx)=>({area,idx}))
+                .filter(({area})=>isAreaComplete(area))
+                .map(({area,idx})=>(
+                  <AreaRow key={area.id||area.temp_id} area={area} materials={materials}
+                    onChange={(field,value)=>updateArea(activeFloor,idx,field,value)}
+                    onDelete={()=>deleteArea(activeFloor,idx)} />
+                ))}
+            </>
+          )}
+
+          {currentAreas.length>0 && (
+            <div style={{display:"flex",justifyContent:"space-between",
+                padding:"4px 8px",background:C.white,borderRadius:6,
+                border:`1px solid ${C.border}`,marginBottom:5,fontSize:11}}>
+              <span style={{color:C.muted,fontWeight:600}}>{activeFloor} subtotal</span>
+              <span style={{fontWeight:700}}>${fmt(floorTotal(activeFloor))}</span>
+            </div>
+          )}
+        </div>
+
+        {/* side panel — desktop only */}
+        <div className="estimate-side-panel" style={{
+          width:220, flexShrink:0, borderLeft:`1px solid ${C.border}`,
+          background:C.white, overflowY:"auto", padding:"10px 10px 20px",
+        }}>
+          <div style={{fontSize:10,fontWeight:800,color:C.faint,textTransform:"uppercase",
+              letterSpacing:0.5,marginBottom:8}}>Estimate</div>
+          <EstimatePanel {...panelProps} />
+        </div>
+      </div>
+
+      {/* bottom panel — mobile only, always visible */}
+      <div className="estimate-bottom-panel" style={{
+        position:"fixed", bottom:0, left:0, right:0, zIndex:200,
+        background:C.white, borderTop:`2px solid ${C.border}`,
+        boxShadow:"0 -2px 12px rgba(0,0,0,.08)",
+      }}>
+        <div onClick={()=>setPanelOpen(p=>!p)}
+          style={{ display:"flex", justifyContent:"space-between", alignItems:"center",
+            padding:"5px 12px", cursor:"pointer",
+            borderBottom: panelOpen?`1px solid ${C.border}`:"none" }}>
+          <span style={{fontSize:10,fontWeight:800,color:C.faint,textTransform:"uppercase",letterSpacing:0.5}}>
+            Estimate
+          </span>
+          <div style={{display:"flex",alignItems:"center",gap:8}}>
+            <span style={{fontSize:13,fontWeight:800,color:C.green}}>${fmt(projectTotal)}</span>
+            <span style={{fontSize:9,color:C.faint}}>{panelOpen?"▼":"▲"}</span>
+          </div>
+        </div>
+        {panelOpen && (
+          <div style={{maxHeight:"45vh",overflowY:"auto",padding:"8px 12px 24px"}}>
+            <EstimatePanel {...panelProps} />
+          </div>
+        )}
+      </div>
+
+      <style>{`
+        @media (min-width: 900px) { .estimate-bottom-panel { display: none !important; } }
+        @media (max-width: 899px) { .estimate-side-panel   { display: none !important; } }
+        @media (min-width: 900px) {
+          .area-hl-input { height: 22px !important; font-size: 11px !important; }
+          .area-mq-input { height: 22px !important; font-size: 11px !important; width: 30px !important; }
+          .area-deduct   { height: 22px !important; font-size: 11px !important; width: 52px !important; }
+          .area-select   { height: 22px !important; font-size: 11px !important; }
+        }
+        input[type=number]::-webkit-inner-spin-button,
+        input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+      `}</style>
+    </div>
+  );
+}
