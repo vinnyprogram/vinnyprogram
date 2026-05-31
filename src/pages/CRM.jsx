@@ -419,11 +419,13 @@ export default function CRM() {
                               alignItems:"flex-start",marginBottom:8,gap:4}}>
                             <strong style={{fontSize:13,flex:1,minWidth:0,
                                 wordBreak:"break-word"}}>{customer.name}</strong>
-                            <span style={{fontSize:9,padding:"2px 5px",borderRadius:10,
+                           <span style={{fontSize:9,padding:"2px 5px",borderRadius:10,
                                 background:statusColor[customer.status],color:"white",
-                                fontWeight:700,flexShrink:0,whiteSpace:"nowrap",
-                                maxWidth:60,overflow:"hidden",textOverflow:"ellipsis"}}>
-                              {customer.status}
+                                fontWeight:700,flexShrink:0,whiteSpace:"nowrap"}}>
+                              {customer.status==="Inspection Scheduled"?"Insp."
+                                :customer.status==="Estimate Sent"?"Sent"
+                                :customer.status==="Follow-Up"?"Follow"
+                                :customer.status}
                             </span>
                           </div>
                           <div style={{fontSize:12,color:"#666",lineHeight:1.8}}>
