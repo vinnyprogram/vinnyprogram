@@ -8,6 +8,7 @@ const COMPANY = {
   address: "69 Watson Street | Brockton, Massachusetts 02301",
   phone:   "(781) 507-3199",
   email:   "info@brightchoiceinsulation.com",
+  office_email: "office@brightchoiceinsulation.com",
   website: "https://brightchoiceinsulation.com/",
 };
 
@@ -191,15 +192,27 @@ export default function QuotePDF() {
             padding:"6px 12px",borderRadius:6,cursor:"pointer",fontSize:12}}>
           ← Back
         </button>
-        <span style={{color:"white",fontWeight:700,fontSize:14}}>
-          Quote #{quoteNum}
+       <span style={{color:"white",fontWeight:700,fontSize:14}}>
+          Estimate #{quoteNum}
         </span>
-        <button onClick={print}
-          style={{background:"#f97316",border:"none",color:"white",
-            padding:"8px 16px",borderRadius:6,cursor:"pointer",
-            fontSize:13,fontWeight:700}}>
-          🖨 Print / Save PDF
-        </button>
+        <div style={{display:"flex",gap:8}}>
+          <button onClick={()=>{
+              const subject = encodeURIComponent(`Estimate - ${project?.name||project?.address||"New Project"}`);
+              const body = encodeURIComponent(`Hi,\n\nPlease find attached the estimate for ${project?.name||project?.address||""}.\n\nCustomer: ${lead?.name||""}\nPhone: ${lead?.phone||""}\nAddress: ${project?.address||""}\n\nTotal: To be calculated\n\nBest,\n${salesRep}`);
+              window.open(`mailto:office@brightchoiceinsulation.com?subject=${subject}&body=${body}`);
+            }}
+            style={{background:"#3b82f6",border:"none",color:"white",
+              padding:"8px 16px",borderRadius:6,cursor:"pointer",
+              fontSize:13,fontWeight:700}}>
+            📧 Email Office
+          </button>
+          <button onClick={print}
+            style={{background:"#f97316",border:"none",color:"white",
+              padding:"8px 16px",borderRadius:6,cursor:"pointer",
+              fontSize:13,fontWeight:700}}>
+            🖨 Print / Save PDF
+          </button>
+        </div>
       </div>
 
       {/* ── optional items editor (not printed) ── */}
@@ -272,7 +285,7 @@ export default function QuotePDF() {
             <div style={{background:"#f97316",borderRadius:8,
                 padding:"12px 20px",minWidth:220,textAlign:"right"}}>
               <div style={{fontSize:20,fontWeight:900,color:"white",marginBottom:8}}>
-                Quote #{quoteNum}
+                Estimate #{quoteNum}
               </div>
               {[
                 ["Sent on", fmtDate(quote?.created_at)],
@@ -284,13 +297,10 @@ export default function QuotePDF() {
                   <span>{k}</span><span style={{fontWeight:600}}>{v}</span>
                 </div>
               ))}
-              <div style={{marginTop:8,paddingTop:8,
-                  borderTop:"1.5px solid rgba(255,255,255,.4)",
-                  display:"flex",justifyContent:"space-between",
-                  alignItems:"center"}}>
-                <span style={{fontSize:13,fontWeight:700,color:"white"}}>Total</span>
-                <span style={{fontSize:18,fontWeight:900,color:"white"}}>
-                  ${fmt(total)}
+             <div style={{marginTop:8,paddingTop:8,
+                  borderTop:"1.5px solid rgba(255,255,255,.4)"}}>
+                <span style={{fontSize:11,color:"rgba(255,255,255,.8)"}}>
+                  Pricing to be confirmed by office
                 </span>
               </div>
             </div>
@@ -367,18 +377,7 @@ export default function QuotePDF() {
             </tbody>
           </table>
 
-          {/* total row */}
-          <div style={{display:"flex",justifyContent:"flex-end",
-              marginBottom:28,borderTop:"1px solid #e2e8f0",paddingTop:12}}>
-            <div style={{display:"flex",gap:24,alignItems:"center"}}>
-              <span style={{fontSize:13,fontWeight:700,color:"#0f172a"}}>Total</span>
-              <span style={{fontSize:16,fontWeight:900,color:"#0f172a",
-                  background:"#f1f5f9",padding:"6px 16px",borderRadius:6}}>
-                ${fmt(total)}
-              </span>
-            </div>
-          </div>
-
+          
           {/* terms */}
           <div style={{fontSize:9.5,color:"#6b7280",lineHeight:1.7,
               borderTop:"1px solid #e2e8f0",paddingTop:16,whiteSpace:"pre-line"}}>

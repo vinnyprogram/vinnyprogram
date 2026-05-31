@@ -10,10 +10,18 @@ export default function EstimateStart() {
       padding: "0 20px",
       fontFamily: "system-ui, sans-serif",
     }}>
-      <div style={{ marginBottom: 32 }}>
-        <h2 style={{ fontSize: 22, fontWeight: 800, color: "#0f172a", marginBottom: 6 }}>
-          New Estimate
-        </h2>
+     <div style={{ marginBottom: 32 }}>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:6 }}>
+          <h2 style={{ fontSize: 22, fontWeight: 800, color: "#0f172a", margin:0 }}>
+            New Estimate
+          </h2>
+          <button onClick={()=>navigate("/estimates/search")}
+            style={{ border:"1px solid #e2e8f0", background:"white",
+              padding:"8px 14px", borderRadius:8, cursor:"pointer",
+              fontSize:13, fontWeight:600, color:"#0f172a" }}>
+            🔍 Search
+          </button>
+        </div>
         <p style={{ fontSize: 13, color: "#64748b", margin: 0 }}>
           Choose how you're taking measurements
         </p>

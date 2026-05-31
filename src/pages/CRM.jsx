@@ -141,14 +141,23 @@ function QuoteHistory({ customerId, navigate }) {
                     {minimumFractionDigits:0,maximumFractionDigits:0})}
                 </div>
               </div>
-              <button
-                onClick={()=>navigate(`/quote/${p.id}`)}
-                style={{border:"none",
-                  background: q.status==="Accepted"?"#059669":"#f97316",
-                  color:"white",padding:"5px 10px",borderRadius:6,
-                  cursor:"pointer",fontSize:11,fontWeight:700,flexShrink:0}}>
-                {q.status==="Accepted"?"✓ Accepted":"View PDF"}
-              </button>
+              <div style={{display:"flex",gap:4}}>
+                <button
+                  onClick={()=>navigate(`/field-report/${p.id}`)}
+                  style={{border:"none",background:"#3b82f6",
+                    color:"white",padding:"5px 8px",borderRadius:6,
+                    cursor:"pointer",fontSize:11,fontWeight:700,flexShrink:0}}>
+                  📋 Office
+                </button>
+                <button
+                  onClick={()=>navigate(`/quote/${p.id}`)}
+                  style={{border:"none",
+                    background: q.status==="Accepted"?"#059669":"#f97316",
+                    color:"white",padding:"5px 8px",borderRadius:6,
+                    cursor:"pointer",fontSize:11,fontWeight:700,flexShrink:0}}>
+                  {q.status==="Accepted"?"✓ Accepted":"📄 Quote"}
+                </button>
+              </div>
             </div>
           ))}
 
@@ -281,11 +290,18 @@ export default function CRM() {
 
       <h1 style={{marginBottom:20}}>🏠 Insulation CRM</h1>
 
-      {/* search */}
-      <div style={{marginBottom:16}}>
+     {/* search */}
+      <div style={{marginBottom:16,display:"flex",gap:10}}>
         <input placeholder="Search customer, phone, email…"
           value={search} onChange={e=>setSearch(e.target.value)}
-          style={{...inputStyle,padding:14,fontSize:15,marginTop:0}} />
+          style={{...inputStyle,padding:14,fontSize:15,marginTop:0,flex:1}} />
+        <button
+          onClick={()=>navigate("/estimates/search")}
+          style={{padding:"12px 18px",borderRadius:10,border:"none",
+            background:"#f97316",color:"white",fontWeight:700,
+            fontSize:14,cursor:"pointer",whiteSpace:"nowrap"}}>
+          🔍 Estimates
+        </button>
       </div>
 
       {/* metrics */}

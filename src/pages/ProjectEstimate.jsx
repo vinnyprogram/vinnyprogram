@@ -34,6 +34,14 @@ const CARD = {
   background: C.white, borderRadius: 8, padding: "7px 9px",
   border: `1px solid ${C.border}`, marginBottom: 5,
 };
+const CARD_BLUE = {
+  background: "#eff6ff", borderRadius: 8, padding: "7px 9px",
+  border: `1.5px solid #93c5fd`, marginBottom: 5,
+};
+const CARD_ORANGE = {
+  background: "#fff7ed", borderRadius: 8, padding: "7px 9px",
+  border: `1.5px solid #fed7aa`, marginBottom: 5,
+};
 const LBL = {
   fontSize: 9, fontWeight: 700, color: C.faint, textTransform: "uppercase",
   letterSpacing: 0.4, display: "block", marginBottom: 1,
@@ -103,7 +111,7 @@ function CustomerSection({ leads, selectedLead, selectedLeadId, projectAddress,
   const TI = { ...I, fontSize:12, height:26 };
 
   return (
-    <div style={{...CARD, marginBottom:5}}>
+    <div style={{...CARD_BLUE, marginBottom:5}}>
 
       {/* ── SELECTED: one compact line + address ── */}
       {mode==="selected" && selectedLead && (
@@ -826,17 +834,34 @@ export default function ProjectEstimate() {
   }
 
   async function saveProject() {
+    if(!selectedLeadId){
+      alert("Please select or register a customer before saving.");
+      return;
+    }
+    const hasAreas = floors.some(f=>(areas[f]||[]).some(a=>isAreaComplete(a)));
+    if(!hasAreas){
+      alert("Add at least one area before saving.");
+      return;
+    }
     setSaving(true);
     try {
+      // get company_id
+      const { data:{ user } } = await supabase.auth.getUser();
+      const { data:companyData } = await supabase.from("companies")
+        .select("id").eq("user_id", user.id).maybeSingle();
+      const companyId = companyData?.id || null;
+
       const {data:proj,error:pe}=await supabase.from("projects").insert([{
         lead_id:selectedLeadId?Number(selectedLeadId):null,
         name:projectName||"New Project", address:projectAddress||"",
-        status:"Active", source:"field",
+        status:"Active", source:"field", company_id:companyId,
       }]).select().single();
       if(pe) throw pe;
 
       const {data:floorRows}=await supabase.from("floors")
-        .insert(floors.map((name,i)=>({project_id:proj.id,name,order_index:i+1}))).select();
+        .insert(floors.map((name,i)=>({
+          project_id:proj.id, name, order_index:i+1, company_id:companyId,
+        }))).select();
       const floorMap={};
       (floorRows||[]).forEach(f=>{floorMap[f.name]=f.id;});
 
@@ -851,7 +876,7 @@ export default function ProjectEstimate() {
             return { project_id:proj.id, floor_id:floorMap[floor],
               area_type:a.area_type, material:ml.material, thickness_in:ml.thickness_in||null,
               r_value:ml.r_value, sqft:a.sqft, qty, unit, unit_price, line_total,
-              order_index:i*10+mi };
+              order_index:i*10+mi, company_id:companyId };
           });
         })
       );
@@ -863,15 +888,20 @@ export default function ProjectEstimate() {
         floors.forEach(floor=>{
           (areas[floor]||[]).filter(a=>a.area_type&&a.sqft).forEach(a=>{
             const sv=areaRows?.[ai++]; if(!sv) return;
-            (a.measurements||[]).forEach(m=>segs.push({area_id:sv.id,height:m.h,length:m.l,sqft:m.sqft,source:"field"}));
+            (a.measurements||[]).forEach(m=>segs.push({
+              area_id:sv.id, height:m.h, length:m.l,
+              sqft:m.sqft, source:"field", company_id:companyId,
+            }));
           });
         });
         if(segs.length>0) await supabase.from("segments").insert(segs);
       }
-      if(selectedLeadId) await supabase.from("customers").update({estimate_amount:projectTotal}).eq("id",selectedLeadId);
+      if(selectedLeadId) await supabase.from("customers")
+        .update({estimate_amount:projectTotal}).eq("id",selectedLeadId);
       await supabase.from("quotes").insert([{
-        project_id:proj.id,subtotal:projectTotal,
-        tax_rate:0,tax_total:0,grand_total:projectTotal,status:"Draft",
+        project_id:proj.id, subtotal:projectTotal,
+        tax_rate:0, tax_total:0, grand_total:projectTotal,
+        status:"Draft", company_id:companyId,
       }]);
       setSaved(true);
       setSavedProjectId(proj.id);
@@ -898,14 +928,22 @@ export default function ProjectEstimate() {
             background:"#059669",color:"#fff",padding:"8px 16px",
             borderRadius:20,fontSize:12,fontWeight:700,
             boxShadow:"0 4px 16px rgba(0,0,0,.15)"}}>
-          <span>✅ Saved — ${fmt(projectTotal)}</span>
+          <span>✅ Saved!</span>
           {savedProjectId && (
-            <button onClick={()=>navigate(`/quote/${savedProjectId}`)}
-              style={{background:"white",color:"#059669",border:"none",
-                borderRadius:12,padding:"3px 10px",fontSize:11,
-                fontWeight:700,cursor:"pointer"}}>
-              View Quote →
-            </button>
+            <>
+              <button onClick={()=>navigate(`/field-report/${savedProjectId}`)}
+                style={{background:"#3b82f6",color:"white",border:"none",
+                  borderRadius:12,padding:"3px 10px",fontSize:11,
+                  fontWeight:700,cursor:"pointer"}}>
+                📋 Office Report
+              </button>
+              <button onClick={()=>navigate(`/quote/${savedProjectId}`)}
+                style={{background:"white",color:"#059669",border:"none",
+                  borderRadius:12,padding:"3px 10px",fontSize:11,
+                  fontWeight:700,cursor:"pointer"}}>
+                📄 Quote
+              </button>
+            </>
           )}
         </div>
       )}
@@ -918,11 +956,26 @@ export default function ProjectEstimate() {
             overflow:"hidden",whiteSpace:"nowrap",textOverflow:"ellipsis"}}>
           {projectName||"New Project"}
         </span>
-        <button onClick={saveProject} disabled={saving}
-          style={{...BtnD, fontSize:13, height:32, padding:"0 14px",
-            background:saving?"#64748b":C.ink, borderRadius:8}}>
-          {saving?"…":`Save $${fmt(projectTotal)}`}
-        </button>
+        <div style={{display:"flex",gap:6}}>
+          {savedProjectId && (
+            <>
+              <button onClick={()=>navigate(`/field-report/${savedProjectId}`)}
+                style={{...BtnD,background:"#3b82f6",height:32,fontSize:12,padding:"0 10px",borderRadius:8}}>
+                📋 Office
+              </button>
+              <button onClick={()=>navigate(`/quote/${savedProjectId}`)}
+                style={{...BtnD,background:"#f97316",height:32,fontSize:12,padding:"0 10px",borderRadius:8}}>
+                📄 Quote
+              </button>
+            </>
+          )}
+          <button onClick={saveProject} disabled={saving}
+            style={{...BtnD, fontSize:13, height:32, padding:"0 14px",
+              background:saving?"#64748b":C.ink, borderRadius:8,
+              opacity:!selectedLeadId?0.4:1}}>
+            {saving?"…":"Save"}
+          </button>
+        </div>
       </div>
 
       <div style={{display:"flex",flex:1,overflow:"hidden"}}>
@@ -945,7 +998,7 @@ export default function ProjectEstimate() {
           />
 
           {/* crew notes */}
-          <div style={CARD}>
+          <div style={CARD_ORANGE}>
             {/* row 1: job type + ladder */}
             <div style={{display:"flex",gap:6,marginBottom:6}}>
               <select style={{...S,flex:1,height:32,fontSize:12}} value={crewNotes.const_type}
@@ -961,7 +1014,7 @@ export default function ProjectEstimate() {
             </div>
             {/* row 2: fire block + parking + units */}
             <div style={{display:"flex",gap:6,alignItems:"center",marginBottom:6}}>
-              <span style={{fontSize:11,color:C.muted,whiteSpace:"nowrap"}}>Fire</span>
+              <span style={{fontSize:11,color:C.muted,whiteSpace:"nowrap"}}>FireBlock</span>
               {["Yes","No"].map(v=>(
                 <button key={v} onClick={()=>setCrewNotes(p=>({...p,fire_blocking:v}))}
                   style={{...Btn,height:30,fontSize:12,padding:"0 10px",
@@ -1000,10 +1053,12 @@ export default function ProjectEstimate() {
               const act=activeFloor===floor;
               return (
                 <button key={floor} onClick={()=>setActiveFloor(floor)}
-                  style={{flexShrink:0,padding:"2px 8px",borderRadius:6,height:"auto",
-                    border:act?`2px solid ${C.ink}`:`1px solid ${C.border}`,
-                    background:act?C.ink:C.white,color:act?"#fff":C.muted,
-                    cursor:"pointer",fontSize:11,fontWeight:act?700:400,whiteSpace:"nowrap"}}>
+                  className="floor-btn"
+                  style={{flexShrink:0,padding:"8px 14px",borderRadius:8,height:"auto",
+                    border:act?"2px solid #059669":"2px solid #86efac",
+                    background:act?"#059669":C.white,color:act?"#fff":"#059669",
+                    cursor:"pointer",fontSize:14,fontWeight:700,whiteSpace:"nowrap",
+                    boxShadow:act?"0 2px 8px rgba(5,150,105,.3)":"none"}}>
                   {floor}
                   {cnt>0&&<span style={{marginLeft:3,fontSize:9,opacity:0.7}}>{cnt}·${fmt(tot)}</span>}
                 </button>
@@ -1020,9 +1075,10 @@ export default function ProjectEstimate() {
               </div>
             ) : (
               <button onClick={()=>setAddingFloor(true)}
-                style={{flexShrink:0,padding:"2px 8px",borderRadius:6,height:"auto",
-                  border:`1px dashed ${C.border}`,background:"none",color:C.faint,
-                  cursor:"pointer",fontSize:11,whiteSpace:"nowrap"}}>
+                className="floor-btn"
+                style={{flexShrink:0,padding:"8px 14px",borderRadius:8,height:"auto",
+                  border:"2px dashed #86efac",background:"none",color:"#059669",
+                  cursor:"pointer",fontSize:14,fontWeight:700,whiteSpace:"nowrap"}}>
                 + Floor
               </button>
             )}
@@ -1119,6 +1175,9 @@ export default function ProjectEstimate() {
       <style>{`
         @media (min-width: 900px) { .estimate-bottom-panel { display: none !important; } }
         @media (max-width: 899px) { .estimate-side-panel   { display: none !important; } }
+        @media (max-width: 899px) {
+          .floor-btn { padding: 5px 10px !important; font-size: 12px !important; }
+        }
         @media (min-width: 900px) {
           .area-hl-input { height: 22px !important; font-size: 11px !important; }
           .area-mq-input { height: 22px !important; font-size: 11px !important; width: 30px !important; }
