@@ -1030,7 +1030,10 @@ export default function ProjectEstimate() {
         if(segs.length>0) await supabase.from("segments").insert(segs);
       }
       if(selectedLeadId) await supabase.from("customers")
-        .update({estimate_amount:projectTotal}).eq("id",selectedLeadId);
+        .update({
+          estimate_amount: projectTotal,
+          status: "Estimate Sent",
+        }).eq("id", selectedLeadId);
       await supabase.from("quotes").insert([{
         project_id:proj.id, subtotal:projectTotal,
         tax_rate:0, tax_total:0, grand_total:projectTotal,
