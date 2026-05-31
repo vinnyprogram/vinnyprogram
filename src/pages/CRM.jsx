@@ -3,8 +3,13 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 
-const statuses = [
+const allStatuses = [
   "New", "Contacted", "Inspection Scheduled",
+  "Estimate Sent", "Follow-Up", "Won", "Lost"
+];
+
+const statuses = [
+  "Contacted", "Inspection Scheduled",
   "Estimate Sent", "Follow-Up", "Won", "Lost"
 ];
 
