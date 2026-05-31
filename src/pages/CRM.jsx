@@ -423,7 +423,8 @@ export default function CRM() {
                             </span>
                             <div style={{display:"flex",gap:6}}>
                               <button
-                                onClick={()=>{ setTimeout(()=>navigate(`/customer/${customer.id}`),0); }}
+                                onClick={e=>{ e.stopPropagation();
+                                  navigate(`/customer/${customer.id}`); }}
                                 style={{border:"none",background:"#eff6ff",color:"#3b82f6",
                                   cursor:"pointer",fontSize:11,fontWeight:700,
                                   padding:"4px 8px",borderRadius:6}}>

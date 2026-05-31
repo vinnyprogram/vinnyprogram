@@ -33,11 +33,9 @@ export default function CustomerProfile() {
     setCustomer(cust);
 
     // projects with quotes
-    const { data:projs, error:projErr } = await supabase.from("projects")
+    const { data:projs } = await supabase.from("projects")
       .select("*").eq("lead_id", Number(customerId))
       .order("created_at", { ascending:false });
-
-    console.log("customerId:", customerId, "projs:", projs, "error:", projErr);
 
     if(projs?.length) {
       const ids = projs.map(p=>p.id);
@@ -63,7 +61,7 @@ export default function CustomerProfile() {
       setProjects(Object.values(addrMap));
 
       // set first address as active
-      if(Object.keys(addrMap).length>0 && !activeJob){
+      if(Object.keys(addrMap).length>0){
         setActiveJob(Object.keys(addrMap)[0]);
       }
     }
