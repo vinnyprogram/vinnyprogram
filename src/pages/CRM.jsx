@@ -373,13 +373,14 @@ export default function CRM() {
 
       {/* kanban */}
       <DragDropContext onDragEnd={onDragEnd}>
-        <div style={{display:"flex",gap:12,overflowX:"auto",
-            WebkitOverflowScrolling:"touch",paddingBottom:8}}>
+        <div style={{display:"flex",gap:8,overflowX:"scroll",
+            WebkitOverflowScrolling:"touch",paddingBottom:16,
+            scrollbarWidth:"thin",msOverflowStyle:"auto"}}>
           {statuses.map(status=>(
             <Droppable droppableId={status} key={status}>
               {(provided,snapshot)=>(
                 <div ref={provided.innerRef} {...provided.droppableProps}
-                  style={{flex:"1 1 160px",minWidth:"160px",background:snapshot.isDraggingOver?"#e8f0fe":"#f1f3f9",
+                  style={{flex:"0 0 180px",minWidth:"180px",background:snapshot.isDraggingOver?"#e8f0fe":"#f1f3f9",
                     borderRadius:16,padding:14,minHeight:500,
                     border:`1.5px solid ${snapshot.isDraggingOver?"#93c5fd":"#e5e7eb"}`,
                     transition:"background .15s,border-color .15s"}}>
