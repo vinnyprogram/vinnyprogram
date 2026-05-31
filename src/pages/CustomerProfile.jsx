@@ -29,12 +29,12 @@ export default function CustomerProfile() {
 
     // customer
     const { data:cust } = await supabase.from("customers")
-      .select("*").eq("id", customerId).single();
+      .select("*").eq("id", Number(customerId)).single();
     setCustomer(cust);
 
     // projects with quotes
     const { data:projs } = await supabase.from("projects")
-      .select("*").eq("lead_id", customerId)
+      .select("*").eq("lead_id", Number(customerId))
       .order("created_at", { ascending:false });
 
     if(projs?.length) {
@@ -67,10 +67,16 @@ export default function CustomerProfile() {
     }
 
     // photos
-    const { data:ph } = await supabase.from("job_photos")
-      .select("*").eq("project_id", customerId)
-      .order("created_at", { ascending:false });
-    setPhotos(ph||[]);
+    // load photos for all projects of this customer
+    let ph = [];
+    if(projs?.length) {
+      const projIds = projs.map(p=>p.id);
+      const { data:phData } = await supabase.from("job_photos")
+        .select("*").in("project_id", projIds)
+        .order("created_at", { ascending:false });
+      ph = phData||[];
+    }
+    setPhotos(ph);
 
     setLoading(false);
   }
