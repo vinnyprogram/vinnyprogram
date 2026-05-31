@@ -4,6 +4,11 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 
 const statuses = [
+  "Contacted", "Inspection Scheduled",
+  "Estimate Sent", "Follow-Up", "Won", "Lost"
+];
+
+const allStatuses = [
   "New", "Contacted", "Inspection Scheduled",
   "Estimate Sent", "Follow-Up", "Won", "Lost"
 ];
