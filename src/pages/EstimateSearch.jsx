@@ -5,7 +5,7 @@ import { supabase } from "../lib/supabase";
 export default function EstimateSearch() {
   const navigate = useNavigate();
   const [search, setSearch]     = useState("");
-  const [projects, setProjects] = useState([]);
+  const [groups, setGroups]     = useState([]);
   const [loading, setLoading]   = useState(true);
 
   useEffect(()=>{
@@ -34,40 +34,46 @@ export default function EstimateSearch() {
       const quoteMap = {};
       (quotes||[]).forEach(q=>{ if(!quoteMap[q.project_id]) quoteMap[q.project_id]=q; });
 
-      setProjects(projs.map(p=>({
-        ...p,
-        customer: custMap[p.lead_id]||null,
-        quote: quoteMap[p.id]||null,
-      })));
+      // group by customer
+      const custGroups = {};
+      projs.forEach(p=>{
+        const cid = p.lead_id||"unknown";
+        if(!custGroups[cid]) custGroups[cid]={
+          customer: custMap[p.lead_id]||null,
+          projects: [],
+        };
+        custGroups[cid].projects.push({...p, quote: quoteMap[p.id]||null});
+      });
+
+      setGroups(Object.values(custGroups));
       setLoading(false);
     }
     load();
   },[]);
 
-  const filtered = projects.filter(p=>{
+  const filtered = groups.filter(g=>{
     if(!search.trim()) return true;
     const s = search.toLowerCase();
     return (
-      (p.name||"").toLowerCase().includes(s) ||
-      (p.address||"").toLowerCase().includes(s) ||
-      (p.customer?.name||"").toLowerCase().includes(s) ||
-      (p.customer?.phone||"").includes(s) ||
-      (p.customer?.company_name||"").toLowerCase().includes(s)
+      (g.customer?.name||"").toLowerCase().includes(s) ||
+      (g.customer?.phone||"").includes(s) ||
+      (g.customer?.company_name||"").toLowerCase().includes(s) ||
+      g.projects.some(p=>(p.address||"").toLowerCase().includes(s))
     );
   });
 
   return (
-    <div style={{padding:20,background:"#f6f7fb",minHeight:"100vh",
-        fontFamily:"Inter,system-ui,sans-serif"}}>
+    <div style={{padding:"16px 14px",background:"#f6f7fb",minHeight:"100vh",
+        fontFamily:"Inter,system-ui,sans-serif",maxWidth:700,margin:"0 auto"}}>
 
       {/* header */}
-      <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:20}}>
+      <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:16}}>
         <h2 style={{margin:0,fontSize:18,fontWeight:700}}>Estimates</h2>
         <button onClick={()=>navigate("/project/new?type=onsite")}
           style={{marginLeft:"auto",border:"none",background:"#0f172a",
             color:"white",padding:"8px 16px",borderRadius:8,
-            cursor:"pointer",fontSize:13,fontWeight:700}}>
-          + New Estimate
+            cursor:"pointer",fontSize:13,fontWeight:700,whiteSpace:"nowrap"}}>
+          + New
         </button>
       </div>
 
@@ -83,73 +89,102 @@ export default function EstimateSearch() {
         <div style={{textAlign:"center",color:"#94a3b8",padding:40}}>Loading…</div>
       ) : filtered.length===0 ? (
         <div style={{textAlign:"center",color:"#94a3b8",padding:40}}>No estimates found</div>
-      ) : filtered.map(p=>(
-        <div key={p.id} style={{background:"white",borderRadius:12,
-            padding:"14px 16px",marginBottom:10,
-            border:"1px solid #e2e8f0",
-            boxShadow:"0 2px 8px rgba(0,0,0,.04)"}}>
+      ) : filtered.map((g,gi)=>(
+        <div key={gi} style={{background:"white",borderRadius:12,
+            marginBottom:12,border:"1px solid #e2e8f0",
+            boxShadow:"0 2px 8px rgba(0,0,0,.04)",overflow:"hidden"}}>
 
-          {/* customer + date */}
-          <div style={{display:"flex",justifyContent:"space-between",
-              alignItems:"flex-start",marginBottom:8}}>
+          {/* customer header */}
+          <div style={{padding:"12px 14px",background:"#f8fafc",
+              borderBottom:"1px solid #f1f5f9",
+              display:"flex",justifyContent:"space-between",alignItems:"center"}}>
             <div>
               <div style={{fontWeight:700,fontSize:14,color:"#0f172a"}}>
-                {p.customer?.name||p.name||"Unknown"}
+                {g.customer?.name||"Unknown"}
               </div>
-              {p.customer?.company_name && (
-                <div style={{fontSize:12,color:"#64748b"}}>{p.customer.company_name}</div>
+              {g.customer?.company_name && (
+                <div style={{fontSize:11,color:"#64748b"}}>{g.customer.company_name}</div>
               )}
-              {p.address && (
-                <div style={{fontSize:12,color:"#64748b",marginTop:1}}>📍 {p.address}</div>
+              {g.customer?.phone && (
+                <div style={{fontSize:11,color:"#94a3b8"}}>{g.customer.phone}</div>
               )}
-              <div style={{fontSize:11,color:"#94a3b8",marginTop:2,display:"flex",gap:8,alignItems:"center"}}>
-                {new Date(p.created_at).toLocaleDateString("en-US",
-                  {month:"short",day:"numeric",year:"numeric"})}
-                {p.source==="drawings" && (
-                  <span style={{background:"#eff6ff",color:"#3b82f6",
-                      padding:"1px 6px",borderRadius:4,fontSize:10,fontWeight:600}}>
-                    📐 Drawings
-                  </span>
-                )}
-              </div>
             </div>
-            {p.quote && (
-              <div style={{textAlign:"right"}}>
-                <div style={{fontSize:13,fontWeight:700,color:"#059669"}}>
-                  ${Number(p.quote.grand_total||0).toLocaleString("en-US",
-                    {maximumFractionDigits:0})}
-                </div>
-                <span style={{fontSize:10,padding:"2px 7px",borderRadius:10,
-                  background:p.quote.status==="Accepted"?"#dcfce7":"#f1f5f9",
-                  color:p.quote.status==="Accepted"?"#059669":"#64748b",
-                  fontWeight:700}}>
-                  {p.quote.status||"Draft"}
-                </span>
-              </div>
-            )}
+            <button onClick={()=>navigate(`/customer/${g.customer?.id}`)}
+              style={{border:"none",background:"#0f172a",color:"white",
+                padding:"6px 12px",borderRadius:6,cursor:"pointer",
+                fontSize:11,fontWeight:700,whiteSpace:"nowrap"}}>
+              👤 Profile
+            </button>
           </div>
 
-          {/* action buttons */}
-          <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-            <button onClick={()=>navigate(`/field-report/${p.id}`)}
-              style={{flex:1,minWidth:80,border:"none",background:"#3b82f6",color:"white",
-                padding:"8px 0",borderRadius:8,cursor:"pointer",
-                fontSize:12,fontWeight:700}}>
-              📋 Office
-            </button>
-            <button onClick={()=>navigate(`/quote/${p.id}`)}
-              style={{flex:1,minWidth:80,border:"none",background:"#f97316",color:"white",
-                padding:"8px 0",borderRadius:8,cursor:"pointer",
-                fontSize:12,fontWeight:700}}>
-              📄 Quote
-            </button>
-            <button onClick={()=>navigate(`/project/${p.id}`)}
-              style={{flex:1,minWidth:80,border:"1px solid #e2e8f0",background:"white",
-                color:"#0f172a",padding:"8px 0",borderRadius:8,
-                cursor:"pointer",fontSize:12,fontWeight:700}}>
-              ✏️ Edit
-            </button>
-          </div>
+          {/* estimates */}
+          {g.projects.map((p,pi)=>(
+            <div key={p.id} style={{padding:"10px 14px",
+                borderBottom:pi<g.projects.length-1?"1px solid #f1f5f9":"none",
+                background:pi===0?"#f0fdf4":"white"}}>
+              <div style={{display:"flex",justifyContent:"space-between",
+                  alignItems:"flex-start",marginBottom:8}}>
+                <div>
+                  {pi===0 && (
+                    <span style={{fontSize:10,fontWeight:700,color:"#059669",
+                        marginRight:6}}>★ Latest</span>
+                  )}
+                  <span style={{fontSize:12,fontWeight:600,color:"#0f172a"}}>
+                    Estimate {g.projects.length-pi}
+                  </span>
+                  {p.address && (
+                    <div style={{fontSize:11,color:"#64748b",marginTop:1}}>
+                      📍 {p.address}
+                    </div>
+                  )}
+                  <div style={{fontSize:11,color:"#94a3b8",marginTop:1,display:"flex",gap:6}}>
+                    {new Date(p.created_at).toLocaleDateString("en-US",
+                      {month:"short",day:"numeric",year:"numeric"})}
+                    {p.source==="drawings" && (
+                      <span style={{background:"#eff6ff",color:"#3b82f6",
+                          padding:"1px 5px",borderRadius:3,fontSize:10}}>
+                        📐 Drawings
+                      </span>
+                    )}
+                  </div>
+                </div>
+                {p.quote && (
+                  <div style={{textAlign:"right"}}>
+                    <div style={{fontSize:13,fontWeight:700,color:"#059669"}}>
+                      ${Number(p.quote.grand_total||0).toLocaleString("en-US",
+                        {maximumFractionDigits:0})}
+                    </div>
+                    <span style={{fontSize:10,padding:"2px 7px",borderRadius:10,
+                      background:p.quote.status==="Accepted"?"#dcfce7":"#f1f5f9",
+                      color:p.quote.status==="Accepted"?"#059669":"#64748b",
+                      fontWeight:700}}>
+                      {p.quote.status||"Draft"}
+                    </span>
+                  </div>
+                )}
+              </div>
+              <div style={{display:"flex",gap:6}}>
+                <button onClick={()=>navigate(`/field-report/${p.id}`)}
+                  style={{flex:1,border:"none",background:"#3b82f6",color:"white",
+                    padding:"7px 0",borderRadius:7,cursor:"pointer",
+                    fontSize:12,fontWeight:700}}>
+                  📋 Office
+                </button>
+                <button onClick={()=>navigate(`/quote/${p.id}`)}
+                  style={{flex:1,border:"none",background:"#f97316",color:"white",
+                    padding:"7px 0",borderRadius:7,cursor:"pointer",
+                    fontSize:12,fontWeight:700}}>
+                  📄 Quote
+                </button>
+                <button onClick={()=>navigate(`/project/${p.id}`)}
+                  style={{flex:1,border:"1px solid #e2e8f0",background:"white",
+                    color:"#0f172a",padding:"7px 0",borderRadius:7,
+                    cursor:"pointer",fontSize:12,fontWeight:700}}>
+                  ✏️ Edit
+                </button>
+              </div>
+            </div>
+          ))}
         </div>
       ))}
     </div>
