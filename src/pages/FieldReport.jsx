@@ -351,41 +351,27 @@ export default function FieldReport() {
                     borderTop: i===0?"1px solid #e2e8f0":"none",
                     borderRadius: i===0?"6px 6px 0 0" : i===groups.length-1?"0 0 6px 6px":"0",
                   }}>
-                    <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:8}}>
-                      <div style={{flex:1,lineHeight:1.6}}>
-                        {/* floor tags */}
-                        <div style={{marginBottom:2}}>
-                          {floorLabel.split(", ").map((f,j)=>(
-                            <span key={j} style={{fontSize:9,color:"#94a3b8",fontWeight:600,
-                                background:"#f1f5f9",padding:"1px 5px",borderRadius:3,
-                                marginRight:3,whiteSpace:"nowrap"}}>
-                              {f}
-                            </span>
-                          ))}
-                        </div>
-                        {/* area type bold */}
+                    {/* single line: floors + area type + material + sqft — all same size bold */}
+                    <div style={{display:"flex",justifyContent:"space-between",
+                        alignItems:"baseline",gap:8,flexWrap:"wrap"}}>
+                      <div style={{flex:1,minWidth:0}}>
                         <span style={{fontSize:12,fontWeight:700,color:"#0f172a"}}>
-                          {g.area_type}
+                          {floorLabel} {g.area_type}{thick ? " "+thick : ""} {matLabel}
                         </span>
-                        {/* material specs */}
-                        <div style={{fontSize:11,color:"#374151",marginTop:1}}>
-                          {thick && <span style={{fontWeight:600}}>{thick} </span>}
-                          {matLabel}
-                        </div>
-                        {/* measurements */}
-                        {measStr && (
-                          <div style={{fontSize:10,color:"#64748b",marginTop:2,letterSpacing:0.2}}>
-                            {measStr}
-                          </div>
-                        )}
                       </div>
                       {g.sqft>0 && (
-                        <span style={{fontSize:12,fontWeight:700,color:"#0f172a",
-                            flexShrink:0,paddingTop:18}}>
+                        <span style={{fontSize:12,fontWeight:700,color:"#0f172a",flexShrink:0}}>
                           {fmt(g.sqft)} ft²
                         </span>
                       )}
                     </div>
+                    {/* measurements below */}
+                    {measStr && (
+                      <div style={{fontSize:10,color:"#64748b",marginTop:3,
+                          paddingLeft:4,letterSpacing:0.2}}>
+                        {measStr}
+                      </div>
+                    )}
                   </div>
                 );
               });
