@@ -26,9 +26,9 @@ export function AuthProvider({ children }) {
     return ()=>subscription.unsubscribe();
   },[]);
 
-  async function loadCompany(userId) {
+async function loadCompany(userId) {
     const { data } = await supabase.from("companies")
-      .select("*").eq("user_id", userId).single();
+      .select("*").eq("user_id", userId).maybeSingle();
     setCompany(data||null);
     setLoading(false);
   }

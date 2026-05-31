@@ -143,11 +143,11 @@ export default function EstimateSearch() {
                 fontSize:12,fontWeight:700}}>
               📄 Quote
             </button>
-            <button onClick={()=>navigate(`/project/new?leadId=${p.lead_id}`)}
+            <button onClick={()=>navigate(`/project/${p.id}`)}
               style={{flex:1,minWidth:80,border:"1px solid #e2e8f0",background:"white",
                 color:"#0f172a",padding:"8px 0",borderRadius:8,
                 cursor:"pointer",fontSize:12,fontWeight:700}}>
-              ✏️ New Estimate
+              ✏️ Edit
             </button>
           </div>
         </div>

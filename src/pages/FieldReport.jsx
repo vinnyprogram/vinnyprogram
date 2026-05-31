@@ -291,76 +291,101 @@ export default function FieldReport() {
             {areas.length===0 ? (
               <div style={{fontSize:12,color:"#94a3b8",fontStyle:"italic"}}>No areas recorded.</div>
             ) : (()=>{
-              // group by floor + area_type + material specs (same = merge)
+              // group by area_type + material specs (merge same specs across ALL floors)
               const groupMap = {};
               areas.forEach(a=>{
                 const fl = floors.find(f=>f.id===a.floor_id);
-                const key = (fl?.name||"")+"||"+a.area_type+"||"+(a.material||"")+"||"+(a.thickness_in||"")+"||"+(a.r_value||"");
+                const floorIdx = floors.findIndex(f=>f.id===a.floor_id);
+                // key = area_type + all material specs (NOT floor — so same specs across floors merge)
+                const matKey = (a.material||"")+"||"+(a.thickness_in||"")+"||"+(a.r_value||"");
+                const key = a.area_type+"||||"+matKey;
                 if(!groupMap[key]) groupMap[key]={
                   area_type: a.area_type,
-                  floor: fl,
-                  floorOrder: floors.findIndex(f=>f.id===a.floor_id),
+                  floors: [],
+                  floorOrder: floorIdx,
                   sqft: 0,
                   materials: [],
                   segs: [],
                 };
-                groupMap[key].sqft += a.sqft||0;
-                groupMap[key].segs = [...groupMap[key].segs, ...segments.filter(s=>s.area_id===a.id)];
-                // only add material if not already in list
-                const exists = groupMap[key].materials.find(m=>m.material===a.material&&m.r_value===a.r_value);
-                if(!exists) groupMap[key].materials.push({
+                const g = groupMap[key];
+                // track floors in order
+                if(!g.floors.find(f=>f.id===fl?.id)) {
+                  g.floors.push(fl);
+                  if(floorIdx < g.floorOrder) g.floorOrder = floorIdx;
+                }
+                g.sqft += a.sqft||0;
+                g.segs = [...g.segs, ...segments.filter(s=>s.area_id===a.id)];
+                const exists = g.materials.find(m=>m.material===a.material&&m.r_value===a.r_value&&m.thickness_in===a.thickness_in);
+                if(!exists) g.materials.push({
                   material: a.material,
                   thickness_in: a.thickness_in,
                   r_value: a.r_value,
                 });
               });
 
-              // sort by floor order
+              // sort by floor order (top floor first)
               const groups = Object.values(groupMap).sort((a,b)=>a.floorOrder-b.floorOrder);
 
               return groups.map((g,i)=>{
-                const isCombo = g.materials.length > 1;
                 const thick = g.materials[0]?.thickness_in||"";
+                const isCombo = g.materials.length > 1;
+                // floor label: "Attic, 3rd Floor" → "Attic, 3rd"
+                const floorLabel = g.floors
+                  .sort((a,b)=>floors.findIndex(f=>f.id===a?.id)-floors.findIndex(f=>f.id===b?.id))
+                  .map(f=>f?.name?.replace(" Floor",""))
+                  .filter(Boolean).join(", ");
+                // material label
                 const matLabel = isCombo
-                  ? thick+" Combo("+g.materials.map(m=>((m.material||"")+" "+(m.r_value||"")).trim()).join(" + ")+")"
-                  : ((g.materials[0]?.material||"")+" "+thick+" "+(g.materials[0]?.r_value||"")).trim();
+                  ? g.materials.map(m=>((m.material||"")+" "+(m.r_value||"")).trim()).join(" · ")
+                  : ((g.materials[0]?.material||"")+" "+(g.materials[0]?.r_value||"")).trim();
+
                 const measStr = g.segs.length>0
                   ? g.segs.map(s=>s.height+"×"+s.length).join("  ")
                   : "";
+
                 return (
                   <div key={i} style={{
-                    padding:"9px 12px",
+                    padding:"10px 12px",
                     background:i%2===0?"white":"#f8fafc",
                     border:"1px solid #e2e8f0",
                     borderTop: i===0?"1px solid #e2e8f0":"none",
                     borderRadius: i===0?"6px 6px 0 0" : i===groups.length-1?"0 0 6px 6px":"0",
                   }}>
-                    <div style={{display:"flex",alignItems:"baseline",
-                        gap:6,flexWrap:"wrap",lineHeight:1.6}}>
-                      {g.floor && (
-                        <span style={{fontSize:10,color:"#94a3b8",fontWeight:600,
-                            background:"#f1f5f9",padding:"1px 5px",borderRadius:3,
-                            whiteSpace:"nowrap"}}>
-                          {g.floor.name}
+                    <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:8}}>
+                      <div style={{flex:1,lineHeight:1.6}}>
+                        {/* floor tags */}
+                        <div style={{marginBottom:2}}>
+                          {floorLabel.split(", ").map((f,j)=>(
+                            <span key={j} style={{fontSize:9,color:"#94a3b8",fontWeight:600,
+                                background:"#f1f5f9",padding:"1px 5px",borderRadius:3,
+                                marginRight:3,whiteSpace:"nowrap"}}>
+                              {f}
+                            </span>
+                          ))}
+                        </div>
+                        {/* area type bold */}
+                        <span style={{fontSize:12,fontWeight:700,color:"#0f172a"}}>
+                          {g.area_type}
                         </span>
-                      )}
-                      <span style={{fontSize:12,fontWeight:700,color:"#0f172a"}}>
-                        {g.area_type}
-                      </span>
-                      <span style={{fontSize:11,color:"#374151"}}>{matLabel}</span>
+                        {/* material specs */}
+                        <div style={{fontSize:11,color:"#374151",marginTop:1}}>
+                          {thick && <span style={{fontWeight:600}}>{thick} </span>}
+                          {matLabel}
+                        </div>
+                        {/* measurements */}
+                        {measStr && (
+                          <div style={{fontSize:10,color:"#64748b",marginTop:2,letterSpacing:0.2}}>
+                            {measStr}
+                          </div>
+                        )}
+                      </div>
                       {g.sqft>0 && (
-                        <span style={{fontSize:11,fontWeight:700,color:"#0f172a",
-                            marginLeft:"auto",whiteSpace:"nowrap"}}>
+                        <span style={{fontSize:12,fontWeight:700,color:"#0f172a",
+                            flexShrink:0,paddingTop:18}}>
                           {fmt(g.sqft)} ft²
                         </span>
                       )}
                     </div>
-                    {measStr && (
-                      <div style={{fontSize:10,color:"#64748b",marginTop:2,
-                          paddingLeft:4,letterSpacing:0.2}}>
-                        {measStr}
-                      </div>
-                    )}
                   </div>
                 );
               });

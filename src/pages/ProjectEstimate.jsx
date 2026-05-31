@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { useSearchParams, useNavigate } from "react-router-dom";
+import { useSearchParams, useNavigate, useParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 
 const C = {
@@ -646,51 +646,52 @@ function EstimatePanel({ floors, areas, materialMap, crewNotes, projectName, pro
           <div style={{color:C.faint,fontSize:10,textAlign:"center",padding:"10px 0"}}>No areas yet</div>
         );
 
-        // group by area_type + material specs — same type+material+thick+rval = same group
+        // group by area_type + material specs — same specs across ALL floors merge into one line
         const groupMap = {};
         allAreas.forEach(a=>{
           const mls = (a.mat_lines&&a.mat_lines.length>0)
             ? a.mat_lines
             : [{material:a.material||"",thickness_in:a.thickness_in||"",r_value:a.r_value||"",oc:a.oc||""}];
-          // key includes material specs so different materials stay separate
           const matKey = mls.map(ml=>[ml.material,ml.thickness_in,ml.r_value,ml.oc].join(":")).join("+");
-          const key = a.area_type + "||" + matKey;
+          const key = a.area_type + "||||" + matKey;
           if(!groupMap[key]) groupMap[key]={
             area_type:a.area_type, floors:[], mat_lines:mls,
             totalSqft:0, totalCost:0,
+            floorOrder: floors.indexOf(a.floor),
           };
           const g = groupMap[key];
           if(!g.floors.includes(a.floor)) g.floors.push(a.floor);
+          if(floors.indexOf(a.floor) < g.floorOrder) g.floorOrder = floors.indexOf(a.floor);
           g.totalSqft += a.sqft||0;
           g.totalCost += getAreaTotalCost(a, materialMap);
         });
 
-        // sort by floor order then area type
-        const floorOrder = floors;
-        const groups = Object.values(groupMap).sort((a,b)=>{
-          const ai = floorOrder.indexOf(a.floors[0]);
-          const bi = floorOrder.indexOf(b.floors[0]);
-          return ai - bi;
-        });
+        // sort by top floor first
+        const groups = Object.values(groupMap).sort((a,b)=>a.floorOrder-b.floorOrder);
 
         return groups.map((g,i)=>{
           const isCombo = g.mat_lines.length > 1;
           const thick = g.mat_lines[0]?.thickness_in||"";
+          // floor label sorted by floor order
+          const floorLabel = g.floors
+            .sort((a,b)=>floors.indexOf(a)-floors.indexOf(b))
+            .map(f=>f.replace(" Floor","")).join(", ");
+          // material label
           const matLabel = isCombo
-            ? thick+" Combo("+g.mat_lines.map(ml=>((ml.material||"")+" "+(ml.r_value||"")).trim()).join(" + ")+")"
-            : [g.mat_lines[0]?.material, thick, g.mat_lines[0]?.r_value, g.mat_lines[0]?.oc].filter(Boolean).join(" ");
-          const floorLabel = g.floors.map(f=>f.replace(" Floor","")).join(", ");
+            ? g.mat_lines.map(ml=>((ml.material||"")+" "+(ml.r_value||"")).trim()).join(" · ")
+            : ((g.mat_lines[0]?.material||"")+" "+(g.mat_lines[0]?.r_value||"")+" "+(g.mat_lines[0]?.oc||"")).trim();
           const {qty,unit} = calcArea(g.totalSqft, thick, materialMap[g.mat_lines[0]?.material]);
 
           return (
             <div key={i} style={{paddingBottom:5,marginBottom:5,borderBottom:`1px solid ${C.chip}`}}>
-              {/* SCOPE LINE — bold, full size */}
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
                 <div style={{flex:1,paddingRight:4,lineHeight:1.5}}>
+                  {/* bold full line */}
                   <div style={{fontWeight:700,fontSize:12,color:C.ink}}>
-                    {floorLabel} {g.area_type}
+                    {floorLabel} — {g.area_type}
                   </div>
                   <div style={{fontSize:10,color:C.muted,lineHeight:1.5}}>
+                    {thick && <span>{thick} </span>}
                     {matLabel}
                     {" · "}{fmt(g.totalSqft)} ft²
                     {qty>0&&` → ${fmt(qty)} ${unit?.replace("_"," ")}`}
@@ -738,7 +739,9 @@ function getAreaTotalCost(area, materialMap) {
 export default function ProjectEstimate() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const { id: projectId } = useParams(); // set when editing existing project
   const leadId = searchParams.get("leadId");
+  const isEditing = !!projectId;
 
   const [floors, setFloors]           = useState(["Attic","3rd Floor","2nd Floor","1st Floor","Basement"]);
   const [activeFloor, setActiveFloor] = useState("Attic");
@@ -753,10 +756,11 @@ export default function ProjectEstimate() {
   });
   const [saving, setSaving]       = useState(false);
   const [saved, setSaved]         = useState(false);
-  const [savedProjectId, setSavedProjectId] = useState(null);
+  const [savedProjectId, setSavedProjectId] = useState(projectId||null);
   const [newFloorName, setNewFloorName] = useState("");
   const [addingFloor, setAddingFloor]   = useState(false);
   const [panelOpen, setPanelOpen]       = useState(false);
+  const [loadingProject, setLoadingProject] = useState(isEditing);
 
   useEffect(()=>{
     supabase.from("materials").select("*").then(({data,error})=>{
@@ -774,8 +778,98 @@ export default function ProjectEstimate() {
       });
   }
 
+  // load existing project when editing
   useEffect(()=>{
-    if(leadId&&leads.length>0){
+    if(!projectId || !leads.length) return;
+    async function loadProject() {
+      setLoadingProject(true);
+      const { data:proj } = await supabase.from("projects")
+        .select("*").eq("id", projectId).single();
+      if(!proj){ setLoadingProject(false); return; }
+
+      setProjectName(proj.name||"");
+      setProjectAddress(proj.address||"");
+      if(proj.lead_id) setSelectedLeadId(String(proj.lead_id));
+
+      // load floors
+      const { data:floorRows } = await supabase.from("floors")
+        .select("*").eq("project_id", projectId).order("order_index");
+      if(!floorRows?.length){ setLoadingProject(false); return; }
+
+      const floorNames = floorRows.map(f=>f.name);
+      setFloors(floorNames);
+      setActiveFloor(floorNames[0]);
+
+      // load areas
+      const { data:areaRows } = await supabase.from("areas")
+        .select("*").eq("project_id", projectId).order("order_index");
+
+      // load segments
+      const areaIds = (areaRows||[]).map(a=>a.id);
+      let segRows = [];
+      if(areaIds.length){
+        const { data:segs } = await supabase.from("segments")
+          .select("*").in("area_id", areaIds);
+        segRows = segs||[];
+      }
+
+      // build areas state grouped by floor
+      const newAreas = {};
+      floorNames.forEach(f=>{ newAreas[f]=[]; });
+
+      // group area rows by floor, handle combos (same floor+area_type+sqft = combo)
+      const comboMap = {};
+      (areaRows||[]).forEach(a=>{
+        const fl = floorRows.find(f=>f.id===a.floor_id);
+        if(!fl) return;
+        const comboKey = `${a.floor_id}|${a.area_type}|${a.sqft}`;
+        if(!comboMap[comboKey]){
+          const measurements = segRows
+            .filter(s=>s.area_id===a.id)
+            .map(s=>({ h:s.height, l:s.length, q:1, sqft:s.sqft }));
+          comboMap[comboKey] = {
+            temp_id: a.id,
+            floor: fl.name,
+            area_type: a.area_type,
+            material: a.material||"",
+            thickness_in: a.thickness_in||"",
+            r_value: a.r_value||"",
+            oc: a.oc||"",
+            sqft: a.sqft||0,
+            measurements,
+            mh:"", ml:"", mq:"1",
+            deduct_sqft:"",
+            _collapsed: true,
+            mat_lines: [{
+              id:1, material:a.material||"",
+              thickness_in:a.thickness_in||"",
+              r_value:a.r_value||"", oc:a.oc||""
+            }]
+          };
+        } else {
+          // add to combo
+          comboMap[comboKey].mat_lines.push({
+            id: comboMap[comboKey].mat_lines.length+1,
+            material:a.material||"",
+            thickness_in:a.thickness_in||"",
+            r_value:a.r_value||"", oc:a.oc||""
+          });
+          comboMap[comboKey].material = "__combo__";
+        }
+      });
+
+      Object.values(comboMap).forEach(area=>{
+        if(newAreas[area.floor]) newAreas[area.floor].push(area);
+      });
+
+      setAreas(newAreas);
+      setLoadingProject(false);
+    }
+    loadProject();
+  },[projectId, leads]);
+
+  useEffect(()=>{
+    if(!isEditing && leadId&&leads.length>0){
       const l=leads.find(l=>String(l.id)===String(leadId));
       if(l){
         setSelectedLeadId(String(l.id));
@@ -956,6 +1050,13 @@ export default function ProjectEstimate() {
     if(saved){ const t=setTimeout(()=>setSaved(false),3000); return ()=>clearTimeout(t); }
   },[saved]);
 
+  if(loadingProject) return (
+    <div style={{minHeight:"100vh",display:"flex",alignItems:"center",
+        justifyContent:"center",fontFamily:"system-ui",color:"#64748b"}}>
+      Loading estimate…
+    </div>
+  );
+
   return (
     <div style={{fontFamily:"system-ui,sans-serif",color:C.ink,background:C.bg,
         minHeight:"100%",display:"flex",flexDirection:"column",
@@ -993,7 +1094,7 @@ export default function ProjectEstimate() {
           display:"flex",justifyContent:"space-between",alignItems:"center",flexShrink:0}}>
         <span style={{fontWeight:700,fontSize:14,flex:1,
             overflow:"hidden",whiteSpace:"nowrap",textOverflow:"ellipsis"}}>
-          {projectName||"New Project"}
+          {isEditing ? "✏️ Edit Estimate" : (projectName||"New Project")}
         </span>
         <div style={{display:"flex",gap:6}}>
           {savedProjectId && (
