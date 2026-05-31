@@ -4,11 +4,6 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 
 const statuses = [
-  "Contacted", "Inspection Scheduled",
-  "Estimate Sent", "Follow-Up", "Won", "Lost"
-];
-
-const allStatuses = [
   "New", "Contacted", "Inspection Scheduled",
   "Estimate Sent", "Follow-Up", "Won", "Lost"
 ];
@@ -322,7 +317,7 @@ export default function CRM() {
 
       {/* pipeline bars */}
       <div style={{display:"flex",gap:10,marginBottom:20}}>
-        {statuses.map(status=>{
+        {allStatuses.map(status=>{
           const count=customers.filter(c=>c.status===status).length;
           const pct=customers.length===0?0:(count/customers.length)*100;
           return (
@@ -376,14 +371,29 @@ export default function CRM() {
         </button>
       </div>}
 
+      {/* new customers summary */}
+      {filtered.filter(c=>c.status==="New").length>0 && (
+        <div style={{marginBottom:12,padding:"8px 14px",background:"#eff6ff",
+            borderRadius:8,border:"1px solid #bfdbfe",
+            display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <span style={{fontSize:13,color:"#1e40af",fontWeight:600}}>
+            🔵 New: {filtered.filter(c=>c.status==="New").length} customers
+          </span>
+          <span style={{fontSize:11,color:"#3b82f6"}}>
+            Search above to find them
+          </span>
+        </div>
+      )}
+
       {/* kanban */}
       <DragDropContext onDragEnd={onDragEnd}>
-        <div style={{display:"flex",gap:20}}>
+        <div style={{display:"flex",gap:12,overflowX:"auto",
+            WebkitOverflowScrolling:"touch",paddingBottom:8}}>
           {statuses.map(status=>(
             <Droppable droppableId={status} key={status}>
               {(provided,snapshot)=>(
                 <div ref={provided.innerRef} {...provided.droppableProps}
-                 style={{flex:1,background:snapshot.isDraggingOver?"#e8f0fe":"#f1f3f9",
+                  style={{flex:"1 1 160px",minWidth:"160px",background:snapshot.isDraggingOver?"#e8f0fe":"#f1f3f9",
                     borderRadius:16,padding:14,minHeight:500,
                     border:`1.5px solid ${snapshot.isDraggingOver?"#93c5fd":"#e5e7eb"}`,
                     transition:"background .15s,border-color .15s"}}>
@@ -420,16 +430,11 @@ export default function CRM() {
                             width:"100%",boxSizing:"border-box",
                             ...provided.draggableProps.style}}>
                           <div style={{display:"flex",justifyContent:"space-between",
-                              alignItems:"flex-start",marginBottom:8,gap:4}}>
-                            <strong style={{fontSize:13,flex:1,minWidth:0,
-                                wordBreak:"break-word"}}>{customer.name}</strong>
-                           <span style={{fontSize:9,padding:"2px 5px",borderRadius:10,
-                                background:statusColor[customer.status],color:"white",
-                                fontWeight:700,flexShrink:0,whiteSpace:"nowrap"}}>
-                              {customer.status==="Inspection Scheduled"?"Insp."
-                                :customer.status==="Estimate Sent"?"Sent"
-                                :customer.status==="Follow-Up"?"Follow"
-                                :customer.status}
+                              alignItems:"center",marginBottom:8}}>
+                            <strong style={{fontSize:14}}>{customer.name}</strong>
+                            <span style={{fontSize:10,padding:"3px 8px",borderRadius:20,
+                                background:statusColor[customer.status],color:"white",fontWeight:700}}>
+                              {customer.status}
                             </span>
                           </div>
                           <div style={{fontSize:12,color:"#666",lineHeight:1.8}}>
