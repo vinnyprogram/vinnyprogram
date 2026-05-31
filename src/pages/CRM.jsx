@@ -376,13 +376,40 @@ export default function CRM() {
         </button>
       </div>}
 
-      {/* new customers summary */}
-      {filtered.filter(c=>c.status==="New").length>0 && (
+      {/* new customers — show all when no search, show matches when searching */}
+      {search.trim() ? (
+        filtered.filter(c=>c.status==="New").length>0 && (
+          <div style={{marginBottom:12,background:"white",borderRadius:10,
+              border:"1px solid #e2e8f0",overflow:"hidden"}}>
+            <div style={{padding:"8px 14px",background:"#eff6ff",
+                borderBottom:"1px solid #bfdbfe",fontSize:12,fontWeight:700,color:"#1e40af"}}>
+              🔵 New customers matching "{search}"
+            </div>
+            {filtered.filter(c=>c.status==="New").map(c=>(
+              <div key={c.id} style={{padding:"10px 14px",borderBottom:"1px solid #f1f5f9",
+                  display:"flex",justifyContent:"space-between",alignItems:"center",
+                  cursor:"pointer"}}
+                onClick={()=>navigate(`/customer/${c.id}`)}>
+                <div>
+                  <div style={{fontWeight:600,fontSize:13}}>{c.name}</div>
+                  <div style={{fontSize:11,color:"#64748b"}}>{c.phone}</div>
+                </div>
+                <button onClick={e=>{e.stopPropagation();navigate(`/customer/${c.id}`);}}
+                  style={{border:"none",background:"#eff6ff",color:"#3b82f6",
+                    padding:"4px 10px",borderRadius:6,cursor:"pointer",
+                    fontSize:11,fontWeight:700}}>
+                  👤 View
+                </button>
+              </div>
+            ))}
+          </div>
+        )
+      ) : (
         <div style={{marginBottom:12,padding:"8px 14px",background:"#eff6ff",
             borderRadius:8,border:"1px solid #bfdbfe",
             display:"flex",justifyContent:"space-between",alignItems:"center"}}>
           <span style={{fontSize:13,color:"#1e40af",fontWeight:600}}>
-            🔵 New: {filtered.filter(c=>c.status==="New").length} customers
+            🔵 New: {customers.filter(c=>c.status==="New").length} customers
           </span>
           <span style={{fontSize:11,color:"#3b82f6"}}>
             Search above to find them
