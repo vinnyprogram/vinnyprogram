@@ -424,11 +424,11 @@ export default function CRM() {
                             <div style={{display:"flex",gap:6}}>
                               <button
                                 onClick={e=>{ e.stopPropagation();
-                                  navigate(`/project/new?leadId=${customer.id}`); }}
+                                  navigate(`/customer/${customer.id}`); }}
                                 style={{border:"none",background:"#eff6ff",color:"#3b82f6",
                                   cursor:"pointer",fontSize:11,fontWeight:700,
                                   padding:"4px 8px",borderRadius:6}}>
-                                + Estimate
+                                👤 View
                               </button>
                               <button
                                 onClick={e=>{ e.stopPropagation();
