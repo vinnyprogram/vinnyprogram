@@ -174,6 +174,7 @@ export default function CRM() {
   const [activityInput, setActivityInput] = useState("");
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const [search, setSearch] = useState("");
+  const [showAddForm, setShowAddForm] = useState(false);
   const [form, setForm] = useState({
     name: "", phone: "", email: "",
     address: "", scope: "", estimate_amount: "", notes: ""
@@ -331,7 +332,16 @@ export default function CRM() {
       </div>
 
       {/* add customer form */}
-      <div style={{marginBottom:30,display:"grid",gap:10,maxWidth:600}}>
+      <div style={{marginBottom:16,maxWidth:600}}>
+        <button onClick={()=>setShowAddForm(p=>!p)}
+          style={{border:"1px solid #e2e8f0",background:"white",
+            padding:"8px 16px",borderRadius:8,cursor:"pointer",
+            fontSize:13,fontWeight:600,color:"#0f172a",
+            display:"flex",alignItems:"center",gap:8}}>
+          {showAddForm ? "✕ Cancel" : "+ Add Customer"}
+        </button>
+      </div>
+      {showAddForm && <div style={{marginBottom:30,display:"grid",gap:10,maxWidth:600}}>
         {[
           {placeholder:"Customer Name *",   field:"name"},
           {placeholder:"Phone *",           field:"phone"},
@@ -358,7 +368,7 @@ export default function CRM() {
             background:"#3b82f6",color:"white",fontWeight:700,fontSize:15,cursor:"pointer"}}>
           Add Customer
         </button>
-      </div>
+      </div>}
 
       {/* kanban */}
       <DragDropContext onDragEnd={onDragEnd}>
@@ -403,6 +413,7 @@ export default function CRM() {
                             borderLeft:`4px solid ${statusColor[customer.status]}`,
                             boxShadow:snapshot.isDragging?"0 8px 24px rgba(0,0,0,.15)":"0 2px 8px rgba(0,0,0,.04)",
                             cursor:"grab",opacity:snapshot.isDragging?.9:1,
+                            width:"100%",boxSizing:"border-box",
                             ...provided.draggableProps.style}}>
                           <div style={{display:"flex",justifyContent:"space-between",
                               alignItems:"center",marginBottom:8}}>
