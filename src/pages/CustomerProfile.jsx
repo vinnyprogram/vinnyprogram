@@ -19,6 +19,8 @@ export default function CustomerProfile() {
   const [photos, setPhotos]       = useState([]);
   const [loading, setLoading]     = useState(true);
   const [uploading, setUploading] = useState(false);
+  const [docs, setDocs]           = useState([]);
+  const [uploadingDoc, setUploadingDoc] = useState(false);
   const [activeJob, setActiveJob] = useState(null);
   const fileInputRef = useRef();
 
@@ -78,6 +80,16 @@ export default function CustomerProfile() {
     }
     setPhotos(ph);
 
+    // load documents
+    if(projs?.length) {
+      const projIds = projs.map(p=>p.id);
+      const { data:docData } = await supabase.from("job_photos")
+        .select("*").in("project_id", projIds)
+        .eq("doc_type", "document")
+        .order("created_at", { ascending:false });
+      setDocs(docData||[]);
+    }
+
     setLoading(false);
   }
 
@@ -105,6 +117,34 @@ export default function CustomerProfile() {
     }
     await load();
     setUploading(false);
+  }
+
+  async function uploadDocs(files, projectId) {
+    if(!files?.length) return;
+    setUploadingDoc(true);
+    const { data:{ user } } = await supabase.auth.getUser();
+    const { data:cd } = await supabase.from("companies")
+      .select("id").eq("user_id", user.id).maybeSingle();
+    const companyId = cd?.id||null;
+
+    for(const file of Array.from(files)) {
+      const ext = file.name.split('.').pop();
+      const path = `${companyId}/${projectId}/docs/${Date.now()}_${file.name}`;
+      const { error:upErr } = await supabase.storage
+        .from("job-photos").upload(path, file);
+      if(upErr){ console.error(upErr); continue; }
+      const { data:urlData } = supabase.storage
+        .from("job-photos").getPublicUrl(path);
+      await supabase.from("job_photos").insert([{
+        project_id: projectId,
+        url: urlData.publicUrl,
+        caption: file.name,
+        company_id: companyId,
+        doc_type: "document",
+      }]);
+    }
+    await load();
+    setUploadingDoc(false);
   }
 
   if(loading) return (
@@ -320,6 +360,63 @@ export default function CustomerProfile() {
                               style={{position:"absolute",inset:0,width:"100%",
                                 height:"100%",objectFit:"cover",cursor:"pointer"}}
                               onClick={()=>window.open(ph.url,"_blank")} />
+                          </div>
+                        ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* documents section */}
+                <div style={{background:"white",borderRadius:12,
+                    border:"1px solid #e2e8f0",padding:"14px",marginTop:10,
+                    boxShadow:"0 2px 8px rgba(0,0,0,.04)"}}>
+                  <div style={{display:"flex",justifyContent:"space-between",
+                      alignItems:"center",marginBottom:10}}>
+                    <div style={{fontSize:13,fontWeight:700,color:"#0f172a"}}>
+                      📁 Documents & Drawings
+                    </div>
+                    <label style={{border:"none",background:"#0f172a",color:"white",
+                        padding:"6px 12px",borderRadius:8,cursor:"pointer",
+                        fontSize:11,fontWeight:700,display:"inline-block"}}>
+                      + Upload
+                      <input type="file"
+                        accept="application/pdf,image/*,.dwg,.dxf,.doc,.docx"
+                        multiple style={{display:"none"}}
+                        onChange={e=>uploadDocs(e.target.files, activeGroup.jobs[0]?.id)} />
+                    </label>
+                  </div>
+                  {uploadingDoc && (
+                    <div style={{fontSize:12,color:"#64748b",textAlign:"center",padding:"8px 0"}}>
+                      Uploading…
+                    </div>
+                  )}
+                  {docs.filter(d=>activeGroup.jobs.some(j=>j.id===d.project_id)).length===0 ? (
+                    <div style={{textAlign:"center",padding:"16px 0",
+                        color:"#94a3b8",fontSize:12}}>
+                      No documents yet — tap Upload to add PDFs or drawings
+                    </div>
+                  ) : (
+                    <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                      {docs
+                        .filter(d=>activeGroup.jobs.some(j=>j.id===d.project_id))
+                        .map((d,i)=>(
+                          <div key={d.id} style={{display:"flex",alignItems:"center",
+                              gap:10,padding:"8px 10px",background:"#f8fafc",
+                              borderRadius:8,border:"1px solid #e2e8f0"}}>
+                            <span style={{fontSize:18}}>
+                              {(d.caption||"").endsWith(".pdf")?"📄":"📎"}
+                            </span>
+                            <span style={{flex:1,fontSize:12,color:"#374151",
+                                overflow:"hidden",textOverflow:"ellipsis",
+                                whiteSpace:"nowrap"}}>
+                              {d.caption||"Document"}
+                            </span>
+                            <button onClick={()=>window.open(d.url,"_blank")}
+                              style={{border:"none",background:"#eff6ff",color:"#3b82f6",
+                                padding:"4px 10px",borderRadius:6,cursor:"pointer",
+                                fontSize:11,fontWeight:700,flexShrink:0}}>
+                              Open
+                            </button>
                           </div>
                         ))}
                     </div>

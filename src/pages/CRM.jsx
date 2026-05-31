@@ -287,7 +287,8 @@ export default function CRM() {
 
   return (
     <div style={{padding:20,background:"#f6f7fb",minHeight:"100vh",
-        fontFamily:"Inter,system-ui,sans-serif",color:"#111"}}>
+        fontFamily:"Inter,system-ui,sans-serif",color:"#111",
+        overflowX:"hidden"}}>
 
       <h1 style={{marginBottom:20}}>🏠 Insulation CRM</h1>
 
@@ -373,13 +374,13 @@ export default function CRM() {
       {/* kanban */}
       <DragDropContext onDragEnd={onDragEnd}>
         <div style={{display:"flex",gap:12,overflowX:"auto",
-            WebkitOverflowScrolling:"touch",paddingBottom:12,
-            minWidth:0}}>
+            WebkitOverflowScrolling:"touch",paddingBottom:16,
+            paddingRight:20,cursor:"grab"}}>
           {statuses.map(status=>(
             <Droppable droppableId={status} key={status}>
               {(provided,snapshot)=>(
                 <div ref={provided.innerRef} {...provided.droppableProps}
-                  style={{flex:"0 0 280px",minWidth:"280px",background:snapshot.isDraggingOver?"#e8f0fe":"#f1f3f9",
+                  style={{flex:"0 0 260px",width:"260px",flexShrink:0,background:snapshot.isDraggingOver?"#e8f0fe":"#f1f3f9",
                     borderRadius:16,padding:14,minHeight:500,
                     border:`1.5px solid ${snapshot.isDraggingOver?"#93c5fd":"#e5e7eb"}`,
                     transition:"background .15s,border-color .15s"}}>
@@ -413,7 +414,7 @@ export default function CRM() {
                             borderLeft:`4px solid ${statusColor[customer.status]}`,
                             boxShadow:snapshot.isDragging?"0 8px 24px rgba(0,0,0,.15)":"0 2px 8px rgba(0,0,0,.04)",
                             cursor:"grab",opacity:snapshot.isDragging?.9:1,
-                            width:"100%",boxSizing:"border-box",overflow:"visible",
+                            width:"100%",boxSizing:"border-box",
                             ...provided.draggableProps.style}}>
                           <div style={{display:"flex",justifyContent:"space-between",
                               alignItems:"center",marginBottom:8}}>
