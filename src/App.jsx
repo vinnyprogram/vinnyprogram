@@ -1,6 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "./context/AuthContext";
-import MainLayout from "./Layout/MainLayout";
+import MainLayout from "./layout/MainLayout";
 import Login from "./pages/Login";
 import Onboarding from "./pages/Onboarding";
 import CRM from "./pages/CRM";
@@ -10,7 +10,8 @@ import QuotePDF from "./pages/QuotePDF";
 import FieldReport from "./pages/FieldReport";
 import EstimateSearch from "./pages/EstimateSearch";
 import HowToUse from "./pages/HowToUse";
-import ResetPassword from "./pages/ResetPassword";
+import CustomerProfile from "./pages/CustomerProfile";
+import EstimateDrawings from "./pages/EstimateDrawings";
 
 function Dashboard() { return <h2 style={{padding:20}}>Dashboard</h2>; }
 function Jobs()      { return <h2 style={{padding:20}}>Jobs</h2>; }
@@ -25,10 +26,11 @@ function ProtectedApp() {
     </div>
   );
 
-if(!user) return <Navigate to="/login" replace />;
+  if(!user) return <Navigate to="/login" replace />;
+  if(!company) return <Navigate to="/onboarding" replace />;
 
   // check trial/status
-  if(company?.status==="suspended") return (
+  if(company.status==="suspended") return (
     <div style={{ minHeight:"100vh", display:"flex", alignItems:"center",
         justifyContent:"center", fontFamily:"system-ui", padding:20, textAlign:"center" }}>
       <div>
@@ -56,6 +58,8 @@ if(!user) return <Navigate to="/login" replace />;
         <Route path="project/:id" element={<ProjectEstimate />} />
         <Route path="quote/:projectId" element={<QuotePDF />} />
         <Route path="field-report/:projectId" element={<FieldReport />} />
+        <Route path="customer/:customerId" element={<CustomerProfile />} />
+        <Route path="project/drawings" element={<EstimateDrawings />} />
       </Route>
     </Routes>
   );
@@ -68,7 +72,6 @@ export default function App() {
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/onboarding" element={<Onboarding />} />
-          <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="/*" element={<ProtectedApp />} />
         </Routes>
       </AuthProvider>

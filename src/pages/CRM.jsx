@@ -395,7 +395,7 @@ export default function CRM() {
                       {(provided,snapshot)=>(
                         <div ref={provided.innerRef}
                           {...provided.draggableProps} {...provided.dragHandleProps}
-                          onClick={()=>{ setSelectedCustomer(customer); loadActivities(customer.id); }}
+                          onClick={()=>navigate(`/customer/${customer.id}`)}
                           style={{background:"white",padding:12,borderRadius:12,marginBottom:10,
                             border:"1px solid #eaeaea",
                             borderLeft:`4px solid ${statusColor[customer.status]}`,
