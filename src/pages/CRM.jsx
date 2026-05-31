@@ -395,7 +395,7 @@ export default function CRM() {
                       {(provided,snapshot)=>(
                         <div ref={provided.innerRef}
                           {...provided.draggableProps} {...provided.dragHandleProps}
-                          onClick={()=>navigate(`/customer/${customer.id}`)}
+                          onClick={()=>{ setTimeout(()=>navigate(`/customer/${customer.id}`),50); }}
                           style={{background:"white",padding:12,borderRadius:12,marginBottom:10,
                             border:"1px solid #eaeaea",
                             borderLeft:`4px solid ${statusColor[customer.status]}`,
@@ -423,8 +423,7 @@ export default function CRM() {
                             </span>
                             <div style={{display:"flex",gap:6}}>
                               <button
-                                onClick={e=>{ e.stopPropagation();
-                                  navigate(`/customer/${customer.id}`); }}
+                                onClick={()=>{ setTimeout(()=>navigate(`/customer/${customer.id}`),0); }}
                                 style={{border:"none",background:"#eff6ff",color:"#3b82f6",
                                   cursor:"pointer",fontSize:11,fontWeight:700,
                                   padding:"4px 8px",borderRadius:6}}>
