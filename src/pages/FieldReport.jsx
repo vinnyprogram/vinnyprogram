@@ -291,25 +291,33 @@ export default function FieldReport() {
             {areas.length===0 ? (
               <div style={{fontSize:12,color:"#94a3b8",fontStyle:"italic"}}>No areas recorded.</div>
             ) : (()=>{
-              // group by floor + area_type + sqft
+              // group by floor + area_type + material specs (same = merge)
               const groupMap = {};
               areas.forEach(a=>{
                 const fl = floors.find(f=>f.id===a.floor_id);
-                const key = `${a.floor_id}|${a.area_type}|${a.sqft}`;
+                const key = (fl?.name||"")+"||"+a.area_type+"||"+(a.material||"")+"||"+(a.thickness_in||"")+"||"+(a.r_value||"");
                 if(!groupMap[key]) groupMap[key]={
                   area_type: a.area_type,
                   floor: fl,
-                  sqft: a.sqft,
+                  floorOrder: floors.findIndex(f=>f.id===a.floor_id),
+                  sqft: 0,
                   materials: [],
-                  segs: segments.filter(s=>s.area_id===a.id),
+                  segs: [],
                 };
-                groupMap[key].materials.push({
+                groupMap[key].sqft += a.sqft||0;
+                groupMap[key].segs = [...groupMap[key].segs, ...segments.filter(s=>s.area_id===a.id)];
+                // only add material if not already in list
+                const exists = groupMap[key].materials.find(m=>m.material===a.material&&m.r_value===a.r_value);
+                if(!exists) groupMap[key].materials.push({
                   material: a.material,
                   thickness_in: a.thickness_in,
                   r_value: a.r_value,
                 });
               });
-              const groups = Object.values(groupMap);
+
+              // sort by floor order
+              const groups = Object.values(groupMap).sort((a,b)=>a.floorOrder-b.floorOrder);
+
               return groups.map((g,i)=>{
                 const isCombo = g.materials.length > 1;
                 const thick = g.materials[0]?.thickness_in||"";

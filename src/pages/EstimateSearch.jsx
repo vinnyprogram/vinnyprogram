@@ -12,7 +12,7 @@ export default function EstimateSearch() {
     async function load() {
       const { data:projs } = await supabase
         .from("projects")
-        .select("id, name, address, created_at, lead_id, status")
+        .select("id, name, address, created_at, lead_id, status, source")
         .order("created_at", { ascending:false });
 
       if(!projs){ setLoading(false); return; }
@@ -59,12 +59,9 @@ export default function EstimateSearch() {
   return (
     <div style={{padding:20,background:"#f6f7fb",minHeight:"100vh",
         fontFamily:"Inter,system-ui,sans-serif"}}>
+
+      {/* header */}
       <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:20}}>
-        <button onClick={()=>navigate("/crm")}
-          style={{border:"1px solid #e2e8f0",background:"white",
-            padding:"8px 14px",borderRadius:8,cursor:"pointer",fontSize:13}}>
-          ← CRM
-        </button>
         <h2 style={{margin:0,fontSize:18,fontWeight:700}}>Estimates</h2>
         <button onClick={()=>navigate("/project/new?type=onsite")}
           style={{marginLeft:"auto",border:"none",background:"#0f172a",
@@ -74,6 +71,7 @@ export default function EstimateSearch() {
         </button>
       </div>
 
+      {/* search */}
       <input
         placeholder="Search by customer, address, company…"
         value={search} onChange={e=>setSearch(e.target.value)}
@@ -90,8 +88,10 @@ export default function EstimateSearch() {
             padding:"14px 16px",marginBottom:10,
             border:"1px solid #e2e8f0",
             boxShadow:"0 2px 8px rgba(0,0,0,.04)"}}>
+
+          {/* customer + date */}
           <div style={{display:"flex",justifyContent:"space-between",
-              alignItems:"flex-start",marginBottom:6}}>
+              alignItems:"flex-start",marginBottom:8}}>
             <div>
               <div style={{fontWeight:700,fontSize:14,color:"#0f172a"}}>
                 {p.customer?.name||p.name||"Unknown"}
@@ -102,9 +102,15 @@ export default function EstimateSearch() {
               {p.address && (
                 <div style={{fontSize:12,color:"#64748b",marginTop:1}}>📍 {p.address}</div>
               )}
-              <div style={{fontSize:11,color:"#94a3b8",marginTop:2}}>
+              <div style={{fontSize:11,color:"#94a3b8",marginTop:2,display:"flex",gap:8,alignItems:"center"}}>
                 {new Date(p.created_at).toLocaleDateString("en-US",
                   {month:"short",day:"numeric",year:"numeric"})}
+                {p.source==="drawings" && (
+                  <span style={{background:"#eff6ff",color:"#3b82f6",
+                      padding:"1px 6px",borderRadius:4,fontSize:10,fontWeight:600}}>
+                    📐 Drawings
+                  </span>
+                )}
               </div>
             </div>
             {p.quote && (
@@ -122,24 +128,26 @@ export default function EstimateSearch() {
               </div>
             )}
           </div>
-          <div style={{display:"flex",gap:8,marginTop:8}}>
+
+          {/* action buttons */}
+          <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
             <button onClick={()=>navigate(`/field-report/${p.id}`)}
-              style={{flex:1,border:"none",background:"#3b82f6",color:"white",
+              style={{flex:1,minWidth:80,border:"none",background:"#3b82f6",color:"white",
                 padding:"8px 0",borderRadius:8,cursor:"pointer",
                 fontSize:12,fontWeight:700}}>
-              📋 Office Report
+              📋 Office
             </button>
             <button onClick={()=>navigate(`/quote/${p.id}`)}
-              style={{flex:1,border:"none",background:"#f97316",color:"white",
+              style={{flex:1,minWidth:80,border:"none",background:"#f97316",color:"white",
                 padding:"8px 0",borderRadius:8,cursor:"pointer",
                 fontSize:12,fontWeight:700}}>
-              📄 Quote PDF
+              📄 Quote
             </button>
             <button onClick={()=>navigate(`/project/new?leadId=${p.lead_id}`)}
-              style={{flex:1,border:"1px solid #e2e8f0",background:"white",
-                color:"#3b82f6",padding:"8px 0",borderRadius:8,
+              style={{flex:1,minWidth:80,border:"1px solid #e2e8f0",background:"white",
+                color:"#0f172a",padding:"8px 0",borderRadius:8,
                 cursor:"pointer",fontSize:12,fontWeight:700}}>
-              + New Version
+              ✏️ New Estimate
             </button>
           </div>
         </div>

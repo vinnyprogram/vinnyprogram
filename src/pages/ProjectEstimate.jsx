@@ -645,48 +645,63 @@ function EstimatePanel({ floors, areas, materialMap, crewNotes, projectName, pro
         if(!allAreas.length) return (
           <div style={{color:C.faint,fontSize:10,textAlign:"center",padding:"10px 0"}}>No areas yet</div>
         );
-        // group by area_type only — collect all mat_lines inside
+
+        // group by area_type + material specs — same type+material+thick+rval = same group
         const groupMap = {};
         allAreas.forEach(a=>{
-          const key = a.area_type;
-          if(!groupMap[key]) groupMap[key]={ area_type:a.area_type, floors:[], lines:{} };
-          const g = groupMap[key];
-          if(!g.floors.includes(a.floor)) g.floors.push(a.floor);
-          // group mat_lines by material+thick+r+oc
           const mls = (a.mat_lines&&a.mat_lines.length>0)
             ? a.mat_lines
             : [{material:a.material||"",thickness_in:a.thickness_in||"",r_value:a.r_value||"",oc:a.oc||""}];
-          mls.forEach(ml=>{
-            const lkey=[ml.material,ml.thickness_in,ml.r_value,ml.oc].join("|");
-            if(!g.lines[lkey]) g.lines[lkey]={...ml,totalSqft:0,totalCost:0};
-            g.lines[lkey].totalSqft += a.sqft||0;
-            const mat=materialMap[ml.material];
-            g.lines[lkey].totalCost += calcArea(a.sqft,ml.thickness_in,mat).line_total;
-          });
+          // key includes material specs so different materials stay separate
+          const matKey = mls.map(ml=>[ml.material,ml.thickness_in,ml.r_value,ml.oc].join(":")).join("+");
+          const key = a.area_type + "||" + matKey;
+          if(!groupMap[key]) groupMap[key]={
+            area_type:a.area_type, floors:[], mat_lines:mls,
+            totalSqft:0, totalCost:0,
+          };
+          const g = groupMap[key];
+          if(!g.floors.includes(a.floor)) g.floors.push(a.floor);
+          g.totalSqft += a.sqft||0;
+          g.totalCost += getAreaTotalCost(a, materialMap);
         });
-        return Object.values(groupMap).map((g,i)=>{
-          const groupTotal = Object.values(g.lines).reduce((s,l)=>s+l.totalCost,0);
+
+        // sort by floor order then area type
+        const floorOrder = floors;
+        const groups = Object.values(groupMap).sort((a,b)=>{
+          const ai = floorOrder.indexOf(a.floors[0]);
+          const bi = floorOrder.indexOf(b.floors[0]);
+          return ai - bi;
+        });
+
+        return groups.map((g,i)=>{
+          const isCombo = g.mat_lines.length > 1;
+          const thick = g.mat_lines[0]?.thickness_in||"";
+          const matLabel = isCombo
+            ? thick+" Combo("+g.mat_lines.map(ml=>((ml.material||"")+" "+(ml.r_value||"")).trim()).join(" + ")+")"
+            : [g.mat_lines[0]?.material, thick, g.mat_lines[0]?.r_value, g.mat_lines[0]?.oc].filter(Boolean).join(" ");
           const floorLabel = g.floors.map(f=>f.replace(" Floor","")).join(", ");
+          const {qty,unit} = calcArea(g.totalSqft, thick, materialMap[g.mat_lines[0]?.material]);
+
           return (
-            <div key={i} style={{paddingBottom:6,marginBottom:6,borderBottom:`1px solid ${C.chip}`}}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:2}}>
-                <div style={{flex:1,paddingRight:4,lineHeight:1.4}}>
-                  <span style={{fontSize:9.5,color:C.muted}}>{floorLabel} </span>
-                  <span style={{fontWeight:700,fontSize:11,color:C.ink}}>{g.area_type}</span>
-                </div>
-                <span style={{fontWeight:700,color:C.green,fontSize:12,flexShrink:0}}>${fmt(groupTotal)}</span>
-              </div>
-              {Object.values(g.lines).map((l,j)=>{
-                const {qty,unit}=calcArea(l.totalSqft,l.thickness_in,materialMap[l.material]);
-                return (
-                  <div key={j} style={{fontSize:10,color:C.faint,lineHeight:1.6,paddingLeft:4}}>
-                    {[l.material,l.thickness_in,l.r_value,l.oc].filter(Boolean).join(" · ")}
-                    {" · "}{fmt(l.totalSqft)} ft²
-                    {qty>0&&` → ${fmt(qty)} ${unit?.replace("_"," ")}`}
-                    {l.totalCost>0&&<span style={{color:C.green,marginLeft:4}}>${fmt(l.totalCost)}</span>}
+            <div key={i} style={{paddingBottom:5,marginBottom:5,borderBottom:`1px solid ${C.chip}`}}>
+              {/* SCOPE LINE — bold, full size */}
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+                <div style={{flex:1,paddingRight:4,lineHeight:1.5}}>
+                  <div style={{fontWeight:700,fontSize:12,color:C.ink}}>
+                    {floorLabel} {g.area_type}
                   </div>
-                );
-              })}
+                  <div style={{fontSize:10,color:C.muted,lineHeight:1.5}}>
+                    {matLabel}
+                    {" · "}{fmt(g.totalSqft)} ft²
+                    {qty>0&&` → ${fmt(qty)} ${unit?.replace("_"," ")}`}
+                  </div>
+                </div>
+                {g.totalCost>0 && (
+                  <span style={{fontWeight:700,color:C.green,fontSize:12,flexShrink:0,paddingTop:2}}>
+                    ${fmt(g.totalCost)}
+                  </span>
+                )}
+              </div>
             </div>
           );
         });
@@ -762,8 +777,11 @@ export default function ProjectEstimate() {
   useEffect(()=>{
     if(leadId&&leads.length>0){
       const l=leads.find(l=>String(l.id)===String(leadId));
-      if(l?.address) setProjectAddress(l.address);
-      if(l?.name)    setProjectName(l.name);
+      if(l){
+        setSelectedLeadId(String(l.id));
+        setProjectName(l.name||"");
+        setProjectAddress(l.address||"");
+      }
     }
   },[leadId,leads]);
 
@@ -803,8 +821,18 @@ export default function ProjectEstimate() {
       const upd=[...(prev[floor]||[])];
       upd[idx]={...upd[idx],[field]:value};
       if(field==="area_type"){
+        // find most recent area with same type — copy material + mat_lines (including combos)
         const match=Object.values(prev).flat().reverse().find(a=>a.area_type===value&&a.material);
-        if(match) upd[idx]={...upd[idx],material:match.material,thickness_in:match.thickness_in,r_value:match.r_value,oc:match.oc};
+        if(match){
+          upd[idx]={...upd[idx],
+            material:match.material,
+            thickness_in:match.thickness_in,
+            r_value:match.r_value,
+            oc:match.oc,
+            // copy mat_lines so combos are preserved
+            mat_lines: match.mat_lines ? match.mat_lines.map(ml=>({...ml})) : undefined,
+          };
+        }
       }
       return {...prev,[floor]:upd};
     });
@@ -815,9 +843,19 @@ export default function ProjectEstimate() {
   }
 
   async function saveNewCustomer(form) {
+    // get company_id so new customer is visible with RLS
+    let companyId = null;
+    try {
+      const { data:{ user } } = await supabase.auth.getUser();
+      const { data:companyData } = await supabase.from("companies")
+        .select("id").eq("user_id", user.id).maybeSingle();
+      companyId = companyData?.id || null;
+    } catch(e) { console.error("company lookup error:", e); }
+
     const payload = {
       name:form.name||"", phone:form.phone||"", company_name:form.company_name||"",
-      email:form.email||"", address:form.address||"", status:"New", estimate_amount:0,
+      email:form.email||"", address:form.address||"", status:"New",
+      estimate_amount:0, company_id:companyId,
     };
     const {data,error}=await supabase.from("customers").insert([payload]).select().single();
     if(error){
@@ -834,6 +872,7 @@ export default function ProjectEstimate() {
   }
 
   async function saveProject() {
+    if(saving) return;  // prevent double-tap
     if(!selectedLeadId){
       alert("Please select or register a customer before saving.");
       return;
