@@ -379,7 +379,7 @@ export default function CRM() {
             <Droppable droppableId={status} key={status}>
               {(provided,snapshot)=>(
                 <div ref={provided.innerRef} {...provided.droppableProps}
-                  style={{flex:"0 0 260px",background:snapshot.isDraggingOver?"#e8f0fe":"#f1f3f9",
+                  style={{flex:"0 0 280px",minWidth:"280px",background:snapshot.isDraggingOver?"#e8f0fe":"#f1f3f9",
                     borderRadius:16,padding:14,minHeight:500,
                     border:`1.5px solid ${snapshot.isDraggingOver?"#93c5fd":"#e5e7eb"}`,
                     transition:"background .15s,border-color .15s"}}>
