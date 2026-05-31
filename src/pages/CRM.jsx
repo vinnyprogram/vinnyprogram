@@ -416,10 +416,13 @@ export default function CRM() {
                             width:"100%",boxSizing:"border-box",
                             ...provided.draggableProps.style}}>
                           <div style={{display:"flex",justifyContent:"space-between",
-                              alignItems:"center",marginBottom:8}}>
-                            <strong style={{fontSize:14}}>{customer.name}</strong>
-                            <span style={{fontSize:10,padding:"3px 8px",borderRadius:20,
-                                background:statusColor[customer.status],color:"white",fontWeight:700}}>
+                              alignItems:"flex-start",marginBottom:8,gap:4}}>
+                            <strong style={{fontSize:13,flex:1,minWidth:0,
+                                wordBreak:"break-word"}}>{customer.name}</strong>
+                            <span style={{fontSize:9,padding:"2px 5px",borderRadius:10,
+                                background:statusColor[customer.status],color:"white",
+                                fontWeight:700,flexShrink:0,whiteSpace:"nowrap",
+                                maxWidth:60,overflow:"hidden",textOverflow:"ellipsis"}}>
                               {customer.status}
                             </span>
                           </div>
