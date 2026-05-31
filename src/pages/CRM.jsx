@@ -435,11 +435,16 @@ export default function CRM() {
                             width:"100%",boxSizing:"border-box",
                             ...provided.draggableProps.style}}>
                           <div style={{display:"flex",justifyContent:"space-between",
-                              alignItems:"center",marginBottom:8}}>
-                            <strong style={{fontSize:14}}>{customer.name}</strong>
-                            <span style={{fontSize:10,padding:"3px 8px",borderRadius:20,
-                                background:statusColor[customer.status],color:"white",fontWeight:700}}>
-                              {customer.status}
+                              alignItems:"flex-start",marginBottom:8,gap:4}}>
+                            <strong style={{fontSize:13,flex:1,minWidth:0,
+                                wordBreak:"break-word",lineHeight:1.3}}>{customer.name}</strong>
+                            <span style={{fontSize:8,padding:"2px 4px",borderRadius:6,
+                                background:statusColor[customer.status],color:"white",
+                                fontWeight:700,flexShrink:0,whiteSpace:"nowrap"}}>
+                              {customer.status==="Inspection Scheduled"?"Insp"
+                                :customer.status==="Estimate Sent"?"Sent"
+                                :customer.status==="Follow-Up"?"F-Up"
+                                :customer.status}
                             </span>
                           </div>
                           <div style={{fontSize:12,color:"#666",lineHeight:1.8}}>
