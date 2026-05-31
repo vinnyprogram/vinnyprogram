@@ -413,7 +413,7 @@ export default function CRM() {
                             borderLeft:`4px solid ${statusColor[customer.status]}`,
                             boxShadow:snapshot.isDragging?"0 8px 24px rgba(0,0,0,.15)":"0 2px 8px rgba(0,0,0,.04)",
                             cursor:"grab",opacity:snapshot.isDragging?.9:1,
-                            width:"100%",boxSizing:"border-box",
+                            width:"100%",boxSizing:"border-box",overflow:"visible",
                             ...provided.draggableProps.style}}>
                           <div style={{display:"flex",justifyContent:"space-between",
                               alignItems:"center",marginBottom:8}}>
