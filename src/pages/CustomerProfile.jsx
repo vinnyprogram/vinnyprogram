@@ -33,9 +33,11 @@ export default function CustomerProfile() {
     setCustomer(cust);
 
     // projects with quotes
-    const { data:projs } = await supabase.from("projects")
+    const { data:projs, error:projErr } = await supabase.from("projects")
       .select("*").eq("lead_id", Number(customerId))
       .order("created_at", { ascending:false });
+
+    console.log("customerId:", customerId, "projs:", projs, "error:", projErr);
 
     if(projs?.length) {
       const ids = projs.map(p=>p.id);
