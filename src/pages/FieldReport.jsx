@@ -291,56 +291,73 @@ export default function FieldReport() {
             {areas.length===0 ? (
               <div style={{fontSize:12,color:"#94a3b8",fontStyle:"italic"}}>No areas recorded.</div>
             ) : (()=>{
-              // group by area_type + material specs (merge same specs across ALL floors)
+              // group by floor + area_type + sqft
+              // same floor+type+sqft = same area (combo = multiple rows with same sqft)
               const groupMap = {};
               areas.forEach(a=>{
                 const fl = floors.find(f=>f.id===a.floor_id);
                 const floorIdx = floors.findIndex(f=>f.id===a.floor_id);
-                // key = area_type + all material specs (NOT floor — so same specs across floors merge)
-                const matKey = (a.material||"")+"||"+(a.thickness_in||"")+"||"+(a.r_value||"");
-                const key = a.area_type+"||||"+matKey;
+                // key = floor + area_type + sqft (combos share same sqft)
+                const key = (a.floor_id||"")+"||||"+(a.area_type||"")+"||||"+(a.sqft||0);
                 if(!groupMap[key]) groupMap[key]={
                   area_type: a.area_type,
-                  floors: [],
+                  floor: fl,
                   floorOrder: floorIdx,
-                  sqft: 0,
+                  sqft: a.sqft||0,
                   materials: [],
-                  segs: [],
+                  segs: segments.filter(s=>s.area_id===a.id),
                 };
                 const g = groupMap[key];
-                // track floors in order
-                if(!g.floors.find(f=>f.id===fl?.id)) {
-                  g.floors.push(fl);
-                  if(floorIdx < g.floorOrder) g.floorOrder = floorIdx;
-                }
-                g.sqft += a.sqft||0;
-                g.segs = [...g.segs, ...segments.filter(s=>s.area_id===a.id)];
-                const exists = g.materials.find(m=>m.material===a.material&&m.r_value===a.r_value&&m.thickness_in===a.thickness_in);
+                // add material if not duplicate
+                const exists = g.materials.find(m=>
+                  m.material===a.material&&m.r_value===a.r_value&&m.thickness_in===a.thickness_in);
                 if(!exists) g.materials.push({
-                  material: a.material,
-                  thickness_in: a.thickness_in,
-                  r_value: a.r_value,
+                  material: a.material||"",
+                  thickness_in: a.thickness_in||"",
+                  r_value: a.r_value||"",
                 });
               });
 
-              // sort by floor order (top floor first)
-              const groups = Object.values(groupMap).sort((a,b)=>a.floorOrder-b.floorOrder);
+              // now merge same area_type+materials across floors
+              const mergedMap = {};
+              Object.values(groupMap).forEach(g=>{
+                const matKey = g.materials.map(m=>m.material+m.thickness_in+m.r_value).sort().join("+");
+                const key = g.area_type+"||||"+matKey;
+                if(!mergedMap[key]) mergedMap[key]={
+                  area_type: g.area_type,
+                  floors: [],
+                  floorOrder: g.floorOrder,
+                  sqft: 0,
+                  materials: g.materials,
+                  segs: [],
+                };
+                const mg = mergedMap[key];
+                if(!mg.floors.find(f=>f?.id===g.floor?.id)) mg.floors.push(g.floor);
+                if(g.floorOrder < mg.floorOrder) mg.floorOrder = g.floorOrder;
+                mg.sqft += g.sqft;
+                mg.segs = [...mg.segs, ...g.segs];
+              });
+
+              const groups = Object.values(mergedMap).sort((a,b)=>a.floorOrder-b.floorOrder);
 
               return groups.map((g,i)=>{
                 const thick = g.materials[0]?.thickness_in||"";
                 const isCombo = g.materials.length > 1;
-                // floor label: "Attic, 3rd Floor" → "Attic, 3rd"
                 const floorLabel = g.floors
                   .sort((a,b)=>floors.findIndex(f=>f.id===a?.id)-floors.findIndex(f=>f.id===b?.id))
                   .map(f=>f?.name?.replace(" Floor",""))
                   .filter(Boolean).join(", ");
-                // material label
+
+                // combo: "2x6 Closed Cell R-15 + Open Cell R-21"
+                // single: "2x6 Open Cell R-21"
                 const matLabel = isCombo
-                  ? g.materials.map(m=>((m.material||"")+" "+(m.r_value||"")).trim()).join(" · ")
-                  : ((g.materials[0]?.material||"")+" "+(g.materials[0]?.r_value||"")).trim();
+                  ? thick+" "+g.materials.map(m=>
+                      ((m.material||"")+" "+(m.r_value||"")).trim()
+                    ).join(" + ")
+                  : ((g.materials[0]?.material||"")+" "+thick+" "+(g.materials[0]?.r_value||"")).trim();
 
                 const measStr = g.segs.length>0
-                  ? g.segs.map(s=>s.height+"×"+s.length).join("  ")
+                  ? [...new Set(g.segs.map(s=>s.height+"×"+s.length))].join("  ")
                   : "";
 
                 return (
@@ -351,12 +368,14 @@ export default function FieldReport() {
                     borderTop: i===0?"1px solid #e2e8f0":"none",
                     borderRadius: i===0?"6px 6px 0 0" : i===groups.length-1?"0 0 6px 6px":"0",
                   }}>
-                    {/* single line: floors + area type + material + sqft — all same size bold */}
                     <div style={{display:"flex",justifyContent:"space-between",
                         alignItems:"baseline",gap:8,flexWrap:"wrap"}}>
                       <div style={{flex:1,minWidth:0}}>
                         <span style={{fontSize:12,fontWeight:700,color:"#0f172a"}}>
-                          {floorLabel} {g.area_type}{thick ? " "+thick : ""} {matLabel}
+                          {floorLabel} {g.area_type}
+                        </span>
+                        <span style={{fontSize:11,color:"#374151",marginLeft:6}}>
+                          {matLabel}
                         </span>
                       </div>
                       {g.sqft>0 && (
@@ -365,7 +384,6 @@ export default function FieldReport() {
                         </span>
                       )}
                     </div>
-                    {/* measurements below */}
                     {measStr && (
                       <div style={{fontSize:10,color:"#64748b",marginTop:3,
                           paddingLeft:4,letterSpacing:0.2}}>

@@ -435,7 +435,38 @@ function AreaRow({ area, materials, onChange, onDelete }) {
           <option value="">Material</option>
           {materials.map(m=><option key={m.id}>{m.name}</option>)}
           <option value="__combo__">⚡ Combo (2+ materials)</option>
+          <option value="__custom_mat__">✏️ Other (type custom)</option>
         </select>
+        {matLines[0].material==="__custom_mat__" && (
+          <input autoFocus
+            placeholder="Type material name… press Enter"
+            className="area-select"
+            style={{...XS, marginBottom:4, marginTop:4}}
+            value={area.custom_material||""}
+            onChange={e=>onChange("custom_material",e.target.value)}
+            onBlur={()=>{
+              const val=(area.custom_material||"").trim();
+              if(val){
+                onChange("mat_lines",[{id:1,material:val,
+                  thickness_in:matLines[0].thickness_in||"",
+                  r_value:matLines[0].r_value||"",oc:matLines[0].oc||""}]);
+                onChange("material",val);
+              }
+            }}
+            onKeyDown={e=>{
+              if(e.key==="Enter"){
+                const val=(area.custom_material||"").trim();
+                if(val){
+                  onChange("mat_lines",[{id:1,material:val,
+                    thickness_in:matLines[0].thickness_in||"",
+                    r_value:matLines[0].r_value||"",oc:matLines[0].oc||""}]);
+                  onChange("material",val);
+                }
+                e.target.blur();
+              }
+            }}
+          />
+        )}
 
         {/* single material — thick + R + OC */}
         {matLines[0].material !== "__combo__" && matLines.length===1 && (
@@ -1030,10 +1061,7 @@ export default function ProjectEstimate() {
         if(segs.length>0) await supabase.from("segments").insert(segs);
       }
       if(selectedLeadId) await supabase.from("customers")
-        .update({
-          estimate_amount: projectTotal,
-          status: "Estimate Sent",
-        }).eq("id", selectedLeadId);
+        .update({estimate_amount:projectTotal}).eq("id",selectedLeadId);
       await supabase.from("quotes").insert([{
         project_id:proj.id, subtotal:projectTotal,
         tax_rate:0, tax_total:0, grand_total:projectTotal,
@@ -1124,7 +1152,7 @@ export default function ProjectEstimate() {
       <div style={{display:"flex",flex:1,overflow:"hidden"}}>
 
         {/* entry form */}
-        <div style={{flex:1,overflowY:"auto",padding:"8px 12px 200px 12px",minWidth:0,boxSizing:"border-box"}}>
+        <div style={{flex:1,overflowY:"auto",overflowX:"hidden",padding:"8px 12px 200px 12px",minWidth:0,boxSizing:"border-box",width:"100%"}}>
 
           <CustomerSection
             key={selectedLeadId||"none"}
@@ -1189,7 +1217,8 @@ export default function ProjectEstimate() {
 
           {/* floor tabs */}
           <div style={{display:"flex",gap:3,overflowX:"auto",paddingBottom:3,
-              marginBottom:5,WebkitOverflowScrolling:"touch",alignItems:"center"}}>
+              marginBottom:5,WebkitOverflowScrolling:"touch",alignItems:"center",
+              maxWidth:"100%"}}>
             {floors.map(floor=>{
               const cnt=(areas[floor]||[]).length;
               const tot=floorTotal(floor);
@@ -1203,7 +1232,6 @@ export default function ProjectEstimate() {
                     cursor:"pointer",fontSize:14,fontWeight:700,whiteSpace:"nowrap",
                     boxShadow:act?"0 2px 8px rgba(5,150,105,.3)":"none"}}>
                   {floor}
-                  {cnt>0&&<span style={{marginLeft:3,fontSize:9,opacity:0.7}}>{cnt}·${fmt(tot)}</span>}
                 </button>
               );
             })}
