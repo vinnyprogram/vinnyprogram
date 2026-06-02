@@ -401,11 +401,16 @@ function AreaRow({ area, materials, onChange, onDelete }) {
       {/* area type + delete */}
       <div style={{ display:"flex", gap:6, marginBottom:4, alignItems:"center" }}>
         <select className="area-select" style={{...XS, flex:1}} value={
-            AREA_TYPES.includes(area.area_type) ? area.area_type : (area.area_type ? "__other__" : "")
+            area._show_custom_area ? "__other__" : (area.area_type||"")
           }
           onChange={e=>{
-            if(e.target.value==="__other__") onChange("area_type","");
-            else onChange("area_type",e.target.value);
+            if(e.target.value==="__other__"){
+              onChange("area_type","");
+              onChange("_show_custom_area", true);
+            } else {
+              onChange("area_type",e.target.value);
+              onChange("_show_custom_area", false);
+            }
           }}>
           <option value="">Area type</option>
           {AREA_TYPES.map(a=><option key={a}>{a}</option>)}
@@ -415,7 +420,7 @@ function AreaRow({ area, materials, onChange, onDelete }) {
           style={{ border:"none", background:"none", color:C.faint,
             cursor:"pointer", fontSize:16, padding:"0 2px", lineHeight:1, flexShrink:0 }}>✕</button>
       </div>
-      {(!AREA_TYPES.includes(area.area_type)) && (
+      {(area._show_custom_area || (area.area_type && !AREA_TYPES.includes(area.area_type))) && (
         <input placeholder="Type area type…"
           style={{...XS, width:"100%", marginBottom:4}}
           value={area.area_type||""}
