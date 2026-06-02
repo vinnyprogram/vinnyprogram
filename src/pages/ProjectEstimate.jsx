@@ -398,9 +398,9 @@ function AreaRow({ area, materials, onChange, onDelete }) {
         </div>
       )}
 
-      {/* area type + delete */}
-      <div style={{ display:"flex", gap:6, marginBottom:4, alignItems:"center" }}>
-        <select className="area-select" style={{...XS, flex:1}} value={
+      {/* ROW 1: area type + thick + delete */}
+      <div style={{ display:"flex", gap:4, marginBottom:4, alignItems:"center" }}>
+        <select className="area-select" style={{...XS, flex:2}} value={
             area._show_custom_area ? "__other__" : (area.area_type||"")
           }
           onChange={e=>{
@@ -416,94 +416,69 @@ function AreaRow({ area, materials, onChange, onDelete }) {
           {AREA_TYPES.map(a=><option key={a}>{a}</option>)}
           <option value="__other__">✏️ Other</option>
         </select>
+        <select className="area-select" style={{...XS, flex:1}} value={
+            area._custom_thick ? "__other__" : (matLines[0].thickness_in||"")
+          }
+          onChange={e=>{
+            if(e.target.value==="__other__"){
+              updateMatLine(0,"thickness_in","");
+              onChange("_custom_thick",true);
+            } else {
+              updateMatLine(0,"thickness_in",e.target.value);
+              onChange("_custom_thick",false);
+            }
+          }}>
+          <option value="">Thick</option>
+          {THICK_OPTS.map(t=><option key={t}>{t}</option>)}
+          <option value="__other__">✏️ Other</option>
+        </select>
         <button onClick={onDelete}
           style={{ border:"none", background:"none", color:C.faint,
             cursor:"pointer", fontSize:16, padding:"0 2px", lineHeight:1, flexShrink:0 }}>✕</button>
       </div>
+
+      {/* custom area type input */}
       {(area._show_custom_area || (area.area_type && !AREA_TYPES.includes(area.area_type))) && (
         <input placeholder="Type area type…"
           style={{...XS, width:"100%", marginBottom:4}}
           value={area.area_type||""}
           onChange={e=>onChange("area_type",e.target.value)} />
       )}
+      {/* custom thick input */}
+      {area._custom_thick && (
+        <input placeholder="e.g. 3in, continuous"
+          style={{...XS, width:"100%", marginBottom:4}}
+          value={matLines[0].thickness_in||""}
+          onChange={e=>updateMatLine(0,"thickness_in",e.target.value)} />
+      )}
 
       {/* material selector — single or combo */}
       <div style={{marginBottom:6}}>
-
-        {/* main material picker — always shown */}
-        <select className="area-select" style={{...XS, marginBottom:4}} value={matLines[0].material||""}
-          onChange={e=>{
-            const val = e.target.value;
-            if(val==="__combo__"){
-              // start combo: 2 blank material lines, no thick/r/oc on top level
-              onChange("mat_lines",[
-                {id:1,material:"",thickness_in:"",r_value:"",oc:""},
-                {id:2,material:"",thickness_in:"",r_value:"",oc:""},
-              ]);
-              onChange("material","__combo__");
-            } else {
-              onChange("mat_lines",[{id:1,material:val,
-                thickness_in:matLines[0].thickness_in||"",
-                r_value:matLines[0].r_value||"",
-                oc:matLines[0].oc||""}]);
-              onChange("material",val);
-            }
-          }}>
-          <option value="">Material</option>
-          {materials.map(m=><option key={m.id}>{m.name}</option>)}
-          <option value="__combo__">⚡ Combo (2+ materials)</option>
-          <option value="__custom_mat__">✏️ Other (type custom)</option>
-        </select>
-        {matLines[0].material==="__custom_mat__" && (
-          <input autoFocus
-            placeholder="Type material name… press Enter"
-            className="area-select"
-            style={{...XS, marginBottom:4, marginTop:4}}
-            value={area.custom_material||""}
-            onChange={e=>onChange("custom_material",e.target.value)}
-            onBlur={()=>{
-              const val=(area.custom_material||"").trim();
-              if(val){
-                onChange("mat_lines",[{id:1,material:val,
-                  thickness_in:matLines[0].thickness_in||"",
-                  r_value:matLines[0].r_value||"",oc:matLines[0].oc||""}]);
-                onChange("material",val);
-              }
-            }}
-            onKeyDown={e=>{
-              if(e.key==="Enter"){
-                const val=(area.custom_material||"").trim();
-                if(val){
-                  onChange("mat_lines",[{id:1,material:val,
-                    thickness_in:matLines[0].thickness_in||"",
-                    r_value:matLines[0].r_value||"",oc:matLines[0].oc||""}]);
-                  onChange("material",val);
-                }
-                e.target.blur();
-              }
-            }}
-          />
-        )}
-
-        {/* single material — thick + R + OC */}
+        {/* single material — ROW 2: material + rval + oc */}
         {matLines[0].material !== "__combo__" && matLines.length===1 && (
           <>
             <div style={{ display:"flex", gap:4, marginBottom:4 }}>
-              <select className="area-select" style={{...XS,flex:1}} value={
-                  area._custom_thick ? "__other__" : (matLines[0].thickness_in||"")
-                }
+              <select className="area-select" style={{...XS, flex:2}} value={matLines[0].material||""}
                 onChange={e=>{
-                  if(e.target.value==="__other__"){
-                    updateMatLine(0,"thickness_in","");
-                    onChange("_custom_thick",true);
+                  const val = e.target.value;
+                  if(val==="__combo__"){
+                    onChange("mat_lines",[
+                      {id:1,material:"",thickness_in:"",r_value:"",oc:""},
+                      {id:2,material:"",thickness_in:"",r_value:"",oc:""},
+                    ]);
+                    onChange("material","__combo__");
                   } else {
-                    updateMatLine(0,"thickness_in",e.target.value);
-                    onChange("_custom_thick",false);
+                    onChange("mat_lines",[{id:1,material:val,
+                      thickness_in:matLines[0].thickness_in||"",
+                      r_value:matLines[0].r_value||"",
+                      oc:matLines[0].oc||""}]);
+                    onChange("material",val);
                   }
                 }}>
-                <option value="">Thick</option>
-                {THICK_OPTS.map(t=><option key={t}>{t}</option>)}
-                <option value="__other__">✏️ Other</option>
+                <option value="">Material</option>
+                {materials.map(m=><option key={m.id}>{m.name}</option>)}
+                <option value="__combo__">⚡ Combo</option>
+                <option value="__custom_mat__">✏️ Other</option>
               </select>
               <select className="area-select" style={{...XS,flex:1}} value={
                   area._custom_rval ? "__other__" : (matLines[0].r_value||"")
@@ -526,7 +501,41 @@ function AreaRow({ area, materials, onChange, onDelete }) {
                 <option value="">OC</option>{OC_OPTS.map(o=><option key={o}>{o}</option>)}
               </select>
             </div>
-            {/* custom thick/rval — only show when Other is selected OR has custom value saved */}
+            {/* custom material / rval inputs */}
+            {matLines[0].material==="__custom_mat__" && (
+              <input autoFocus placeholder="Type material name… press Enter"
+                style={{...XS, width:"100%", marginBottom:4}}
+                value={area.custom_material||""}
+                onChange={e=>onChange("custom_material",e.target.value)}
+                onBlur={()=>{
+                  const val=(area.custom_material||"").trim();
+                  if(val){
+                    onChange("mat_lines",[{id:1,material:val,
+                      thickness_in:matLines[0].thickness_in||"",
+                      r_value:matLines[0].r_value||"",oc:matLines[0].oc||""}]);
+                    onChange("material",val);
+                  }
+                }}
+                onKeyDown={e=>{
+                  if(e.key==="Enter"){
+                    const val=(area.custom_material||"").trim();
+                    if(val){
+                      onChange("mat_lines",[{id:1,material:val,
+                        thickness_in:matLines[0].thickness_in||"",
+                        r_value:matLines[0].r_value||"",oc:matLines[0].oc||""}]);
+                      onChange("material",val);
+                    }
+                    e.target.blur();
+                  }
+                }} />
+            )}
+            {area._custom_rval && (
+              <input placeholder="e.g. R-22, R-45"
+                style={{...XS, width:"100%", marginBottom:4}}
+                value={matLines[0].r_value||""}
+                onChange={e=>updateMatLine(0,"r_value",e.target.value)} />
+            )}
+            {/* custom thick/rval — only show when Other is selected */}
             {(area._custom_thick || area._custom_rval) && (
               <div style={{display:"flex",gap:4,marginBottom:4}}>
                 {area._custom_thick && (
