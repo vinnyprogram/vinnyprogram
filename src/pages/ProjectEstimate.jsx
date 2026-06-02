@@ -51,7 +51,7 @@ function fmt(n) {
   return Number(n || 0).toLocaleString("en-US", { maximumFractionDigits: 0 });
 }
 
-const DEFAULT_FLOORS = ["Attic","3rd Floor","2nd Floor","1st Floor","Basement","Crawlspace"];
+const DEFAULT_FLOORS = ["Attic","3rd","2nd","1st","Basement","Crawlspace"];
 const AREA_TYPES = [
   "Roof Rafter w/ Strapping","Roof Rafter behind knee walls","Attic Floor",
   "Exterior Wall","Demising Wall","Rim Joist","Concrete Wall",
@@ -412,10 +412,10 @@ const GS = {
         </div>
       )}
 
-      {/* ROW 1: area type + thick + delete */}
+      {/* ROW 1: area type alone + delete */}
       <div style={{ display:"flex", gap:4, marginBottom:2, alignItems:"center",
-          borderBottom:`1px solid ${C.border}`, paddingBottom:4 }}>
-        <select className="area-select" style={{...GS, flex:2}} value={
+          borderBottom:`1px solid ${C.border}`, paddingBottom:3 }}>
+        <select className="area-select" style={{...GS, flex:1}} value={
             area._show_custom_area ? "__other__" : (area.area_type||"")
           }
           onChange={e=>{
@@ -431,48 +431,24 @@ const GS = {
           {AREA_TYPES.map(a=><option key={a}>{a}</option>)}
           <option value="__other__">✏️ Other</option>
         </select>
-        <select className="area-select" style={{...GS, flex:1}} value={
-            area._custom_thick ? "__other__" : (matLines[0].thickness_in||"")
-          }
-          onChange={e=>{
-            if(e.target.value==="__other__"){
-              updateMatLine(0,"thickness_in","");
-              onChange("_custom_thick",true);
-            } else {
-              updateMatLine(0,"thickness_in",e.target.value);
-              onChange("_custom_thick",false);
-            }
-          }}>
-          <option value="">Thick</option>
-          {THICK_OPTS.map(t=><option key={t}>{t}</option>)}
-          <option value="__other__">✏️ Other</option>
-        </select>
         <button onClick={onDelete}
           style={{ border:"none", background:"none", color:C.faint,
             cursor:"pointer", fontSize:16, padding:"0 2px", lineHeight:1, flexShrink:0 }}>✕</button>
       </div>
-
-      {/* custom area type input */}
       {(area._show_custom_area || (area.area_type && !AREA_TYPES.includes(area.area_type))) && (
         <input placeholder="Type area type…"
-          style={{...XS, width:"100%", marginBottom:4}}
+          style={{...XS, width:"100%", marginBottom:3}}
           value={area.area_type||""}
           onChange={e=>onChange("area_type",e.target.value)} />
       )}
-      {/* custom thick input */}
-      {area._custom_thick && (
-        <input placeholder="e.g. 3in, continuous"
-          style={{...XS, width:"100%", marginBottom:4}}
-          value={matLines[0].thickness_in||""}
-          onChange={e=>updateMatLine(0,"thickness_in",e.target.value)} />
-      )}
 
       {/* material selector — single or combo */}
-      <div style={{marginBottom:6}}>
-        {/* single material — ROW 2: material + rval + oc */}
+      <div style={{marginBottom:4}}>
         {matLines[0].material !== "__combo__" && matLines.length===1 && (
           <>
-            <div style={{ display:"flex", gap:4, marginBottom:4 }}>
+            {/* ROW 2: material + thick + rval */}
+            <div style={{ display:"flex", gap:4, marginBottom:2,
+                borderBottom:`1px solid ${C.border}`, paddingBottom:3 }}>
               <select className="area-select" style={{...GS, flex:2}} value={matLines[0].material||""}
                 onChange={e=>{
                   const val = e.target.value;
@@ -495,7 +471,23 @@ const GS = {
                 <option value="__combo__">⚡ Combo</option>
                 <option value="__custom_mat__">✏️ Other</option>
               </select>
-              <select className="area-select" style={{...GS,flex:1}} value={
+              <select className="area-select" style={{...GS, flex:"0 0 46px"}} value={
+                  area._custom_thick ? "__other__" : (matLines[0].thickness_in||"")
+                }
+                onChange={e=>{
+                  if(e.target.value==="__other__"){
+                    updateMatLine(0,"thickness_in","");
+                    onChange("_custom_thick",true);
+                  } else {
+                    updateMatLine(0,"thickness_in",e.target.value);
+                    onChange("_custom_thick",false);
+                  }
+                }}>
+                <option value="">Thick</option>
+                {THICK_OPTS.map(t=><option key={t}>{t}</option>)}
+                <option value="__other__">✏️</option>
+              </select>
+              <select className="area-select" style={{...GS, flex:"0 0 50px"}} value={
                   area._custom_rval ? "__other__" : (matLines[0].r_value||"")
                 }
                 onChange={e=>{
@@ -509,17 +501,13 @@ const GS = {
                 }}>
                 <option value="">R-Val</option>
                 {R_VALS.map(r=><option key={r}>{r}</option>)}
-                <option value="__other__">✏️ Other</option>
-              </select>
-              <select className="area-select" style={{...GS,flex:1}} value={matLines[0].oc||""}
-                onChange={e=>updateMatLine(0,"oc",e.target.value)}>
-                <option value="">OC</option>{OC_OPTS.map(o=><option key={o}>{o}</option>)}
+                <option value="__other__">✏️</option>
               </select>
             </div>
-            {/* custom material / rval inputs */}
+            {/* custom inputs */}
             {matLines[0].material==="__custom_mat__" && (
-              <input autoFocus placeholder="Type material name… press Enter"
-                style={{...XS, width:"100%", marginBottom:4}}
+              <input autoFocus placeholder="Type material name…"
+                style={{...XS, width:"100%", marginBottom:3}}
                 value={area.custom_material||""}
                 onChange={e=>onChange("custom_material",e.target.value)}
                 onBlur={()=>{
@@ -544,17 +532,23 @@ const GS = {
                   }
                 }} />
             )}
+            {area._custom_thick && (
+              <input placeholder="Thickness e.g. 3in"
+                style={{...XS, width:"100%", marginBottom:3}}
+                value={matLines[0].thickness_in||""}
+                onChange={e=>updateMatLine(0,"thickness_in",e.target.value)} />
+            )}
             {area._custom_rval && (
-              <input placeholder="e.g. R-22, R-45"
-                style={{...XS, width:"100%", marginBottom:4}}
+              <input placeholder="R-Value e.g. R-22"
+                style={{...XS, width:"100%", marginBottom:3}}
                 value={matLines[0].r_value||""}
                 onChange={e=>updateMatLine(0,"r_value",e.target.value)} />
             )}
-            {/* custom thick/rval — only show when Other is selected */}
+            {/* ROW 3: spacing + H x L — merged with measurements below */}
             {(area._custom_thick || area._custom_rval) && (
-              <div style={{display:"flex",gap:4,marginBottom:4}}>
+              <div style={{display:"flex",gap:4,marginBottom:3}}>
                 {area._custom_thick && (
-                  <input placeholder="e.g. 3in, continuous"
+                  <input placeholder="e.g. 3in"
                     style={{...XS,flex:1}}
                     value={matLines[0].thickness_in||""}
                     onChange={e=>updateMatLine(0,"thickness_in",e.target.value)} />
@@ -647,7 +641,7 @@ const GS = {
                   </select>
                   <select className="area-select" style={{...XS,flex:1}} value={ml.oc||""}
                     onChange={e=>updateMatLine(idx,"oc",e.target.value)}>
-                    <option value="">OC</option>{OC_OPTS.map(o=><option key={o}>{o}</option>)}
+                    <option value="">Spacing</option>{OC_OPTS.map(o=><option key={o}>{o}</option>)}
                   </select>
                 </div>
                 {(ml._custom_thick || ml._custom_rval) && (
@@ -687,30 +681,34 @@ const GS = {
         )}
       </div>
 
-      {/* measurements — shared across all lines */}
-      <div style={{ borderTop:`1px solid ${C.border}`, paddingTop:6, marginTop:2 }}>
-        <div style={{ display:"flex", gap:4, alignItems:"center", marginBottom:4 }}>
+      {/* measurements — ROW 3: spacing + H x L */}
+      <div style={{ borderTop:`1px solid ${C.border}`, paddingTop:4, marginTop:2 }}>
+        <div style={{ display:"flex", gap:3, alignItems:"center", marginBottom:4 }}>
+          <select className="area-select" style={{...GS, flex:"0 0 72px"}} value={matLines[0].oc||""}
+            onChange={e=>updateMatLine(0,"oc",e.target.value)}>
+            <option value="">Spacing</option>{OC_OPTS.map(o=><option key={o}>{o}</option>)}
+          </select>
           <input placeholder="H" inputMode="decimal" value={area.mh||""}
             onChange={e=>onChange("mh",e.target.value)}
             onBlur={commitMeasurement}
             onKeyDown={e=>e.key==="Enter"&&commitMeasurement()}
-            className="area-hl-input" style={{...I,...noArrow, flex:1, padding:"0 6px", textAlign:"center", height:32, fontSize:14}} />
-          <span style={{fontSize:12,color:C.faint}}>×</span>
+            className="area-hl-input" style={{...I,...noArrow, flex:1, padding:"0 4px", textAlign:"center", height:30, fontSize:13}} />
+          <span style={{fontSize:11,color:C.faint}}>×</span>
           <input placeholder="L" inputMode="decimal" value={area.ml||""}
             onChange={e=>onChange("ml",e.target.value)}
             onBlur={commitMeasurement}
             onKeyDown={e=>e.key==="Enter"&&commitMeasurement()}
-            className="area-hl-input" style={{...I,...noArrow, flex:1, padding:"0 6px", textAlign:"center", height:32, fontSize:14}} />
-          <span style={{fontSize:12,color:C.faint}}>×</span>
+            className="area-hl-input" style={{...I,...noArrow, flex:1, padding:"0 4px", textAlign:"center", height:30, fontSize:13}} />
+          <span style={{fontSize:11,color:C.faint}}>×</span>
           <input placeholder="1" inputMode="decimal" value={area.mq||""}
             onChange={e=>onChange("mq",e.target.value)}
             onBlur={commitMeasurement}
             onKeyDown={e=>e.key==="Enter"&&commitMeasurement()}
-            className="area-mq-input" style={{...I,...noArrow, width:42, padding:"0 4px", textAlign:"center", height:32, fontSize:14}} />
-          <span style={{marginLeft:4, fontSize:12, fontWeight:700,
+            className="area-mq-input" style={{...I,...noArrow, width:36, padding:"0 3px", textAlign:"center", height:30, fontSize:13}} />
+          <span style={{fontSize:11, fontWeight:700,
             color:livePreview>0?C.green:C.ink, whiteSpace:"nowrap"}}>
-            {livePreview>0?`${fmt(livePreview)} → `:""}
-            {fmt(area.sqft)} ft²
+            {livePreview>0?`${fmt(livePreview)}→`:""}
+            {fmt(area.sqft)}ft²
           </span>
         </div>
 
@@ -894,7 +892,7 @@ export default function ProjectEstimate() {
   const leadId = searchParams.get("leadId");
   const isEditing = !!projectId;
 
-  const [floors, setFloors]           = useState(["Attic","3rd Floor","2nd Floor","1st Floor","Basement"]);
+  const [floors, setFloors]           = useState(["Attic","3rd","2nd","1st","Basement"]);
   const [activeFloor, setActiveFloor] = useState("Attic");
   const [areas, setAreas]             = useState(()=>{ const i={}; DEFAULT_FLOORS.forEach(f=>{i[f]=[];}); return i; });
   const [materials, setMaterials]     = useState([]);
