@@ -399,16 +399,28 @@ function AreaRow({ area, materials, onChange, onDelete }) {
       )}
 
       {/* area type + delete */}
-      <div style={{ display:"flex", gap:6, marginBottom:6, alignItems:"center" }}>
-        <select className="area-select" style={{...XS, flex:1}} value={area.area_type||""}
-          onChange={e=>onChange("area_type",e.target.value)}>
+      <div style={{ display:"flex", gap:6, marginBottom:4, alignItems:"center" }}>
+        <select className="area-select" style={{...XS, flex:1}} value={
+            AREA_TYPES.includes(area.area_type) ? area.area_type : (area.area_type ? "__other__" : "")
+          }
+          onChange={e=>{
+            if(e.target.value==="__other__") onChange("area_type","");
+            else onChange("area_type",e.target.value);
+          }}>
           <option value="">Area type</option>
           {AREA_TYPES.map(a=><option key={a}>{a}</option>)}
+          <option value="__other__">✏️ Other</option>
         </select>
         <button onClick={onDelete}
           style={{ border:"none", background:"none", color:C.faint,
             cursor:"pointer", fontSize:16, padding:"0 2px", lineHeight:1, flexShrink:0 }}>✕</button>
       </div>
+      {(!AREA_TYPES.includes(area.area_type)) && (
+        <input placeholder="Type area type…"
+          style={{...XS, width:"100%", marginBottom:4}}
+          value={area.area_type||""}
+          onChange={e=>onChange("area_type",e.target.value)} />
+      )}
 
       {/* material selector — single or combo */}
       <div style={{marginBottom:6}}>
@@ -1357,6 +1369,11 @@ export default function ProjectEstimate() {
         }
         input[type=number]::-webkit-inner-spin-button,
         input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+        @media (max-width: 899px) {
+          input, select, textarea {
+            font-size: 16px !important;
+          }
+        }
       `}</style>
     </div>
   );
