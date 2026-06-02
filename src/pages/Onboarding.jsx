@@ -60,7 +60,9 @@ export default function Onboarding() {
       }]);
 
       if(ce) throw ce;
-      navigate("/");
+
+      // force a hard reload so AuthContext picks up the new company
+      window.location.href = "/";
     } catch(err) {
       setError(err.message||"Something went wrong");
     }
