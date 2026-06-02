@@ -279,6 +279,20 @@ function AreaRow({ area, materials, onChange, onDelete }) {
     background:C.white, padding:"0 4px", boxSizing:"border-box", color:C.ink,
     minWidth:0, width:"100%" };
 
+// ghost select — no box, looks like a label
+const GS = {
+  height:28, fontSize:12, border:"none", background:"transparent",
+  padding:"0 2px", boxSizing:"border-box", color:C.ink,
+  minWidth:0, width:"100%", fontWeight:600,
+  WebkitAppearance:"none", MozAppearance:"none",
+  appearance:"none",
+  backgroundImage:`url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%2364748b'/%3E%3C/svg%3E")`,
+  backgroundRepeat:"no-repeat",
+  backgroundPosition:"right 2px center",
+  paddingRight:14,
+  cursor:"pointer",
+};
+
   // material lines — always at least one
   const matLines = (area.mat_lines && area.mat_lines.length > 0)
     ? area.mat_lines
@@ -399,8 +413,9 @@ function AreaRow({ area, materials, onChange, onDelete }) {
       )}
 
       {/* ROW 1: area type + thick + delete */}
-      <div style={{ display:"flex", gap:4, marginBottom:4, alignItems:"center" }}>
-        <select className="area-select" style={{...XS, flex:2}} value={
+      <div style={{ display:"flex", gap:4, marginBottom:2, alignItems:"center",
+          borderBottom:`1px solid ${C.border}`, paddingBottom:4 }}>
+        <select className="area-select" style={{...GS, flex:2}} value={
             area._show_custom_area ? "__other__" : (area.area_type||"")
           }
           onChange={e=>{
@@ -416,7 +431,7 @@ function AreaRow({ area, materials, onChange, onDelete }) {
           {AREA_TYPES.map(a=><option key={a}>{a}</option>)}
           <option value="__other__">✏️ Other</option>
         </select>
-        <select className="area-select" style={{...XS, flex:1}} value={
+        <select className="area-select" style={{...GS, flex:1}} value={
             area._custom_thick ? "__other__" : (matLines[0].thickness_in||"")
           }
           onChange={e=>{
@@ -458,7 +473,7 @@ function AreaRow({ area, materials, onChange, onDelete }) {
         {matLines[0].material !== "__combo__" && matLines.length===1 && (
           <>
             <div style={{ display:"flex", gap:4, marginBottom:4 }}>
-              <select className="area-select" style={{...XS, flex:2}} value={matLines[0].material||""}
+              <select className="area-select" style={{...GS, flex:2}} value={matLines[0].material||""}
                 onChange={e=>{
                   const val = e.target.value;
                   if(val==="__combo__"){
@@ -480,7 +495,7 @@ function AreaRow({ area, materials, onChange, onDelete }) {
                 <option value="__combo__">⚡ Combo</option>
                 <option value="__custom_mat__">✏️ Other</option>
               </select>
-              <select className="area-select" style={{...XS,flex:1}} value={
+              <select className="area-select" style={{...GS,flex:1}} value={
                   area._custom_rval ? "__other__" : (matLines[0].r_value||"")
                 }
                 onChange={e=>{
@@ -496,7 +511,7 @@ function AreaRow({ area, materials, onChange, onDelete }) {
                 {R_VALS.map(r=><option key={r}>{r}</option>)}
                 <option value="__other__">✏️ Other</option>
               </select>
-              <select className="area-select" style={{...XS,flex:1}} value={matLines[0].oc||""}
+              <select className="area-select" style={{...GS,flex:1}} value={matLines[0].oc||""}
                 onChange={e=>updateMatLine(0,"oc",e.target.value)}>
                 <option value="">OC</option>{OC_OPTS.map(o=><option key={o}>{o}</option>)}
               </select>
