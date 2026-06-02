@@ -446,7 +446,7 @@ const GS = {
       <div style={{marginBottom:4}}>
         {matLines[0].material !== "__combo__" && matLines.length===1 && (
           <>
-            {/* ROW 2: material + thick + rval */}
+            {/* ROW 2: material + thick */}
             <div style={{ display:"flex", gap:4, marginBottom:2,
                 borderBottom:`1px solid ${C.border}`, paddingBottom:3 }}>
               <select className="area-select" style={{...GS, flex:2}} value={matLines[0].material||""}
@@ -471,7 +471,7 @@ const GS = {
                 <option value="__combo__">⚡ Combo</option>
                 <option value="__custom_mat__">✏️ Other</option>
               </select>
-              <select className="area-select" style={{...GS, flex:"0 0 46px"}} value={
+              <select className="area-select" style={{...GS, flex:"0 0 52px"}} value={
                   area._custom_thick ? "__other__" : (matLines[0].thickness_in||"")
                 }
                 onChange={e=>{
@@ -485,22 +485,6 @@ const GS = {
                 }}>
                 <option value="">Thick</option>
                 {THICK_OPTS.map(t=><option key={t}>{t}</option>)}
-                <option value="__other__">✏️</option>
-              </select>
-              <select className="area-select" style={{...GS, flex:"0 0 50px"}} value={
-                  area._custom_rval ? "__other__" : (matLines[0].r_value||"")
-                }
-                onChange={e=>{
-                  if(e.target.value==="__other__"){
-                    updateMatLine(0,"r_value","");
-                    onChange("_custom_rval",true);
-                  } else {
-                    updateMatLine(0,"r_value",e.target.value);
-                    onChange("_custom_rval",false);
-                  }
-                }}>
-                <option value="">R-Val</option>
-                {R_VALS.map(r=><option key={r}>{r}</option>)}
                 <option value="__other__">✏️</option>
               </select>
             </div>
@@ -681,12 +665,24 @@ const GS = {
         )}
       </div>
 
-      {/* measurements — ROW 3: spacing + H x L */}
+      {/* measurements — ROW 3: rval + H x L */}
       <div style={{ borderTop:`1px solid ${C.border}`, paddingTop:4, marginTop:2 }}>
         <div style={{ display:"flex", gap:3, alignItems:"center", marginBottom:4 }}>
-          <select className="area-select" style={{...GS, flex:"0 0 72px"}} value={matLines[0].oc||""}
-            onChange={e=>updateMatLine(0,"oc",e.target.value)}>
-            <option value="">Spacing</option>{OC_OPTS.map(o=><option key={o}>{o}</option>)}
+          <select className="area-select" style={{...GS, flex:"0 0 60px"}} value={
+              area._custom_rval ? "__other__" : (matLines[0].r_value||"")
+            }
+            onChange={e=>{
+              if(e.target.value==="__other__"){
+                updateMatLine(0,"r_value","");
+                onChange("_custom_rval",true);
+              } else {
+                updateMatLine(0,"r_value",e.target.value);
+                onChange("_custom_rval",false);
+              }
+            }}>
+            <option value="">R-Val</option>
+            {R_VALS.map(r=><option key={r}>{r}</option>)}
+            <option value="__other__">✏️</option>
           </select>
           <input placeholder="H" inputMode="decimal" value={area.mh||""}
             onChange={e=>onChange("mh",e.target.value)}
