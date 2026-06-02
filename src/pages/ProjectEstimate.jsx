@@ -490,24 +490,32 @@ function AreaRow({ area, materials, onChange, onDelete }) {
           <>
             <div style={{ display:"flex", gap:4, marginBottom:4 }}>
               <select className="area-select" style={{...XS,flex:1}} value={
-                  THICK_OPTS.includes(matLines[0].thickness_in) ? matLines[0].thickness_in :
-                  (matLines[0].thickness_in ? "__other__" : "")
+                  area._custom_thick ? "__other__" : (matLines[0].thickness_in||"")
                 }
                 onChange={e=>{
-                  if(e.target.value==="__other__") updateMatLine(0,"thickness_in","");
-                  else updateMatLine(0,"thickness_in",e.target.value);
+                  if(e.target.value==="__other__"){
+                    updateMatLine(0,"thickness_in","");
+                    onChange("_custom_thick",true);
+                  } else {
+                    updateMatLine(0,"thickness_in",e.target.value);
+                    onChange("_custom_thick",false);
+                  }
                 }}>
                 <option value="">Thick</option>
                 {THICK_OPTS.map(t=><option key={t}>{t}</option>)}
                 <option value="__other__">✏️ Other</option>
               </select>
               <select className="area-select" style={{...XS,flex:1}} value={
-                  R_VALS.includes(matLines[0].r_value) ? matLines[0].r_value :
-                  (matLines[0].r_value ? "__other__" : "")
+                  area._custom_rval ? "__other__" : (matLines[0].r_value||"")
                 }
                 onChange={e=>{
-                  if(e.target.value==="__other__") updateMatLine(0,"r_value","");
-                  else updateMatLine(0,"r_value",e.target.value);
+                  if(e.target.value==="__other__"){
+                    updateMatLine(0,"r_value","");
+                    onChange("_custom_rval",true);
+                  } else {
+                    updateMatLine(0,"r_value",e.target.value);
+                    onChange("_custom_rval",false);
+                  }
                 }}>
                 <option value="">R-Val</option>
                 {R_VALS.map(r=><option key={r}>{r}</option>)}
@@ -518,17 +526,17 @@ function AreaRow({ area, materials, onChange, onDelete }) {
                 <option value="">OC</option>{OC_OPTS.map(o=><option key={o}>{o}</option>)}
               </select>
             </div>
-            {/* custom thick/rval text inputs when Other selected */}
-            {(!THICK_OPTS.includes(matLines[0].thickness_in) || !R_VALS.includes(matLines[0].r_value)) && (
+            {/* custom thick/rval — only show when Other is selected OR has custom value saved */}
+            {(area._custom_thick || area._custom_rval) && (
               <div style={{display:"flex",gap:4,marginBottom:4}}>
-                {!THICK_OPTS.includes(matLines[0].thickness_in) && (
-                  <input placeholder="Thickness e.g. 3in"
+                {area._custom_thick && (
+                  <input placeholder="e.g. 3in, continuous"
                     style={{...XS,flex:1}}
                     value={matLines[0].thickness_in||""}
                     onChange={e=>updateMatLine(0,"thickness_in",e.target.value)} />
                 )}
-                {!R_VALS.includes(matLines[0].r_value) && (
-                  <input placeholder="R-Value e.g. R-22"
+                {area._custom_rval && (
+                  <input placeholder="e.g. R-22, R-45"
                     style={{...XS,flex:1}}
                     value={matLines[0].r_value||""}
                     onChange={e=>updateMatLine(0,"r_value",e.target.value)} />
@@ -582,22 +590,32 @@ function AreaRow({ area, materials, onChange, onDelete }) {
                 </div>
                 <div style={{display:"flex",gap:4,marginBottom:2}}>
                   <select className="area-select" style={{...XS,flex:1}} value={
-                      THICK_OPTS.includes(ml.thickness_in)?ml.thickness_in:(ml.thickness_in?"__other__":"")
+                      ml._custom_thick ? "__other__" : (ml.thickness_in||"")
                     }
                     onChange={e=>{
-                      if(e.target.value==="__other__") updateMatLine(idx,"thickness_in","");
-                      else updateMatLine(idx,"thickness_in",e.target.value);
+                      if(e.target.value==="__other__"){
+                        updateMatLine(idx,"thickness_in","");
+                        updateMatLine(idx,"_custom_thick",true);
+                      } else {
+                        updateMatLine(idx,"thickness_in",e.target.value);
+                        updateMatLine(idx,"_custom_thick",false);
+                      }
                     }}>
                     <option value="">Thick</option>
                     {THICK_OPTS.map(t=><option key={t}>{t}</option>)}
                     <option value="__other__">✏️ Other</option>
                   </select>
                   <select className="area-select" style={{...XS,flex:1}} value={
-                      R_VALS.includes(ml.r_value)?ml.r_value:(ml.r_value?"__other__":"")
+                      ml._custom_rval ? "__other__" : (ml.r_value||"")
                     }
                     onChange={e=>{
-                      if(e.target.value==="__other__") updateMatLine(idx,"r_value","");
-                      else updateMatLine(idx,"r_value",e.target.value);
+                      if(e.target.value==="__other__"){
+                        updateMatLine(idx,"r_value","");
+                        updateMatLine(idx,"_custom_rval",true);
+                      } else {
+                        updateMatLine(idx,"r_value",e.target.value);
+                        updateMatLine(idx,"_custom_rval",false);
+                      }
                     }}>
                     <option value="">R-Val</option>
                     {R_VALS.map(r=><option key={r}>{r}</option>)}
@@ -608,15 +626,15 @@ function AreaRow({ area, materials, onChange, onDelete }) {
                     <option value="">OC</option>{OC_OPTS.map(o=><option key={o}>{o}</option>)}
                   </select>
                 </div>
-                {(!THICK_OPTS.includes(ml.thickness_in) || !R_VALS.includes(ml.r_value)) && (
+                {(ml._custom_thick || ml._custom_rval) && (
                   <div style={{display:"flex",gap:4,marginBottom:2}}>
-                    {!THICK_OPTS.includes(ml.thickness_in) && (
-                      <input placeholder="Thickness e.g. 3in" style={{...XS,flex:1}}
+                    {ml._custom_thick && (
+                      <input placeholder="e.g. 3in" style={{...XS,flex:1}}
                         value={ml.thickness_in||""}
                         onChange={e=>updateMatLine(idx,"thickness_in",e.target.value)} />
                     )}
-                    {!R_VALS.includes(ml.r_value) && (
-                      <input placeholder="R-Value e.g. R-22" style={{...XS,flex:1}}
+                    {ml._custom_rval && (
+                      <input placeholder="e.g. R-22" style={{...XS,flex:1}}
                         value={ml.r_value||""}
                         onChange={e=>updateMatLine(idx,"r_value",e.target.value)} />
                     )}
