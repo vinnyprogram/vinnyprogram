@@ -1110,6 +1110,73 @@ export default function ProjectEstimate() {
     }
   }
 
+  // ── Pricing Engine ──────────────────────────────────────────────────────────
+  async function calculateJobPrice(companyId, allAreas, totalSqft) {
+    // 1. Load cost settings
+    const [
+      { data:matCosts },
+      { data:overheadCosts },
+      { data:consumables },
+    ] = await Promise.all([
+      supabase.from("material_costs").select("*").eq("company_id", companyId),
+      supabase.from("cost_settings").select("*").eq("company_id", companyId)
+        .not("period","eq","job_consumable"),
+      supabase.from("cost_settings").select("*").eq("company_id", companyId)
+        .eq("period","job_consumable"),
+    ]);
+
+    const matCostMap = {};
+    (matCosts||[]).forEach(m=>{ matCostMap[m.material_name]=m; });
+
+    // 2. Calculate material cost
+    let materialCost = 0;
+    const THICK_MAP_LOCAL = {"2x4":3.5,"2x6":5.5,"2x8":7.25,"2x10":9.25,"2x12":11.25,"I-joist":11.875};
+    allAreas.forEach(a=>{
+      const mc = matCostMap[a.material];
+      if(!mc) return;
+      const thick = THICK_MAP_LOCAL[a.thickness_in]||0;
+      let qty = mc.unit==="board_ft" ? (a.sqft||0)*thick
+              : mc.unit==="bag" ? Math.ceil(((a.sqft||0)*thick)/(mc.coverage_factor||1))
+              : (a.sqft||0);
+      const cost = qty * Number(mc.cost_per_unit||0);
+      const sell = cost * (1 + Number(mc.markup_pct||0)/100);
+      materialCost += sell;
+    });
+
+    // 3. Calculate overhead per job
+    const totalMonthly = (overheadCosts||[]).reduce((s,c)=>s+Number(c.amount||0),0);
+    // estimate jobs per month from company settings or default 20
+    const jobsPerMonth = 20;
+    const overheadCost = totalMonthly / jobsPerMonth;
+
+    // 4. Calculate consumables scaled by sqft
+    // average job sqft = 1000 (default until we have history)
+    const avgJobSqft = 1000;
+    const consumableCost = (consumables||[]).reduce((s,c)=>{
+      const baseAmount = Number(c.amount||0);
+      const scaled = totalSqft > 0 ? baseAmount * (totalSqft / avgJobSqft) : baseAmount;
+      return s + scaled;
+    }, 0);
+
+    // 5. Labor — use defaults from settings (for now use crew notes or defaults)
+    const laborHours = 0; // will be entered manually for now
+    const laborCost = 0;
+
+    // 6. Total cost and final price
+    const totalCost = materialCost + overheadCost + consumableCost + laborCost;
+    const margin = 30; // default — will come from settings later
+    const finalPrice = totalCost * (1 + margin/100);
+
+    return {
+      material_cost: Math.round(materialCost * 100)/100,
+      overhead_cost: Math.round(overheadCost * 100)/100,
+      labor_cost: laborCost,
+      final_price: Math.round(finalPrice * 100)/100,
+      profit_margin_pct: margin,
+      grand_total: Math.round(finalPrice * 100)/100,
+    };
+  }
+
   async function saveProject() {
     if(saving) return;  // prevent double-tap
     if(!selectedLeadId){
@@ -1174,11 +1241,29 @@ export default function ProjectEstimate() {
         });
         if(segs.length>0) await supabase.from("segments").insert(segs);
       }
+      // calculate final price from cost settings
+      const allAreasList = floors.flatMap(floor=>
+        (areas[floor]||[]).filter(a=>a.area_type&&a.sqft).flatMap(a=>{
+          const mls = (a.mat_lines&&a.mat_lines.length>0)
+            ? a.mat_lines
+            : [{material:a.material||"",thickness_in:a.thickness_in||""}];
+          return mls.map(ml=>({...a, material:ml.material, thickness_in:ml.thickness_in}));
+        })
+      );
+      const pricing = await calculateJobPrice(companyId, allAreasList, projectTotal>0?projectTotal:0);
+
       if(selectedLeadId) await supabase.from("customers")
-        .update({estimate_amount:projectTotal}).eq("id",selectedLeadId);
+        .update({estimate_amount:pricing.final_price||projectTotal}).eq("id",selectedLeadId);
       await supabase.from("quotes").insert([{
-        project_id:proj.id, subtotal:projectTotal,
-        tax_rate:0, tax_total:0, grand_total:projectTotal,
+        project_id:proj.id,
+        subtotal: pricing.material_cost,
+        tax_rate:0, tax_total:0,
+        grand_total: pricing.final_price||projectTotal,
+        final_price: pricing.final_price||projectTotal,
+        material_cost: pricing.material_cost,
+        overhead_cost: pricing.overhead_cost,
+        labor_cost: pricing.labor_cost,
+        profit_margin_pct: pricing.profit_margin_pct,
         status:"Draft", company_id:companyId,
       }]);
       setSaved(true);

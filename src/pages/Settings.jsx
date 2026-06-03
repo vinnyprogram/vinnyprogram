@@ -106,11 +106,11 @@ export default function Settings() {
 
   function seedConsumables() {
     setConsumables([
-      { id:null, name:"Plastic Sheeting", amount:25, unit:"job", sort_order:1 },
-      { id:null, name:"Staples & Tape", amount:15, unit:"job", sort_order:2 },
-      { id:null, name:"Protective Suits", amount:20, unit:"job", sort_order:3 },
-      { id:null, name:"Masks & PPE", amount:10, unit:"job", sort_order:4 },
-      { id:null, name:"Miscellaneous Tools", amount:30, unit:"job", sort_order:5 },
+      { id:null, name:"Plastic Sheeting",   unit_price:8,  qty_per_job:3, markup_pct:0, unit:"roll", sort_order:1 },
+      { id:null, name:"Staples & Tape",     unit_price:5,  qty_per_job:2, markup_pct:0, unit:"box",  sort_order:2 },
+      { id:null, name:"Protective Suits",   unit_price:4,  qty_per_job:5, markup_pct:0, unit:"each", sort_order:3 },
+      { id:null, name:"Masks & PPE",        unit_price:2.5,qty_per_job:4, markup_pct:0, unit:"each", sort_order:4 },
+      { id:null, name:"Miscellaneous Tools",unit_price:30, qty_per_job:1, markup_pct:0, unit:"job",  sort_order:5 },
     ]);
   }
 
@@ -119,7 +119,8 @@ export default function Settings() {
   }
 
   // consumables total
-  const totalConsumables = consumables.reduce((s,c)=>s+Number(c.amount||0),0);
+  const totalConsumables = consumables.reduce((s,c)=>
+    s + (Number(c.unit_price||0) * Number(c.qty_per_job||1)), 0);
 
   // overhead totals
   const totalMonthly = costs.reduce((s,c)=>s+Number(c.amount||0),0);
@@ -182,7 +183,8 @@ export default function Settings() {
             company_id: company.id,
             category: "Job Consumables",
             name: c.name,
-            amount: Number(c.amount)||0,
+            amount: Number(c.unit_price||0) * Number(c.qty_per_job||1),
+            markup_pct: Number(c.markup_pct)||0,
             period: "job_consumable",
             sort_order: i,
           }))
@@ -519,33 +521,80 @@ export default function Settings() {
               In the future these can be scaled by job sqft.
             </div>
 
-            <div style={{ background:C.white, borderRadius:10,
-                border:`1px solid ${C.border}`, overflow:"hidden", marginBottom:10 }}>
-              {consumables.map((c,i)=>(
-                <div key={i} style={{ display:"flex", gap:8, alignItems:"center",
-                    padding:"8px 14px",
-                    borderBottom:i<consumables.length-1?`1px solid ${C.border}`:"none",
-                    background:i%2===0?C.white:"#fafbfc" }}>
-                  <input placeholder="Item name e.g. Plastic Sheeting"
-                    value={c.name}
-                    onChange={e=>updateConsumable(i,"name",e.target.value)}
-                    style={{...I, flex:2, height:30, fontSize:12}} />
-                  <div style={{ display:"flex", alignItems:"center", gap:4, flexShrink:0 }}>
-                    <span style={{ fontSize:12, color:C.muted }}>$</span>
-                    <input type="number" placeholder="0" value={c.amount}
-                      onChange={e=>updateConsumable(i,"amount",e.target.value)}
-                      style={{...I, width:80, height:30, fontSize:12, textAlign:"right"}} />
+            {/* avg sqft info */}
+            <div style={{ background:"#eff6ff", borderRadius:8, padding:"10px 14px",
+                border:"1px solid #bfdbfe", marginBottom:10, fontSize:12, color:"#1e40af" }}>
+              <b>How it works:</b> Enter your cost per job for an average job.
+              The app divides by your average job sqft to get $/sqft rate.
+              Each estimate is then charged based on its actual sqft automatically.
+            </div>
+
+            {/* header */}
+            <div style={{ display:"grid",
+                gridTemplateColumns:"2fr 60px 55px 55px 60px 70px 70px 28px",
+                gap:4, padding:"8px 12px", background:"#f8fafc",
+                border:`1px solid ${C.border}`,
+                borderRadius:"10px 10px 0 0",
+                fontSize:9, fontWeight:700, color:C.muted,
+                textTransform:"uppercase", letterSpacing:0.4 }}>
+              <span>Item</span>
+              <span>Unit</span>
+              <span>Price</span>
+              <span>Qty/job</span>
+              <span>Cost/job</span>
+              <span>Markup</span>
+              <span>Sell/job</span>
+              <span></span>
+            </div>
+
+            <div style={{ border:`1px solid ${C.border}`, borderTop:"none",
+                borderRadius:"0 0 10px 10px", overflow:"hidden", marginBottom:10 }}>
+              {consumables.map((c,i)=>{
+                const costJob = Number(c.unit_price||0) * Number(c.qty_per_job||1);
+                const sellJob = costJob * (1 + Number(c.markup_pct||0)/100);
+                return (
+                  <div key={i} style={{ display:"grid",
+                      gridTemplateColumns:"2fr 60px 55px 55px 60px 70px 70px 28px",
+                      gap:4, padding:"8px 12px",
+                      borderBottom:i<consumables.length-1?`1px solid ${C.border}`:"none",
+                      background:i%2===0?C.white:"#fafbfc", alignItems:"center" }}>
+                    <input placeholder="e.g. Plastic Sheeting"
+                      value={c.name}
+                      onChange={e=>updateConsumable(i,"name",e.target.value)}
+                      style={{...I, height:28, fontSize:11}} />
+                    <input placeholder="roll"
+                      value={c.unit||""}
+                      onChange={e=>updateConsumable(i,"unit",e.target.value)}
+                      style={{...I, height:28, fontSize:11}} />
+                    <div style={{ display:"flex", alignItems:"center", gap:1 }}>
+                      <span style={{ fontSize:10, color:C.muted }}>$</span>
+                      <input type="number" value={c.unit_price||0}
+                        onChange={e=>updateConsumable(i,"unit_price",e.target.value)}
+                        style={{...I, height:28, fontSize:11, textAlign:"right"}} />
+                    </div>
+                    <input type="number" value={c.qty_per_job||1}
+                      onChange={e=>updateConsumable(i,"qty_per_job",e.target.value)}
+                      style={{...I, height:28, fontSize:11, textAlign:"center"}} />
+                    <div style={{ fontSize:11, fontWeight:600, color:C.ink,
+                        textAlign:"right" }}>
+                      ${fmt(costJob)}
+                    </div>
+                    <div style={{ display:"flex", alignItems:"center", gap:1 }}>
+                      <input type="number" value={c.markup_pct||0}
+                        onChange={e=>updateConsumable(i,"markup_pct",e.target.value)}
+                        style={{...I, height:28, fontSize:11, textAlign:"right"}} />
+                      <span style={{ fontSize:10, color:C.muted }}>%</span>
+                    </div>
+                    <div style={{ fontSize:12, fontWeight:700, color:C.green,
+                        textAlign:"right" }}>
+                      ${fmt(sellJob)}
+                    </div>
+                    <button onClick={()=>removeConsumable(i)}
+                      style={{...Btn, padding:"0 6px", height:26,
+                        color:C.faint, fontSize:13}}>✕</button>
                   </div>
-                  <span style={{ fontSize:11, color:C.faint, flexShrink:0 }}>/job</span>
-                  <span style={{ fontSize:10, color:"#94a3b8", flexShrink:0,
-                      background:"#f1f5f9", padding:"2px 6px", borderRadius:4 }}>
-                    fixed
-                  </span>
-                  <button onClick={()=>removeConsumable(i)}
-                    style={{...Btn, padding:"0 8px", height:28,
-                      color:C.faint, fontSize:14, flexShrink:0}}>✕</button>
-                </div>
-              ))}
+                );
+              })}
             </div>
 
             <button onClick={addConsumable}
@@ -556,17 +605,28 @@ export default function Settings() {
             {/* total */}
             <div style={{ background:C.ink, borderRadius:10, padding:"12px 16px",
                 display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-              <div style={{ color:"#94a3b8", fontSize:12 }}>
-                Total Consumables per Job
+              <div>
+                <div style={{ color:"#94a3b8", fontSize:11 }}>Total Cost/job</div>
+                <div style={{ color:"white", fontWeight:800, fontSize:18 }}>
+                  ${fmt(totalConsumables)}
+                </div>
               </div>
-              <div style={{ color:C.green, fontWeight:800, fontSize:20 }}>
-                ${fmt(totalConsumables)}
+              <div style={{ textAlign:"right" }}>
+                <div style={{ color:"#94a3b8", fontSize:11 }}>Total Sell/job (internal)</div>
+                <div style={{ color:C.green, fontWeight:800, fontSize:18 }}>
+                  ${fmt(consumables.reduce((s,c)=>{
+                    const cost=Number(c.unit_price||0)*Number(c.qty_per_job||1);
+                    return s+cost*(1+Number(c.markup_pct||0)/100);
+                  },0))}
+                </div>
               </div>
             </div>
 
             <div style={{ marginTop:10, padding:"10px 14px", background:"#fffbeb",
                 borderRadius:8, border:"1px solid #fde68a", fontSize:12, color:"#92400e" }}>
-              💡 Coming soon: scale by job sqft — e.g. plastic at $0.02/sqft instead of flat rate
+              💡 These costs scale automatically by job sqft.
+              A 2,000 sqft job uses ~2× more consumables than a 1,000 sqft job.
+              The app calculates the rate from your average job size.
             </div>
           </div>
         )}
