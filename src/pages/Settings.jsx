@@ -53,6 +53,14 @@ export default function Settings() {
   // Materials
   const [matCosts, setMatCosts] = useState([]);
 
+  // Labor roles
+  const [laborRoles, setLaborRoles] = useState([
+    { role:"Lead Installer", rate:55 },
+    { role:"Helper",         rate:35 },
+    { role:"",               rate:0  },
+    { role:"",               rate:0  },
+  ]);
+
   // Consumables
   const [consumables, setConsumables] = useState([]);
 
@@ -74,6 +82,12 @@ export default function Settings() {
       .order("sort_order");
     if(c?.length) setCosts(c);
     else seedOverhead();
+
+    // load labor roles
+    const { data:lr } = await supabase.from("cost_settings")
+      .select("*").eq("company_id", company.id)
+      .eq("period","labor_role").order("sort_order");
+    if(lr?.length) setLaborRoles(lr.map(r=>({role:r.name, rate:Number(r.amount||0)})));
 
     // load consumables
     const { data:con } = await supabase.from("cost_settings")
@@ -264,6 +278,23 @@ export default function Settings() {
         );
       }
 
+      // save labor roles
+      await supabase.from("cost_settings")
+        .delete().eq("company_id", company.id).eq("period","labor_role");
+      const validRoles = laborRoles.filter(r=>r.role&&Number(r.rate||0)>0);
+      if(validRoles.length>0){
+        await supabase.from("cost_settings").insert(
+          validRoles.map((r,i)=>({
+            company_id: company.id,
+            category: "Labor",
+            name: r.role,
+            amount: Number(r.rate||0),
+            period: "labor_role",
+            sort_order: i,
+          }))
+        );
+      }
+
       // save consumables — stored in cost_settings with period=job_consumable
       await supabase.from("cost_settings")
         .delete().eq("company_id", company.id).eq("period","job_consumable");
@@ -308,6 +339,7 @@ export default function Settings() {
     { id:"overhead", label:"Overhead" },
     { id:"materials", label:"Materials" },
     { id:"labor", label:"Labor & Margin" },
+    { id:"laboroles", label:"Labor Roles" },
     { id:"consumables", label:"Consumables" },
     { id:"summary", label:"Summary" },
   ];
@@ -606,6 +638,64 @@ export default function Settings() {
               <div style={{ fontSize:11, color:C.muted, marginTop:8 }}>
                 If total cost = $1,000 → Final price = ${fmt(1000 * (1 + margin/100))}
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── LABOR ROLES TAB ── */}
+        {tab==="laboroles" && (
+          <div>
+            <div style={{ fontSize:12, color:C.muted, marginBottom:10 }}>
+              Define your crew roles and hourly rates once.
+              These auto-fill into every estimate automatically.
+            </div>
+
+            <div style={{ background:C.white, borderRadius:10,
+                border:`1px solid ${C.border}`, overflow:"hidden", marginBottom:10 }}>
+              {/* header */}
+              <div style={{ display:"grid", gridTemplateColumns:"2fr 1fr 28px",
+                  gap:8, padding:"8px 14px", background:"#f8fafc",
+                  borderBottom:`1px solid ${C.border}`,
+                  fontSize:10, fontWeight:700, color:C.muted,
+                  textTransform:"uppercase", letterSpacing:0.4 }}>
+                <span>Role</span>
+                <span>Rate/hr</span>
+                <span></span>
+              </div>
+              {laborRoles.map((r,i)=>(
+                <div key={i} style={{ display:"grid",
+                    gridTemplateColumns:"2fr 1fr 28px",
+                    gap:8, padding:"8px 14px",
+                    borderBottom:i<laborRoles.length-1?`1px solid ${C.border}`:"none",
+                    background:i%2===0?C.white:"#fafbfc", alignItems:"center" }}>
+                  <input placeholder={i===0?"Lead Installer":i===1?"Helper":"Role name"}
+                    value={r.role}
+                    onChange={e=>setLaborRoles(p=>p.map((x,j)=>j===i?{...x,role:e.target.value}:x))}
+                    style={{...I, height:30, fontSize:12}} />
+                  <div style={{ display:"flex", alignItems:"center", gap:4 }}>
+                    <span style={{ fontSize:12, color:C.muted }}>$</span>
+                    <input type="number" value={r.rate||""}
+                      onChange={e=>setLaborRoles(p=>p.map((x,j)=>j===i?{...x,rate:e.target.value}:x))}
+                      style={{...I, height:30, fontSize:12, textAlign:"right"}} />
+                    <span style={{ fontSize:11, color:C.muted }}>/hr</span>
+                  </div>
+                  <button onClick={()=>setLaborRoles(p=>p.map((x,j)=>j===i?{...x,role:"",rate:0}:x))}
+                    style={{...Btn, padding:"0 6px", height:26, color:C.faint, fontSize:13}}>
+                    ✕
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            <button onClick={()=>setLaborRoles(p=>[...p,{role:"",rate:0}])}
+              style={{...BtnG, width:"100%", height:36, fontSize:13, marginBottom:12}}>
+              + Add Role
+            </button>
+
+            <div style={{ background:"#fffbeb", borderRadius:8, padding:"10px 14px",
+                border:"1px solid #fde68a", fontSize:12, color:"#92400e" }}>
+              💡 These rates auto-fill into the Labor section of every new estimate.
+              You can still adjust hours per job on the estimate form.
             </div>
           </div>
         )}

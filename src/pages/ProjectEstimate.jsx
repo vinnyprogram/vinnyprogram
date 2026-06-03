@@ -903,11 +903,12 @@ export default function ProjectEstimate() {
   const [saved, setSaved]         = useState(false);
   const [savedProjectId, setSavedProjectId] = useState(projectId||null);
   const [laborRoles, setLaborRoles] = useState([
-    { role:"Lead Installer", hours:"", rate:55 },
-    { role:"Helper",         hours:"", rate:35 },
-    { role:"",               hours:"", rate:0  },
-    { role:"",               hours:"", rate:0  },
+    { role:"Lead Installer", hours:"8", days:"1", people:1, rate:55 },
+    { role:"Helper",         hours:"8", days:"1", people:1, rate:35 },
+    { role:"",               hours:"8", days:"1", people:1, rate:0  },
+    { role:"",               hours:"8", days:"1", people:1, rate:0  },
   ]);
+  const [laborLoaded, setLaborLoaded] = useState(false);
   const [newFloorName, setNewFloorName] = useState("");
   const [addingFloor, setAddingFloor]   = useState(false);
   const [panelOpen, setPanelOpen]       = useState(false);
@@ -919,6 +920,26 @@ export default function ProjectEstimate() {
       if(data) setMaterials(data);
     });
     loadLeads();
+    // load labor roles from settings
+    supabase.auth.getUser().then(({data:{user}})=>{
+      if(!user) return;
+      supabase.from("companies").select("id").eq("user_id",user.id).maybeSingle()
+        .then(({data:cd})=>{
+          if(!cd) return;
+          supabase.from("cost_settings").select("*")
+            .eq("company_id",cd.id).eq("period","labor_role")
+            .order("sort_order")
+            .then(({data:roles})=>{
+              if(roles?.length){
+                const filled = roles.map(r=>({role:r.name,hours:"",rate:Number(r.amount||0)}));
+                // pad to 4 slots
+                while(filled.length<4) filled.push({role:"",hours:"",rate:0});
+                setLaborRoles(filled);
+              }
+              setLaborLoaded(true);
+            });
+        });
+    });
 
   },[]);
 
@@ -1259,7 +1280,7 @@ export default function ProjectEstimate() {
       );
       // calculate labor cost from all roles
       const finalLaborCost = laborRoles.reduce((s,r)=>
-        s + Number(r.hours||0)*Number(r.rate||0), 0);
+        s + Number(r.hours||0)*Number(r.days||1)*Number(r.people||1)*Number(r.rate||0), 0);
       const pricing = await calculateJobPrice(companyId, allAreasList, projectTotal>0?projectTotal:0);
       const totalCostWithLabor = pricing.material_cost + pricing.overhead_cost + finalLaborCost;
       const finalPriceWithLabor = totalCostWithLabor * (1 + (pricing.profit_margin_pct||30)/100);
@@ -1275,7 +1296,7 @@ export default function ProjectEstimate() {
         material_cost: pricing.material_cost,
         overhead_cost: pricing.overhead_cost,
         labor_cost: Math.round(finalLaborCost*100)/100,
-        labor_hours: laborRoles.reduce((s,r)=>s+Number(r.hours||0),0),
+        labor_hours: laborRoles.reduce((s,r)=>s+Number(r.hours||0)*Number(r.days||1)*Number(r.people||1),0),
         crew_size: laborRoles.filter(r=>Number(r.hours||0)>0).length,
         labor_rate: laborRoles.find(r=>Number(r.hours||0)>0)?.rate||45,
         profit_margin_pct: pricing.profit_margin_pct,
@@ -1436,26 +1457,34 @@ export default function ProjectEstimate() {
               ⏱ Labor (Estimated)
             </div>
             {/* header */}
-            <div style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 1fr",
-                gap:4,marginBottom:4}}>
-              {["Role","Hours","$/hr","Cost"].map(h=>(
+            <div style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 1fr 1fr 1fr",
+                gap:3,marginBottom:4}}>
+              {["Role","Hrs/day","Days","People","$/hr","Cost"].map(h=>(
                 <div key={h} style={{fontSize:9,color:"#94a3b8",fontWeight:700,
                     textTransform:"uppercase",letterSpacing:0.3}}>{h}</div>
               ))}
             </div>
             {laborRoles.map((r,i)=>{
-              const cost = Number(r.hours||0)*Number(r.rate||0);
+              const cost = Number(r.hours||0)*Number(r.days||1)*Number(r.people||1)*Number(r.rate||0);
               return (
                 <div key={i} style={{display:"grid",
-                    gridTemplateColumns:"2fr 1fr 1fr 1fr",
-                    gap:4,marginBottom:4,alignItems:"center"}}>
+                    gridTemplateColumns:"2fr 1fr 1fr 1fr 1fr 1fr",
+                    gap:3,marginBottom:4,alignItems:"center"}}>
                   <input placeholder={i===0?"Lead":i===1?"Helper":"Role"}
                     value={r.role}
                     onChange={e=>setLaborRoles(p=>p.map((x,j)=>j===i?{...x,role:e.target.value}:x))}
                     style={{...I,height:28,fontSize:11}} />
-                  <input type="number" placeholder="0" inputMode="decimal"
+                  <input type="number" placeholder="8" inputMode="decimal"
                     value={r.hours}
                     onChange={e=>setLaborRoles(p=>p.map((x,j)=>j===i?{...x,hours:e.target.value}:x))}
+                    style={{...I,height:28,fontSize:11,textAlign:"center"}} />
+                  <input type="number" placeholder="1"
+                    value={r.days}
+                    onChange={e=>setLaborRoles(p=>p.map((x,j)=>j===i?{...x,days:e.target.value}:x))}
+                    style={{...I,height:28,fontSize:11,textAlign:"center"}} />
+                  <input type="number" placeholder="1"
+                    value={r.people}
+                    onChange={e=>setLaborRoles(p=>p.map((x,j)=>j===i?{...x,people:e.target.value}:x))}
                     style={{...I,height:28,fontSize:11,textAlign:"center"}} />
                   <input type="number" placeholder="0"
                     value={r.rate||""}
@@ -1470,7 +1499,8 @@ export default function ProjectEstimate() {
             })}
             {/* total */}
             {(()=>{
-              const total = laborRoles.reduce((s,r)=>s+Number(r.hours||0)*Number(r.rate||0),0);
+              const total = laborRoles.reduce((s,r)=>
+                s+Number(r.hours||0)*Number(r.days||1)*Number(r.people||1)*Number(r.rate||0),0);
               return total>0 ? (
                 <div style={{display:"flex",justifyContent:"space-between",
                     paddingTop:6,borderTop:"1px solid #bfdbfe",marginTop:2}}>
