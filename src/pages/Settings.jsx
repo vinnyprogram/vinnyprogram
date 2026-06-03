@@ -53,6 +53,14 @@ export default function Settings() {
   // Materials
   const [matCosts, setMatCosts] = useState([]);
 
+  // Assets depreciation
+  const [assets, setAssets] = useState([]);
+  // Sales reps
+  const [salesReps, setSalesReps] = useState([]);
+  // Fuel
+  const [fuelRate, setFuelRate] = useState(0.67); // $/mile IRS rate
+  const [companyAddress] = useState("69 Watson St, Brockton MA");
+
   // Labor roles
   const [laborRoles, setLaborRoles] = useState([
     { role:"Lead Installer", rate:55 },
@@ -82,6 +90,27 @@ export default function Settings() {
       .order("sort_order");
     if(c?.length) setCosts(c);
     else seedOverhead();
+
+    // load assets
+    const { data:assetData } = await supabase.from("assets")
+      .select("*").eq("company_id", company.id).order("sort_order");
+    if(assetData?.length) setAssets(assetData);
+    else setAssets([
+      { id:null, name:"Spray Rig",     purchase_price:80000, useful_life_years:10, salvage_value:5000, sort_order:0 },
+      { id:null, name:"Truck #1",      purchase_price:45000, useful_life_years:5,  salvage_value:5000, sort_order:1 },
+      { id:null, name:"Blown Machine", purchase_price:12000, useful_life_years:7,  salvage_value:500,  sort_order:2 },
+    ]);
+
+    // load sales reps
+    const { data:repData } = await supabase.from("sales_reps")
+      .select("*").eq("company_id", company.id).order("created_at");
+    if(repData?.length) setSalesReps(repData);
+    else setSalesReps([{ id:null, name:"Vinicius", commission_pct:5, active:true }]);
+
+    // load fuel rate
+    const { data:fuelData } = await supabase.from("cost_settings")
+      .select("*").eq("company_id", company.id).eq("period","fuel").maybeSingle();
+    if(fuelData) setFuelRate(Number(fuelData.amount||0.67));
 
     // load labor roles
     const { data:lr } = await supabase.from("cost_settings")
@@ -133,6 +162,13 @@ export default function Settings() {
   }
 
   // consumables total
+  // depreciation calculations
+  const totalMonthlyDepreciation = assets.reduce((s,a)=>{
+    const annual = (Number(a.purchase_price||0) - Number(a.salvage_value||0)) / Number(a.useful_life_years||5);
+    return s + annual/12;
+  }, 0);
+  const depreciationPerJob = jobsPerMonth>0 ? totalMonthlyDepreciation/jobsPerMonth : 0;
+
   const totalConsumables = consumables.reduce((s,c)=>
     s + (Number(c.unit_price||0) * Number(c.qty_per_job||1)), 0);
 
@@ -278,6 +314,51 @@ export default function Settings() {
         );
       }
 
+      // save assets
+      await supabase.from("assets").delete().eq("company_id", company.id);
+      if(assets.filter(a=>a.name).length>0){
+        await supabase.from("assets").insert(
+          assets.filter(a=>a.name).map((a,i)=>({
+            company_id: company.id,
+            name: a.name,
+            purchase_price: Number(a.purchase_price||0),
+            useful_life_years: Number(a.useful_life_years||5),
+            salvage_value: Number(a.salvage_value||0),
+            sort_order: i,
+          }))
+        );
+      }
+
+      // save sales reps
+      for(const rep of salesReps.filter(r=>r.name)){
+        if(rep.id){
+          await supabase.from("sales_reps").update({
+            name: rep.name,
+            commission_pct: Number(rep.commission_pct||0),
+            active: rep.active,
+          }).eq("id", rep.id);
+        } else {
+          await supabase.from("sales_reps").insert([{
+            company_id: company.id,
+            name: rep.name,
+            commission_pct: Number(rep.commission_pct||0),
+            active: true,
+          }]);
+        }
+      }
+
+      // save fuel rate
+      await supabase.from("cost_settings")
+        .delete().eq("company_id", company.id).eq("period","fuel");
+      await supabase.from("cost_settings").insert([{
+        company_id: company.id,
+        category: "Fuel",
+        name: "Fuel rate per mile",
+        amount: Number(fuelRate||0.67),
+        period: "fuel",
+        sort_order: 0,
+      }]);
+
       // save labor roles
       await supabase.from("cost_settings")
         .delete().eq("company_id", company.id).eq("period","labor_role");
@@ -340,6 +421,9 @@ export default function Settings() {
     { id:"materials", label:"Materials" },
     { id:"labor", label:"Labor & Margin" },
     { id:"laboroles", label:"Labor Roles" },
+    { id:"assets", label:"Assets" },
+    { id:"fuel", label:"Fuel" },
+    { id:"salesreps", label:"Sales Reps" },
     { id:"consumables", label:"Consumables" },
     { id:"summary", label:"Summary" },
   ];
@@ -639,6 +723,162 @@ export default function Settings() {
                 If total cost = $1,000 → Final price = ${fmt(1000 * (1 + margin/100))}
               </div>
             </div>
+          </div>
+        )}
+
+        {/* ── ASSETS TAB ── */}
+        {tab==="assets" && (
+          <div>
+            <div style={{fontSize:12,color:C.muted,marginBottom:10}}>
+              Asset depreciation is calculated monthly and added to overhead cost per job.
+              Formula: (Purchase Price - Salvage Value) ÷ Useful Life Years ÷ 12 months
+            </div>
+
+            <div style={{background:C.white,borderRadius:10,border:`1px solid ${C.border}`,overflow:"hidden",marginBottom:10}}>
+              <div style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 1fr 1fr 28px",
+                  gap:4,padding:"8px 12px",background:"#f8fafc",
+                  borderBottom:`1px solid ${C.border}`,
+                  fontSize:9,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:0.4}}>
+                <span>Asset</span><span>Purchase $</span><span>Life (yrs)</span>
+                <span>Salvage $</span><span>$/month</span><span></span>
+              </div>
+              {assets.map((a,i)=>{
+                const annual = (Number(a.purchase_price||0)-Number(a.salvage_value||0))/Number(a.useful_life_years||5);
+                const monthly = annual/12;
+                return (
+                  <div key={i} style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 1fr 1fr 28px",
+                      gap:4,padding:"8px 12px",
+                      borderBottom:i<assets.length-1?`1px solid ${C.border}`:"none",
+                      background:i%2===0?C.white:"#fafbfc",alignItems:"center"}}>
+                    <input placeholder="Asset name" value={a.name}
+                      onChange={e=>setAssets(p=>p.map((x,j)=>j===i?{...x,name:e.target.value}:x))}
+                      style={{...I,height:28,fontSize:11}} />
+                    <div style={{display:"flex",alignItems:"center",gap:1}}>
+                      <span style={{fontSize:10,color:C.muted}}>$</span>
+                      <input type="number" value={a.purchase_price||""}
+                        onChange={e=>setAssets(p=>p.map((x,j)=>j===i?{...x,purchase_price:e.target.value}:x))}
+                        style={{...I,height:28,fontSize:11,textAlign:"right"}} />
+                    </div>
+                    <input type="number" value={a.useful_life_years||""}
+                      onChange={e=>setAssets(p=>p.map((x,j)=>j===i?{...x,useful_life_years:e.target.value}:x))}
+                      style={{...I,height:28,fontSize:11,textAlign:"center"}} />
+                    <div style={{display:"flex",alignItems:"center",gap:1}}>
+                      <span style={{fontSize:10,color:C.muted}}>$</span>
+                      <input type="number" value={a.salvage_value||""}
+                        onChange={e=>setAssets(p=>p.map((x,j)=>j===i?{...x,salvage_value:e.target.value}:x))}
+                        style={{...I,height:28,fontSize:11,textAlign:"right"}} />
+                    </div>
+                    <div style={{fontSize:11,fontWeight:700,color:C.green,textAlign:"right"}}>
+                      ${fmt(monthly)}/mo
+                    </div>
+                    <button onClick={()=>setAssets(p=>p.filter((_,j)=>j!==i))}
+                      style={{...Btn,padding:"0 6px",height:26,color:C.faint,fontSize:13}}>✕</button>
+                  </div>
+                );
+              })}
+            </div>
+            <button onClick={()=>setAssets(p=>[...p,{id:null,name:"",purchase_price:0,useful_life_years:5,salvage_value:0,sort_order:p.length}])}
+              style={{...BtnG,width:"100%",height:36,fontSize:13,marginBottom:12}}>
+              + Add Asset
+            </button>
+            <div style={{background:C.ink,borderRadius:10,padding:"12px 16px",
+                display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <div>
+                <div style={{color:"#94a3b8",fontSize:11}}>Total Monthly Depreciation</div>
+                <div style={{color:"white",fontWeight:800,fontSize:18}}>${fmt(totalMonthlyDepreciation)}/mo</div>
+              </div>
+              <div style={{textAlign:"right"}}>
+                <div style={{color:"#94a3b8",fontSize:11}}>Per Job ({jobsPerMonth} jobs/mo)</div>
+                <div style={{color:C.green,fontWeight:800,fontSize:18}}>${fmt(depreciationPerJob)}</div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── FUEL TAB ── */}
+        {tab==="fuel" && (
+          <div>
+            <div style={{fontSize:12,color:C.muted,marginBottom:12}}>
+              Fuel cost is calculated per job based on distance from your company to the job site.
+              Enter miles manually on each estimate.
+            </div>
+            <div style={{background:C.white,borderRadius:10,border:`1px solid ${C.border}`,padding:"16px",marginBottom:12}}>
+              <div style={{fontWeight:700,fontSize:14,marginBottom:12}}>Fuel Rate</div>
+              <div style={{display:"flex",gap:12,alignItems:"center",marginBottom:16}}>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:12,color:C.muted,marginBottom:4}}>Cost per mile (round trip)</div>
+                  <div style={{display:"flex",alignItems:"center",gap:4}}>
+                    <span style={{color:C.muted}}>$</span>
+                    <input type="number" value={fuelRate}
+                      onChange={e=>setFuelRate(Number(e.target.value))}
+                      style={{...I,textAlign:"right"}} />
+                    <span style={{fontSize:12,color:C.muted}}>/mile</span>
+                  </div>
+                  <div style={{fontSize:11,color:C.faint,marginTop:4}}>
+                    IRS standard rate 2026: $0.67/mile
+                  </div>
+                </div>
+              </div>
+              <div style={{background:"#f0fdf4",borderRadius:8,padding:"12px",border:"1px solid #86efac"}}>
+                <div style={{fontSize:12,fontWeight:700,color:"#059669",marginBottom:6}}>Example</div>
+                <div style={{fontSize:12,color:"#374151",lineHeight:2}}>
+                  <div>Job is 25 miles from company (50 miles round trip)</div>
+                  <div>Fuel cost = 50 × ${fuelRate} = <b>${fmt(50*fuelRate)}</b></div>
+                </div>
+              </div>
+            </div>
+            <div style={{background:"#fffbeb",borderRadius:8,padding:"10px 14px",
+                border:"1px solid #fde68a",fontSize:12,color:"#92400e"}}>
+              💡 On each estimate you enter the one-way miles to the job.
+              The app calculates round trip automatically.
+            </div>
+          </div>
+        )}
+
+        {/* ── SALES REPS TAB ── */}
+        {tab==="salesreps" && (
+          <div>
+            <div style={{fontSize:12,color:C.muted,marginBottom:10}}>
+              Commission is calculated as a % of the final price and added to job cost.
+              Each estimate can be assigned to a specific sales rep.
+            </div>
+            <div style={{background:C.white,borderRadius:10,border:`1px solid ${C.border}`,overflow:"hidden",marginBottom:10}}>
+              <div style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 28px",
+                  gap:8,padding:"8px 14px",background:"#f8fafc",
+                  borderBottom:`1px solid ${C.border}`,
+                  fontSize:10,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:0.4}}>
+                <span>Name</span><span>Commission %</span><span>Active</span><span></span>
+              </div>
+              {salesReps.map((r,i)=>(
+                <div key={i} style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 28px",
+                    gap:8,padding:"8px 14px",
+                    borderBottom:i<salesReps.length-1?`1px solid ${C.border}`:"none",
+                    background:i%2===0?C.white:"#fafbfc",alignItems:"center"}}>
+                  <input placeholder="Rep name" value={r.name}
+                    onChange={e=>setSalesReps(p=>p.map((x,j)=>j===i?{...x,name:e.target.value}:x))}
+                    style={{...I,height:30,fontSize:12}} />
+                  <div style={{display:"flex",alignItems:"center",gap:2}}>
+                    <input type="number" value={r.commission_pct||""}
+                      onChange={e=>setSalesReps(p=>p.map((x,j)=>j===i?{...x,commission_pct:e.target.value}:x))}
+                      style={{...I,height:30,fontSize:12,textAlign:"right"}} />
+                    <span style={{fontSize:11,color:C.muted}}>%</span>
+                  </div>
+                  <button onClick={()=>setSalesReps(p=>p.map((x,j)=>j===i?{...x,active:!x.active}:x))}
+                    style={{...Btn,height:28,fontSize:11,padding:"0 8px",
+                      background:r.active?"#dcfce7":C.white,
+                      color:r.active?"#059669":C.faint,
+                      border:r.active?"1px solid #86efac":`1px solid ${C.border}`}}>
+                    {r.active?"Active":"Inactive"}
+                  </button>
+                  <button onClick={()=>setSalesReps(p=>p.filter((_,j)=>j!==i))}
+                    style={{...Btn,padding:"0 6px",height:26,color:C.faint,fontSize:13}}>✕</button>
+                </div>
+              ))}
+            </div>
+            <button onClick={()=>setSalesReps(p=>[...p,{id:null,name:"",commission_pct:5,active:true}])}
+              style={{...BtnG,width:"100%",height:36,fontSize:13}}>
+              + Add Sales Rep
+            </button>
           </div>
         )}
 

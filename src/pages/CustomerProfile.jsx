@@ -12,46 +12,50 @@ function fmtDate(d) {
 
 function ActualLaborInput({ jobId, quote, onSave }) {
   const [roles, setRoles] = useState([
-    { role:"Lead Installer", hours: quote?.labor_hours||"", rate:55 },
-    { role:"Helper",         hours:"", rate:35 },
-    { role:"",               hours:"", rate:0 },
-    { role:"",               hours:"", rate:0 },
+    { role:"Lead Installer", hours:"8", days:"1", people:1, rate:55 },
+    { role:"Helper",         hours:"8", days:"1", people:1, rate:35 },
+    { role:"",               hours:"8", days:"1", people:1, rate:0 },
+    { role:"",               hours:"8", days:"1", people:1, rate:0 },
   ]);
-  const total = roles.reduce((s,r)=>s+Number(r.hours||0)*Number(r.rate||0),0);
+  const total = roles.reduce((s,r)=>
+    s+Number(r.hours||0)*Number(r.days||1)*Number(r.people||1)*Number(r.rate||0),0);
+  const IS = {height:28,borderRadius:4,border:"1px solid #e2e8f0",
+    fontSize:11,textAlign:"center",width:"100%",boxSizing:"border-box"};
   return (
     <div style={{marginBottom:10,padding:"10px",background:"white",
         borderRadius:6,border:"1px solid #86efac"}}>
       <div style={{fontSize:10,color:"#64748b",marginBottom:6,fontWeight:600}}>
         ✏️ Actual Hours (after job)
       </div>
-      <div style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 1fr",
-          gap:4,marginBottom:4}}>
-        {["Role","Hours","$/hr","Cost"].map(h=>(
+      <div style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 1fr 1fr 1fr",
+          gap:3,marginBottom:4}}>
+        {["Role","Hrs/day","Days","People","$/hr","Cost"].map(h=>(
           <div key={h} style={{fontSize:9,color:"#94a3b8",fontWeight:700,
               textTransform:"uppercase"}}>{h}</div>
         ))}
       </div>
       {roles.map((r,i)=>{
-        const cost = Number(r.hours||0)*Number(r.rate||0);
+        const cost = Number(r.hours||0)*Number(r.days||1)*Number(r.people||1)*Number(r.rate||0);
         return (
           <div key={i} style={{display:"grid",
-              gridTemplateColumns:"2fr 1fr 1fr 1fr",
-              gap:4,marginBottom:4,alignItems:"center"}}>
+              gridTemplateColumns:"2fr 1fr 1fr 1fr 1fr 1fr",
+              gap:3,marginBottom:4,alignItems:"center"}}>
             <input placeholder={i===0?"Lead":i===1?"Helper":"Role"}
               value={r.role}
               onChange={e=>setRoles(p=>p.map((x,j)=>j===i?{...x,role:e.target.value}:x))}
-              style={{height:28,borderRadius:4,border:"1px solid #e2e8f0",
-                fontSize:11,padding:"0 6px",width:"100%",boxSizing:"border-box"}} />
-            <input type="number" placeholder="0"
-              value={r.hours}
+              style={{...IS,textAlign:"left",padding:"0 6px"}} />
+            <input type="number" value={r.hours}
               onChange={e=>setRoles(p=>p.map((x,j)=>j===i?{...x,hours:e.target.value}:x))}
-              style={{height:28,borderRadius:4,border:"1px solid #e2e8f0",
-                fontSize:11,textAlign:"center",width:"100%",boxSizing:"border-box"}} />
-            <input type="number" placeholder="0"
-              value={r.rate||""}
+              style={IS} />
+            <input type="number" value={r.days}
+              onChange={e=>setRoles(p=>p.map((x,j)=>j===i?{...x,days:e.target.value}:x))}
+              style={IS} />
+            <input type="number" value={r.people}
+              onChange={e=>setRoles(p=>p.map((x,j)=>j===i?{...x,people:e.target.value}:x))}
+              style={IS} />
+            <input type="number" value={r.rate||""}
               onChange={e=>setRoles(p=>p.map((x,j)=>j===i?{...x,rate:e.target.value}:x))}
-              style={{height:28,borderRadius:4,border:"1px solid #e2e8f0",
-                fontSize:11,textAlign:"center",width:"100%",boxSizing:"border-box"}} />
+              style={IS} />
             <div style={{fontSize:11,fontWeight:700,
                 color:cost>0?"#059669":"#94a3b8",textAlign:"right"}}>
               {cost>0?`$${cost.toLocaleString("en-US",{maximumFractionDigits:0})}`:"—"}
@@ -161,8 +165,10 @@ export default function CustomerProfile() {
   }
 
   async function updateActualHours(projectId, roles) {
-    const laborCost = roles.reduce((s,r)=>s+Number(r.hours||0)*Number(r.rate||0),0);
-    const totalHours = roles.reduce((s,r)=>s+Number(r.hours||0),0);
+    const laborCost = roles.reduce((s,r)=>
+      s+Number(r.hours||0)*Number(r.days||1)*Number(r.people||1)*Number(r.rate||0),0);
+    const totalHours = roles.reduce((s,r)=>
+      s+Number(r.hours||0)*Number(r.days||1)*Number(r.people||1),0);
     const { data:q } = await supabase.from("quotes")
       .select("*").eq("project_id", projectId).single();
     if(!q) return;
@@ -406,9 +412,11 @@ export default function CustomerProfile() {
                         />
 
                         {[
-                          ["Materials", job.quotes[0].material_cost],
-                          ["Overhead",  job.quotes[0].overhead_cost],
-                          ["Labor",     job.quotes[0].labor_cost],
+                          ["Materials",   job.quotes[0].material_cost],
+                          ["Overhead",    job.quotes[0].overhead_cost],
+                          ["Labor",       job.quotes[0].labor_cost],
+                          ["Fuel",        job.quotes[0].fuel_cost],
+                          ["Commission",  job.quotes[0].commission_cost],
                         ].map(([label,val],i)=>(
                           <div key={i} style={{display:"flex",justifyContent:"space-between",
                               fontSize:12,color:"#374151",paddingBottom:4,marginBottom:4,

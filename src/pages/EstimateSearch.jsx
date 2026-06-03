@@ -29,7 +29,7 @@ export default function EstimateSearch() {
 
       const { data:quotes } = await supabase
         .from("quotes")
-        .select("project_id, grand_total, status, created_at, final_price, material_cost, overhead_cost, labor_cost, profit_margin_pct")
+        .select("project_id, grand_total, status, created_at, final_price, material_cost, overhead_cost, labor_cost, fuel_cost, commission_cost, commission_pct, profit_margin_pct, job_miles")
         .order("created_at", { ascending:false });
 
       const quoteMap = {};
@@ -202,9 +202,11 @@ export default function EstimateSearch() {
                     💰 Cost Breakdown (Internal)
                   </div>
                   {[
-                    ["Materials", p.quote.material_cost],
-                    ["Overhead", p.quote.overhead_cost],
-                    ["Labor", p.quote.labor_cost],
+                    ["Materials",  p.quote.material_cost],
+                    ["Overhead",   p.quote.overhead_cost],
+                    ["Labor",      p.quote.labor_cost],
+                    ["Fuel",       p.quote.fuel_cost],
+                    ["Commission", p.quote.commission_cost],
                   ].map(([label,val],i)=>(
                     <div key={i} style={{display:"flex",justifyContent:"space-between",
                         fontSize:12,color:"#374151",paddingBottom:4,marginBottom:4,

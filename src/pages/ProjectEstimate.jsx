@@ -909,6 +909,10 @@ export default function ProjectEstimate() {
     { role:"",               hours:"8", days:"1", people:1, rate:0  },
   ]);
   const [laborLoaded, setLaborLoaded] = useState(false);
+  const [jobMiles, setJobMiles]     = useState("");
+  const [fuelRate, setFuelRate]     = useState(0.67);
+  const [salesReps, setSalesReps]   = useState([]);
+  const [selectedRep, setSelectedRep] = useState("");
   const [newFloorName, setNewFloorName] = useState("");
   const [addingFloor, setAddingFloor]   = useState(false);
   const [panelOpen, setPanelOpen]       = useState(false);
@@ -920,25 +924,32 @@ export default function ProjectEstimate() {
       if(data) setMaterials(data);
     });
     loadLeads();
-    // load labor roles from settings
-    supabase.auth.getUser().then(({data:{user}})=>{
+    // load settings (labor, fuel, sales reps)
+    supabase.auth.getUser().then(async({data:{user}})=>{
       if(!user) return;
-      supabase.from("companies").select("id").eq("user_id",user.id).maybeSingle()
-        .then(({data:cd})=>{
-          if(!cd) return;
-          supabase.from("cost_settings").select("*")
-            .eq("company_id",cd.id).eq("period","labor_role")
-            .order("sort_order")
-            .then(({data:roles})=>{
-              if(roles?.length){
-                const filled = roles.map(r=>({role:r.name,hours:"",rate:Number(r.amount||0)}));
-                // pad to 4 slots
-                while(filled.length<4) filled.push({role:"",hours:"",rate:0});
-                setLaborRoles(filled);
-              }
-              setLaborLoaded(true);
-            });
-        });
+      const {data:cd} = await supabase.from("companies").select("id").eq("user_id",user.id).maybeSingle();
+      if(!cd) return;
+
+      // labor roles
+      const {data:roles} = await supabase.from("cost_settings").select("*")
+        .eq("company_id",cd.id).eq("period","labor_role").order("sort_order");
+      if(roles?.length){
+        const filled = roles.map(r=>({role:r.name,hours:"8",days:"1",people:1,rate:Number(r.amount||0)}));
+        while(filled.length<4) filled.push({role:"",hours:"8",days:"1",people:1,rate:0});
+        setLaborRoles(filled);
+      }
+
+      // fuel rate
+      const {data:fuel} = await supabase.from("cost_settings").select("*")
+        .eq("company_id",cd.id).eq("period","fuel").maybeSingle();
+      if(fuel) setFuelRate(Number(fuel.amount||0.67));
+
+      // sales reps
+      const {data:reps} = await supabase.from("sales_reps").select("*")
+        .eq("company_id",cd.id).eq("active",true).order("created_at");
+      if(reps?.length) setSalesReps(reps);
+
+      setLaborLoaded(true);
     });
 
   },[]);
@@ -1282,8 +1293,25 @@ export default function ProjectEstimate() {
       const finalLaborCost = laborRoles.reduce((s,r)=>
         s + Number(r.hours||0)*Number(r.days||1)*Number(r.people||1)*Number(r.rate||0), 0);
       const pricing = await calculateJobPrice(companyId, allAreasList, projectTotal>0?projectTotal:0);
-      const totalCostWithLabor = pricing.material_cost + pricing.overhead_cost + finalLaborCost;
-      const finalPriceWithLabor = totalCostWithLabor * (1 + (pricing.profit_margin_pct||30)/100);
+
+      // fuel cost (round trip)
+      const fuelCostCalc = Number(jobMiles||0) * 2 * fuelRate;
+
+      // depreciation per job
+      const {data:assetList} = await supabase.from("assets").select("*").eq("company_id",companyId);
+      const monthlyDepr = (assetList||[]).reduce((s,a)=>{
+        const annual=(Number(a.purchase_price||0)-Number(a.salvage_value||0))/Number(a.useful_life_years||5);
+        return s+annual/12;
+      },0);
+      const depreciationCost = jobsPerMonth>0 ? monthlyDepr/20 : 0;
+
+      // commission
+      const repData = selectedRep ? salesReps.find(r=>r.id===selectedRep) : null;
+      const commissionPct = repData ? Number(repData.commission_pct||0) : 0;
+      const totalCostWithLabor = pricing.material_cost + pricing.overhead_cost + finalLaborCost + fuelCostCalc + depreciationCost;
+      const basePriceWithMargin = totalCostWithLabor * (1 + (pricing.profit_margin_pct||30)/100);
+      const commissionCost = basePriceWithMargin * commissionPct/100;
+      const finalPriceWithLabor = basePriceWithMargin + commissionCost;
 
       if(selectedLeadId) await supabase.from("customers")
         .update({estimate_amount:Math.round(finalPriceWithLabor*100)/100}).eq("id",selectedLeadId);
@@ -1300,6 +1328,11 @@ export default function ProjectEstimate() {
         crew_size: laborRoles.filter(r=>Number(r.hours||0)>0).length,
         labor_rate: laborRoles.find(r=>Number(r.hours||0)>0)?.rate||45,
         profit_margin_pct: pricing.profit_margin_pct,
+        fuel_cost: Math.round(fuelCostCalc*100)/100,
+        commission_cost: Math.round(commissionCost*100)/100,
+        commission_pct: commissionPct,
+        job_miles: Number(jobMiles||0),
+        sales_rep_id: selectedRep||null,
         status:"Draft", company_id:companyId,
       }]);
       setSaved(true);
@@ -1511,6 +1544,41 @@ export default function ProjectEstimate() {
                 </div>
               ) : null;
             })()}
+          </div>
+
+          {/* fuel + sales rep card */}
+          <div style={{...CARD, marginBottom:5, display:"flex", gap:8}}>
+            <div style={{flex:1}}>
+              <div style={{fontSize:10,fontWeight:700,color:C.muted,
+                  textTransform:"uppercase",letterSpacing:0.4,marginBottom:4}}>
+                ⛽ Miles (one-way)
+              </div>
+              <div style={{display:"flex",alignItems:"center",gap:4}}>
+                <input type="number" placeholder="0" inputMode="decimal"
+                  value={jobMiles}
+                  onChange={e=>setJobMiles(e.target.value)}
+                  style={{...I,height:30,fontSize:13,textAlign:"center"}} />
+                <span style={{fontSize:11,color:C.muted,whiteSpace:"nowrap"}}>
+                  {jobMiles>0?`$${((Number(jobMiles)*2)*fuelRate).toFixed(2)}`:""}
+                </span>
+              </div>
+            </div>
+            <div style={{flex:1}}>
+              <div style={{fontSize:10,fontWeight:700,color:C.muted,
+                  textTransform:"uppercase",letterSpacing:0.4,marginBottom:4}}>
+                👤 Sales Rep
+              </div>
+              <select value={selectedRep}
+                onChange={e=>setSelectedRep(e.target.value)}
+                style={{...I,height:30,fontSize:12}}>
+                <option value="">Select rep…</option>
+                {salesReps.map(r=>(
+                  <option key={r.id} value={r.id}>
+                    {r.name} ({r.commission_pct}%)
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
 
           {/* floor tabs */}
