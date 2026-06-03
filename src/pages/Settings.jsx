@@ -53,6 +53,9 @@ export default function Settings() {
   // Materials
   const [matCosts, setMatCosts] = useState([]);
 
+  // Consumables
+  const [consumables, setConsumables] = useState([]);
+
   // Labor
   const [laborRate, setLaborRate] = useState(45);
   const [laborMode, setLaborMode] = useState("hour"); // hour | sqft
@@ -71,6 +74,13 @@ export default function Settings() {
       .order("sort_order");
     if(c?.length) setCosts(c);
     else seedOverhead();
+
+    // load consumables
+    const { data:con } = await supabase.from("cost_settings")
+      .select("*").eq("company_id", company.id)
+      .eq("period","job_consumable").order("sort_order");
+    if(con?.length) setConsumables(con);
+    else seedConsumables();
 
     // load material costs
     const { data:m } = await supabase.from("material_costs")
@@ -94,9 +104,22 @@ export default function Settings() {
     ]);
   }
 
+  function seedConsumables() {
+    setConsumables([
+      { id:null, name:"Plastic Sheeting", amount:25, unit:"job", sort_order:1 },
+      { id:null, name:"Staples & Tape", amount:15, unit:"job", sort_order:2 },
+      { id:null, name:"Protective Suits", amount:20, unit:"job", sort_order:3 },
+      { id:null, name:"Masks & PPE", amount:10, unit:"job", sort_order:4 },
+      { id:null, name:"Miscellaneous Tools", amount:30, unit:"job", sort_order:5 },
+    ]);
+  }
+
   function seedMaterials() {
     setMatCosts(DEFAULT_MATERIALS.map(m=>({...m, id:null})));
   }
+
+  // consumables total
+  const totalConsumables = consumables.reduce((s,c)=>s+Number(c.amount||0),0);
 
   // overhead totals
   const totalMonthly = costs.reduce((s,c)=>s+Number(c.amount||0),0);
@@ -111,6 +134,16 @@ export default function Settings() {
   function removeCost(idx) {
     setCosts(p=>p.filter((_,i)=>i!==idx));
   }
+  function updateConsumable(idx, field, value) {
+    setConsumables(p=>p.map((c,i)=> i===idx ? {...c,[field]:value} : c));
+  }
+  function addConsumable() {
+    setConsumables(p=>[...p,{id:null,name:"",amount:0,unit:"job",sort_order:p.length+1}]);
+  }
+  function removeConsumable(idx) {
+    setConsumables(p=>p.filter((_,i)=>i!==idx));
+  }
+
   function updateMat(idx, field, value) {
     setMatCosts(p=>p.map((m,i)=> i===idx ? {...m,[field]:value} : m));
   }
@@ -135,6 +168,22 @@ export default function Settings() {
             name: c.name,
             amount: Number(c.amount)||0,
             period: c.period||"month",
+            sort_order: i,
+          }))
+        );
+      }
+
+      // save consumables — stored in cost_settings with period=job_consumable
+      await supabase.from("cost_settings")
+        .delete().eq("company_id", company.id).eq("period","job_consumable");
+      if(consumables.length>0){
+        await supabase.from("cost_settings").insert(
+          consumables.filter(c=>c.name).map((c,i)=>({
+            company_id: company.id,
+            category: "Job Consumables",
+            name: c.name,
+            amount: Number(c.amount)||0,
+            period: "job_consumable",
             sort_order: i,
           }))
         );
@@ -167,6 +216,7 @@ export default function Settings() {
     { id:"overhead", label:"Overhead" },
     { id:"materials", label:"Materials" },
     { id:"labor", label:"Labor & Margin" },
+    { id:"consumables", label:"Consumables" },
     { id:"summary", label:"Summary" },
   ];
 
@@ -461,6 +511,66 @@ export default function Settings() {
           </div>
         )}
 
+        {/* ── CONSUMABLES TAB ── */}
+        {tab==="consumables" && (
+          <div>
+            <div style={{ fontSize:12, color:C.muted, marginBottom:10 }}>
+              Fixed costs added to every job regardless of size.
+              In the future these can be scaled by job sqft.
+            </div>
+
+            <div style={{ background:C.white, borderRadius:10,
+                border:`1px solid ${C.border}`, overflow:"hidden", marginBottom:10 }}>
+              {consumables.map((c,i)=>(
+                <div key={i} style={{ display:"flex", gap:8, alignItems:"center",
+                    padding:"8px 14px",
+                    borderBottom:i<consumables.length-1?`1px solid ${C.border}`:"none",
+                    background:i%2===0?C.white:"#fafbfc" }}>
+                  <input placeholder="Item name e.g. Plastic Sheeting"
+                    value={c.name}
+                    onChange={e=>updateConsumable(i,"name",e.target.value)}
+                    style={{...I, flex:2, height:30, fontSize:12}} />
+                  <div style={{ display:"flex", alignItems:"center", gap:4, flexShrink:0 }}>
+                    <span style={{ fontSize:12, color:C.muted }}>$</span>
+                    <input type="number" placeholder="0" value={c.amount}
+                      onChange={e=>updateConsumable(i,"amount",e.target.value)}
+                      style={{...I, width:80, height:30, fontSize:12, textAlign:"right"}} />
+                  </div>
+                  <span style={{ fontSize:11, color:C.faint, flexShrink:0 }}>/job</span>
+                  <span style={{ fontSize:10, color:"#94a3b8", flexShrink:0,
+                      background:"#f1f5f9", padding:"2px 6px", borderRadius:4 }}>
+                    fixed
+                  </span>
+                  <button onClick={()=>removeConsumable(i)}
+                    style={{...Btn, padding:"0 8px", height:28,
+                      color:C.faint, fontSize:14, flexShrink:0}}>✕</button>
+                </div>
+              ))}
+            </div>
+
+            <button onClick={addConsumable}
+              style={{...BtnG, width:"100%", height:36, fontSize:13, marginBottom:12}}>
+              + Add Item
+            </button>
+
+            {/* total */}
+            <div style={{ background:C.ink, borderRadius:10, padding:"12px 16px",
+                display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+              <div style={{ color:"#94a3b8", fontSize:12 }}>
+                Total Consumables per Job
+              </div>
+              <div style={{ color:C.green, fontWeight:800, fontSize:20 }}>
+                ${fmt(totalConsumables)}
+              </div>
+            </div>
+
+            <div style={{ marginTop:10, padding:"10px 14px", background:"#fffbeb",
+                borderRadius:8, border:"1px solid #fde68a", fontSize:12, color:"#92400e" }}>
+              💡 Coming soon: scale by job sqft — e.g. plastic at $0.02/sqft instead of flat rate
+            </div>
+          </div>
+        )}
+
         {/* ── SUMMARY TAB ── */}
         {tab==="summary" && (
           <div>
@@ -523,6 +633,7 @@ export default function Settings() {
                         ? `Labor (${defaultCrew} crew × 4hrs × $${laborRate}/hr)`
                         : `Labor (1,000 sqft × $${laborSqftRate}/sqft)`, `$${fmt(labor)}`],
                       [`Overhead per job`, `$${fmt(overheadPerJob)}`],
+                [`Job Consumables`, `$${fmt(totalConsumables)}`],
                       [`Total Cost`, `$${fmt(totalCost)}`],
                       [`Profit Margin (${margin}%)`, `$${fmt(totalCost*margin/100)}`],
                     ].map(([l,v],i)=>(
