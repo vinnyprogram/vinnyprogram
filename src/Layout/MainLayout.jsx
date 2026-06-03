@@ -121,24 +121,28 @@ export default function MainLayout() {
                   <span>🏠</span> On Site
                 </Link>
 
-                <div style={{
-                  display:"flex", alignItems:"center", gap:10,
-                  padding:"10px 12px", color:"#4b5563",
-                  fontSize:14, borderRadius:8, cursor:"not-allowed",
-                }}>
-                  <span style={{opacity:0.4}}>📐</span>
-                  <span style={{opacity:0.4}}>By Drawings</span>
-                  <span style={{
-                    marginLeft:"auto", fontSize:9, fontWeight:700,
-                    background:"#1f2937", color:"#4b5563",
-                    padding:"2px 6px", borderRadius:4, textTransform:"uppercase",
-                  }}>Soon</span>
-                </div>
+                <Link to="/project/drawings"
+                  onClick={()=>{ setEstimateOpen(false); setMenuOpen(false); }}
+                  style={subLink}
+                  onMouseEnter={e=>e.currentTarget.style.background="#374151"}
+                  onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                  <span>📐</span> By Drawings
+                </Link>
 
               </div>
             )}
           </div>
         </nav>
+
+        {/* settings link */}
+        <Link to="/settings" onClick={()=>setMenuOpen(false)}
+          style={{ display:"flex", alignItems:"center", gap:10,
+            padding:"10px 12px", color:"#94a3b8", fontSize:13,
+            borderRadius:8, textDecoration:"none", marginBottom:4 }}
+          onMouseEnter={e=>e.currentTarget.style.background="#374151"}
+          onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+          ⚙️ Settings
+        </Link>
 
         {/* company info + sign out */}
         <div style={{ marginTop:"auto", paddingTop:16, borderTop:"1px solid #1e293b" }}>
