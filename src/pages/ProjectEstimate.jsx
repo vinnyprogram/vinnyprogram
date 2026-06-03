@@ -902,9 +902,12 @@ export default function ProjectEstimate() {
   const [saving, setSaving]       = useState(false);
   const [saved, setSaved]         = useState(false);
   const [savedProjectId, setSavedProjectId] = useState(projectId||null);
-  const [laborHours, setLaborHours]   = useState("");
-  const [crewSize, setCrewSize]       = useState(2);
-  const [laborRate, setLaborRate]     = useState(45);
+  const [laborRoles, setLaborRoles] = useState([
+    { role:"Lead Installer", hours:"", rate:55 },
+    { role:"Helper",         hours:"", rate:35 },
+    { role:"",               hours:"", rate:0  },
+    { role:"",               hours:"", rate:0  },
+  ]);
   const [newFloorName, setNewFloorName] = useState("");
   const [addingFloor, setAddingFloor]   = useState(false);
   const [panelOpen, setPanelOpen]       = useState(false);
@@ -916,15 +919,7 @@ export default function ProjectEstimate() {
       if(data) setMaterials(data);
     });
     loadLeads();
-    // load labor rate from cost settings
-    supabase.auth.getUser().then(({data:{user}})=>{
-      if(!user) return;
-      supabase.from("companies").select("id").eq("user_id",user.id).maybeSingle()
-        .then(({data:cd})=>{
-          if(!cd) return;
-          // no separate labor settings table yet — use defaults
-        });
-    });
+
   },[]);
 
   function loadLeads() {
@@ -1262,11 +1257,10 @@ export default function ProjectEstimate() {
           return mls.map(ml=>({...a, material:ml.material, thickness_in:ml.thickness_in}));
         })
       );
-      // calculate labor cost
-      const laborCostCalc = crewSize * Number(laborHours||0) * laborRate;
+      // calculate labor cost from all roles
+      const finalLaborCost = laborRoles.reduce((s,r)=>
+        s + Number(r.hours||0)*Number(r.rate||0), 0);
       const pricing = await calculateJobPrice(companyId, allAreasList, projectTotal>0?projectTotal:0);
-      // override labor with form value
-      const finalLaborCost = laborCostCalc;
       const totalCostWithLabor = pricing.material_cost + pricing.overhead_cost + finalLaborCost;
       const finalPriceWithLabor = totalCostWithLabor * (1 + (pricing.profit_margin_pct||30)/100);
 
@@ -1281,9 +1275,9 @@ export default function ProjectEstimate() {
         material_cost: pricing.material_cost,
         overhead_cost: pricing.overhead_cost,
         labor_cost: Math.round(finalLaborCost*100)/100,
-        labor_hours: Number(laborHours||0),
-        crew_size: crewSize,
-        labor_rate: laborRate,
+        labor_hours: laborRoles.reduce((s,r)=>s+Number(r.hours||0),0),
+        crew_size: laborRoles.filter(r=>Number(r.hours||0)>0).length,
+        labor_rate: laborRoles.find(r=>Number(r.hours||0)>0)?.rate||45,
         profit_margin_pct: pricing.profit_margin_pct,
         status:"Draft", company_id:companyId,
       }]);
@@ -1441,34 +1435,52 @@ export default function ProjectEstimate() {
                 textTransform:"uppercase",letterSpacing:0.4,marginBottom:6}}>
               ⏱ Labor (Estimated)
             </div>
-            <div style={{display:"flex",gap:6,alignItems:"center"}}>
-              <div style={{flex:1}}>
-                <div style={{fontSize:10,color:"#64748b",marginBottom:2}}>Crew</div>
-                <input type="number" value={crewSize}
-                  onChange={e=>setCrewSize(Number(e.target.value))}
-                  style={{...I,height:30,fontSize:13,textAlign:"center"}} />
-              </div>
-              <span style={{color:"#94a3b8",paddingTop:16}}>×</span>
-              <div style={{flex:2}}>
-                <div style={{fontSize:10,color:"#64748b",marginBottom:2}}>Hours</div>
-                <input type="number" placeholder="e.g. 6" value={laborHours}
-                  onChange={e=>setLaborHours(e.target.value)}
-                  inputMode="decimal"
-                  style={{...I,height:30,fontSize:13,textAlign:"center"}} />
-              </div>
-              <span style={{color:"#94a3b8",paddingTop:16}}>×</span>
-              <div style={{flex:2}}>
-                <div style={{fontSize:10,color:"#64748b",marginBottom:2}}>$/hr</div>
-                <input type="number" value={laborRate}
-                  onChange={e=>setLaborRate(Number(e.target.value))}
-                  style={{...I,height:30,fontSize:13,textAlign:"center"}} />
-              </div>
-              <div style={{flex:2,paddingTop:16}}>
-                <div style={{fontSize:12,fontWeight:700,color:"#059669",textAlign:"right"}}>
-                  {laborHours>0 ? `$${(crewSize*Number(laborHours)*laborRate).toLocaleString("en-US",{maximumFractionDigits:0})}` : "—"}
-                </div>
-              </div>
+            {/* header */}
+            <div style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 1fr",
+                gap:4,marginBottom:4}}>
+              {["Role","Hours","$/hr","Cost"].map(h=>(
+                <div key={h} style={{fontSize:9,color:"#94a3b8",fontWeight:700,
+                    textTransform:"uppercase",letterSpacing:0.3}}>{h}</div>
+              ))}
             </div>
+            {laborRoles.map((r,i)=>{
+              const cost = Number(r.hours||0)*Number(r.rate||0);
+              return (
+                <div key={i} style={{display:"grid",
+                    gridTemplateColumns:"2fr 1fr 1fr 1fr",
+                    gap:4,marginBottom:4,alignItems:"center"}}>
+                  <input placeholder={i===0?"Lead":i===1?"Helper":"Role"}
+                    value={r.role}
+                    onChange={e=>setLaborRoles(p=>p.map((x,j)=>j===i?{...x,role:e.target.value}:x))}
+                    style={{...I,height:28,fontSize:11}} />
+                  <input type="number" placeholder="0" inputMode="decimal"
+                    value={r.hours}
+                    onChange={e=>setLaborRoles(p=>p.map((x,j)=>j===i?{...x,hours:e.target.value}:x))}
+                    style={{...I,height:28,fontSize:11,textAlign:"center"}} />
+                  <input type="number" placeholder="0"
+                    value={r.rate||""}
+                    onChange={e=>setLaborRoles(p=>p.map((x,j)=>j===i?{...x,rate:e.target.value}:x))}
+                    style={{...I,height:28,fontSize:11,textAlign:"center"}} />
+                  <div style={{fontSize:11,fontWeight:700,
+                      color:cost>0?"#059669":"#94a3b8",textAlign:"right"}}>
+                    {cost>0?`$${cost.toLocaleString("en-US",{maximumFractionDigits:0})}`:"—"}
+                  </div>
+                </div>
+              );
+            })}
+            {/* total */}
+            {(()=>{
+              const total = laborRoles.reduce((s,r)=>s+Number(r.hours||0)*Number(r.rate||0),0);
+              return total>0 ? (
+                <div style={{display:"flex",justifyContent:"space-between",
+                    paddingTop:6,borderTop:"1px solid #bfdbfe",marginTop:2}}>
+                  <span style={{fontSize:11,fontWeight:700,color:"#1e40af"}}>Total Labor</span>
+                  <span style={{fontSize:12,fontWeight:800,color:"#059669"}}>
+                    ${total.toLocaleString("en-US",{maximumFractionDigits:0})}
+                  </span>
+                </div>
+              ) : null;
+            })()}
           </div>
 
           {/* floor tabs */}
