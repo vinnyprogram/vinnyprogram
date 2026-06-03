@@ -155,6 +155,96 @@ export default function Settings() {
     setMatCosts(p=>p.filter((_,i)=>i!==idx));
   }
 
+  async function recalculateAll() {
+    if(!company) return;
+    setSaving(true);
+    try {
+      const THICK_MAP_LOCAL = {"2x4":3.5,"2x6":5.5,"2x8":7.25,"2x10":9.25,"2x12":11.25,"I-joist":11.875};
+
+      // load all projects for this company
+      const { data:projects } = await supabase.from("projects")
+        .select("id").eq("company_id", company.id);
+      if(!projects?.length){ alert("No projects found"); setSaving(false); return; }
+
+      // load material costs
+      const { data:mCosts } = await supabase.from("material_costs")
+        .select("*").eq("company_id", company.id);
+      const matCostMap = {};
+      (mCosts||[]).forEach(m=>{ matCostMap[m.material_name]=m; });
+
+      // load overhead
+      const { data:overheadCosts } = await supabase.from("cost_settings")
+        .select("*").eq("company_id", company.id).not("period","eq","job_consumable");
+      const totalMonthly = (overheadCosts||[]).reduce((s,c)=>s+Number(c.amount||0),0);
+      const overheadPerJob = totalMonthly / (jobsPerMonth||20);
+
+      // load consumables
+      const { data:cons } = await supabase.from("cost_settings")
+        .select("*").eq("company_id", company.id).eq("period","job_consumable");
+      const totalConsumablesPerJob = (cons||[]).reduce((s,c)=>s+Number(c.amount||0),0);
+
+      let updated = 0;
+      for(const proj of projects) {
+        // load areas
+        const { data:areas } = await supabase.from("areas")
+          .select("*").eq("project_id", proj.id);
+        if(!areas?.length) continue;
+
+        // calculate material cost
+        let materialCost = 0;
+        let totalSqft = 0;
+        areas.forEach(a=>{
+          totalSqft += Number(a.sqft||0);
+          const mc = matCostMap[a.material];
+          if(!mc) return;
+          const thick = THICK_MAP_LOCAL[a.thickness_in]||0;
+          let qty = mc.unit==="board_ft" ? Number(a.sqft||0)*thick
+                  : mc.unit==="bag" ? Math.ceil((Number(a.sqft||0)*thick)/(mc.coverage_factor||1))
+                  : Number(a.sqft||0);
+          const cost = qty * Number(mc.cost_per_unit||0);
+          materialCost += cost * (1 + Number(mc.markup_pct||0)/100);
+        });
+
+        // scale consumables by sqft
+        const avgSqft = 1000;
+        const consumableCost = totalSqft>0
+          ? totalConsumablesPerJob * (totalSqft/avgSqft)
+          : totalConsumablesPerJob;
+
+        const totalCost = materialCost + overheadPerJob + consumableCost;
+        const finalPrice = totalCost * (1 + margin/100);
+
+        // update quote
+        await supabase.from("quotes")
+          .update({
+            material_cost: Math.round(materialCost*100)/100,
+            overhead_cost: Math.round(overheadPerJob*100)/100,
+            labor_cost: 0,
+            final_price: Math.round(finalPrice*100)/100,
+            grand_total: Math.round(finalPrice*100)/100,
+            profit_margin_pct: margin,
+          })
+          .eq("project_id", proj.id);
+
+        // update customer estimate amount
+        const { data:proj2 } = await supabase.from("projects")
+          .select("lead_id").eq("id", proj.id).single();
+        if(proj2?.lead_id){
+          await supabase.from("customers")
+            .update({ estimate_amount: Math.round(finalPrice*100)/100 })
+            .eq("id", proj2.lead_id);
+        }
+
+        updated++;
+      }
+
+      alert(`✅ Recalculated ${updated} estimates successfully!`);
+    } catch(err) {
+      alert("Error: " + err.message);
+    }
+    setSaving(false);
+  }
+
   async function saveAll() {
     if(!company) return;
     setSaving(true);
@@ -237,10 +327,17 @@ export default function Settings() {
         <span style={{ color:"white", fontWeight:700, fontSize:16, flex:1 }}>
           Cost Settings
         </span>
-        <button onClick={saveAll} disabled={saving}
-          style={{...BtnG, height:36, fontSize:13, padding:"0 20px"}}>
-          {saving ? "Saving…" : saved ? "✅ Saved!" : "Save All"}
-        </button>
+        <div style={{display:"flex",gap:8}}>
+          <button onClick={recalculateAll} disabled={saving}
+            style={{...Btn, height:36, fontSize:12, padding:"0 14px",
+              background:"#eff6ff", color:"#3b82f6", border:"1px solid #93c5fd"}}>
+            🔄 Recalculate All
+          </button>
+          <button onClick={saveAll} disabled={saving}
+            style={{...BtnG, height:36, fontSize:13, padding:"0 20px"}}>
+            {saving ? "Saving…" : saved ? "✅ Saved!" : "Save All"}
+          </button>
+        </div>
       </div>
 
       {/* tabs */}
