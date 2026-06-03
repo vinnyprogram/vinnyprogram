@@ -10,6 +10,71 @@ function fmtDate(d) {
     {month:"short",day:"numeric",year:"numeric"});
 }
 
+function ActualLaborInput({ jobId, quote, onSave }) {
+  const [roles, setRoles] = useState([
+    { role:"Lead Installer", hours: quote?.labor_hours||"", rate:55 },
+    { role:"Helper",         hours:"", rate:35 },
+    { role:"",               hours:"", rate:0 },
+    { role:"",               hours:"", rate:0 },
+  ]);
+  const total = roles.reduce((s,r)=>s+Number(r.hours||0)*Number(r.rate||0),0);
+  return (
+    <div style={{marginBottom:10,padding:"10px",background:"white",
+        borderRadius:6,border:"1px solid #86efac"}}>
+      <div style={{fontSize:10,color:"#64748b",marginBottom:6,fontWeight:600}}>
+        ✏️ Actual Hours (after job)
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 1fr",
+          gap:4,marginBottom:4}}>
+        {["Role","Hours","$/hr","Cost"].map(h=>(
+          <div key={h} style={{fontSize:9,color:"#94a3b8",fontWeight:700,
+              textTransform:"uppercase"}}>{h}</div>
+        ))}
+      </div>
+      {roles.map((r,i)=>{
+        const cost = Number(r.hours||0)*Number(r.rate||0);
+        return (
+          <div key={i} style={{display:"grid",
+              gridTemplateColumns:"2fr 1fr 1fr 1fr",
+              gap:4,marginBottom:4,alignItems:"center"}}>
+            <input placeholder={i===0?"Lead":i===1?"Helper":"Role"}
+              value={r.role}
+              onChange={e=>setRoles(p=>p.map((x,j)=>j===i?{...x,role:e.target.value}:x))}
+              style={{height:28,borderRadius:4,border:"1px solid #e2e8f0",
+                fontSize:11,padding:"0 6px",width:"100%",boxSizing:"border-box"}} />
+            <input type="number" placeholder="0"
+              value={r.hours}
+              onChange={e=>setRoles(p=>p.map((x,j)=>j===i?{...x,hours:e.target.value}:x))}
+              style={{height:28,borderRadius:4,border:"1px solid #e2e8f0",
+                fontSize:11,textAlign:"center",width:"100%",boxSizing:"border-box"}} />
+            <input type="number" placeholder="0"
+              value={r.rate||""}
+              onChange={e=>setRoles(p=>p.map((x,j)=>j===i?{...x,rate:e.target.value}:x))}
+              style={{height:28,borderRadius:4,border:"1px solid #e2e8f0",
+                fontSize:11,textAlign:"center",width:"100%",boxSizing:"border-box"}} />
+            <div style={{fontSize:11,fontWeight:700,
+                color:cost>0?"#059669":"#94a3b8",textAlign:"right"}}>
+              {cost>0?`$${cost.toLocaleString("en-US",{maximumFractionDigits:0})}`:"—"}
+            </div>
+          </div>
+        );
+      })}
+      <div style={{display:"flex",justifyContent:"space-between",
+          alignItems:"center",paddingTop:6,borderTop:"1px solid #d1fae5",marginTop:2}}>
+        <span style={{fontSize:11,fontWeight:700,color:"#1e40af"}}>
+          Total Labor: ${total.toLocaleString("en-US",{maximumFractionDigits:0})}
+        </span>
+        <button onClick={()=>onSave(jobId, roles)}
+          style={{border:"none",background:"#059669",color:"white",
+            padding:"6px 14px",borderRadius:6,cursor:"pointer",
+            fontSize:11,fontWeight:700}}>
+          ✓ Save
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function CustomerProfile() {
   const { customerId } = useParams();
   const navigate = useNavigate();
@@ -93,6 +158,25 @@ export default function CustomerProfile() {
     }
 
     setLoading(false);
+  }
+
+  async function updateActualHours(projectId, roles) {
+    const laborCost = roles.reduce((s,r)=>s+Number(r.hours||0)*Number(r.rate||0),0);
+    const totalHours = roles.reduce((s,r)=>s+Number(r.hours||0),0);
+    const { data:q } = await supabase.from("quotes")
+      .select("*").eq("project_id", projectId).single();
+    if(!q) return;
+    const totalCost = Number(q.material_cost||0) + Number(q.overhead_cost||0) + laborCost;
+    const finalPrice = totalCost * (1 + Number(q.profit_margin_pct||30)/100);
+    await supabase.from("quotes").update({
+      labor_cost: Math.round(laborCost*100)/100,
+      labor_hours: totalHours,
+      crew_size: roles.filter(r=>Number(r.hours||0)>0).length,
+      labor_rate: roles.find(r=>Number(r.hours||0)>0)?.rate||45,
+      final_price: Math.round(finalPrice*100)/100,
+      grand_total: Math.round(finalPrice*100)/100,
+    }).eq("project_id", projectId);
+    await load();
   }
 
   async function uploadPhotos(files, projectId) {
@@ -314,6 +398,13 @@ export default function CustomerProfile() {
                             marginBottom:8,textTransform:"uppercase",letterSpacing:0.4}}>
                           💰 Cost Breakdown (Internal)
                         </div>
+                        {/* actual hours — multi role */}
+                        <ActualLaborInput
+                          jobId={job.id}
+                          quote={job.quotes[0]}
+                          onSave={updateActualHours}
+                        />
+
                         {[
                           ["Materials", job.quotes[0].material_cost],
                           ["Overhead",  job.quotes[0].overhead_cost],

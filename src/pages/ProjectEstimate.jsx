@@ -902,6 +902,9 @@ export default function ProjectEstimate() {
   const [saving, setSaving]       = useState(false);
   const [saved, setSaved]         = useState(false);
   const [savedProjectId, setSavedProjectId] = useState(projectId||null);
+  const [laborHours, setLaborHours]   = useState("");
+  const [crewSize, setCrewSize]       = useState(2);
+  const [laborRate, setLaborRate]     = useState(45);
   const [newFloorName, setNewFloorName] = useState("");
   const [addingFloor, setAddingFloor]   = useState(false);
   const [panelOpen, setPanelOpen]       = useState(false);
@@ -913,6 +916,15 @@ export default function ProjectEstimate() {
       if(data) setMaterials(data);
     });
     loadLeads();
+    // load labor rate from cost settings
+    supabase.auth.getUser().then(({data:{user}})=>{
+      if(!user) return;
+      supabase.from("companies").select("id").eq("user_id",user.id).maybeSingle()
+        .then(({data:cd})=>{
+          if(!cd) return;
+          // no separate labor settings table yet — use defaults
+        });
+    });
   },[]);
 
   function loadLeads() {
@@ -1250,19 +1262,28 @@ export default function ProjectEstimate() {
           return mls.map(ml=>({...a, material:ml.material, thickness_in:ml.thickness_in}));
         })
       );
+      // calculate labor cost
+      const laborCostCalc = crewSize * Number(laborHours||0) * laborRate;
       const pricing = await calculateJobPrice(companyId, allAreasList, projectTotal>0?projectTotal:0);
+      // override labor with form value
+      const finalLaborCost = laborCostCalc;
+      const totalCostWithLabor = pricing.material_cost + pricing.overhead_cost + finalLaborCost;
+      const finalPriceWithLabor = totalCostWithLabor * (1 + (pricing.profit_margin_pct||30)/100);
 
       if(selectedLeadId) await supabase.from("customers")
-        .update({estimate_amount:pricing.final_price||projectTotal}).eq("id",selectedLeadId);
+        .update({estimate_amount:Math.round(finalPriceWithLabor*100)/100}).eq("id",selectedLeadId);
       await supabase.from("quotes").insert([{
         project_id:proj.id,
         subtotal: pricing.material_cost,
         tax_rate:0, tax_total:0,
-        grand_total: pricing.final_price||projectTotal,
-        final_price: pricing.final_price||projectTotal,
+        grand_total: Math.round(finalPriceWithLabor*100)/100,
+        final_price: Math.round(finalPriceWithLabor*100)/100,
         material_cost: pricing.material_cost,
         overhead_cost: pricing.overhead_cost,
-        labor_cost: pricing.labor_cost,
+        labor_cost: Math.round(finalLaborCost*100)/100,
+        labor_hours: Number(laborHours||0),
+        crew_size: crewSize,
+        labor_rate: laborRate,
         profit_margin_pct: pricing.profit_margin_pct,
         status:"Draft", company_id:companyId,
       }]);
@@ -1412,6 +1433,42 @@ export default function ProjectEstimate() {
             <input placeholder="Other info for crew…" value={crewNotes.extra_notes}
               onChange={e=>setCrewNotes(p=>({...p,extra_notes:e.target.value}))}
               style={{...I,width:"100%",height:30,fontSize:12}} />
+          </div>
+
+          {/* labor estimate card */}
+          <div style={{...CARD_BLUE, marginBottom:5}}>
+            <div style={{fontSize:10,fontWeight:700,color:"#1e40af",
+                textTransform:"uppercase",letterSpacing:0.4,marginBottom:6}}>
+              ⏱ Labor (Estimated)
+            </div>
+            <div style={{display:"flex",gap:6,alignItems:"center"}}>
+              <div style={{flex:1}}>
+                <div style={{fontSize:10,color:"#64748b",marginBottom:2}}>Crew</div>
+                <input type="number" value={crewSize}
+                  onChange={e=>setCrewSize(Number(e.target.value))}
+                  style={{...I,height:30,fontSize:13,textAlign:"center"}} />
+              </div>
+              <span style={{color:"#94a3b8",paddingTop:16}}>×</span>
+              <div style={{flex:2}}>
+                <div style={{fontSize:10,color:"#64748b",marginBottom:2}}>Hours</div>
+                <input type="number" placeholder="e.g. 6" value={laborHours}
+                  onChange={e=>setLaborHours(e.target.value)}
+                  inputMode="decimal"
+                  style={{...I,height:30,fontSize:13,textAlign:"center"}} />
+              </div>
+              <span style={{color:"#94a3b8",paddingTop:16}}>×</span>
+              <div style={{flex:2}}>
+                <div style={{fontSize:10,color:"#64748b",marginBottom:2}}>$/hr</div>
+                <input type="number" value={laborRate}
+                  onChange={e=>setLaborRate(Number(e.target.value))}
+                  style={{...I,height:30,fontSize:13,textAlign:"center"}} />
+              </div>
+              <div style={{flex:2,paddingTop:16}}>
+                <div style={{fontSize:12,fontWeight:700,color:"#059669",textAlign:"right"}}>
+                  {laborHours>0 ? `$${(crewSize*Number(laborHours)*laborRate).toLocaleString("en-US",{maximumFractionDigits:0})}` : "—"}
+                </div>
+              </div>
+            </div>
           </div>
 
           {/* floor tabs */}
