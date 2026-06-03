@@ -5,6 +5,7 @@ import { supabase } from "../lib/supabase";
 export default function EstimateSearch() {
   const navigate = useNavigate();
   const [search, setSearch]     = useState("");
+  const [openCost, setOpenCost] = useState(null); // project id with cost panel open
   const [groups, setGroups]     = useState([]);
   const [loading, setLoading]   = useState(true);
 
@@ -28,7 +29,7 @@ export default function EstimateSearch() {
 
       const { data:quotes } = await supabase
         .from("quotes")
-        .select("project_id, grand_total, status, created_at")
+        .select("project_id, grand_total, status, created_at, final_price, material_cost, overhead_cost, labor_cost, profit_margin_pct")
         .order("created_at", { ascending:false });
 
       const quoteMap = {};
@@ -163,7 +164,7 @@ export default function EstimateSearch() {
                   </div>
                 )}
               </div>
-              <div style={{display:"flex",gap:6}}>
+              <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
                 <button onClick={()=>navigate(`/field-report/${p.id}`)}
                   style={{flex:1,border:"none",background:"#3b82f6",color:"white",
                     padding:"7px 0",borderRadius:7,cursor:"pointer",
@@ -182,7 +183,69 @@ export default function EstimateSearch() {
                     cursor:"pointer",fontSize:12,fontWeight:700}}>
                   ✏️ Edit
                 </button>
+                <button onClick={()=>setOpenCost(openCost===p.id?null:p.id)}
+                  style={{flex:1,border:"1px solid #e2e8f0",
+                    background:openCost===p.id?"#f0fdf4":"white",
+                    color:"#059669",padding:"7px 0",borderRadius:7,
+                    cursor:"pointer",fontSize:12,fontWeight:700}}>
+                  💰 Cost
+                </button>
               </div>
+
+              {/* cost breakdown panel */}
+              {openCost===p.id && p.quote && (
+                <div style={{marginTop:8,padding:"12px 14px",
+                    background:"#f0fdf4",borderRadius:8,
+                    border:"1px solid #86efac"}}>
+                  <div style={{fontSize:11,fontWeight:700,color:"#059669",
+                      marginBottom:8,textTransform:"uppercase",letterSpacing:0.4}}>
+                    💰 Cost Breakdown (Internal)
+                  </div>
+                  {[
+                    ["Materials", p.quote.material_cost],
+                    ["Overhead", p.quote.overhead_cost],
+                    ["Labor", p.quote.labor_cost],
+                  ].map(([label,val],i)=>(
+                    <div key={i} style={{display:"flex",justifyContent:"space-between",
+                        fontSize:12,color:"#374151",paddingBottom:4,marginBottom:4,
+                        borderBottom:"1px dashed #86efac"}}>
+                      <span>{label}</span>
+                      <span>${Number(val||0).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})}</span>
+                    </div>
+                  ))}
+                  {(()=>{
+                    const totalCost = (Number(p.quote.material_cost||0)+Number(p.quote.overhead_cost||0)+Number(p.quote.labor_cost||0));
+                    const finalPrice = Number(p.quote.final_price||p.quote.grand_total||0);
+                    const profit = finalPrice - totalCost;
+                    const margin = totalCost>0 ? (profit/finalPrice*100).toFixed(1) : 0;
+                    return (
+                      <>
+                        <div style={{display:"flex",justifyContent:"space-between",
+                            fontSize:12,fontWeight:700,color:"#0f172a",
+                            paddingBottom:4,marginBottom:4,borderBottom:"1px solid #059669"}}>
+                          <span>Total Cost</span>
+                          <span>${totalCost.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})}</span>
+                        </div>
+                        <div style={{display:"flex",justifyContent:"space-between",
+                            fontSize:12,color:"#374151",marginBottom:4}}>
+                          <span>Profit ({margin}%)</span>
+                          <span style={{color:"#059669"}}>
+                            ${profit.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})}
+                          </span>
+                        </div>
+                        <div style={{display:"flex",justifyContent:"space-between",
+                            fontSize:14,fontWeight:800,color:"#0f172a",
+                            paddingTop:4,borderTop:"2px solid #059669"}}>
+                          <span>Final Price</span>
+                          <span style={{color:"#059669"}}>
+                            ${finalPrice.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})}
+                          </span>
+                        </div>
+                      </>
+                    );
+                  })()}
+                </div>
+              )}
             </div>
           ))}
         </div>

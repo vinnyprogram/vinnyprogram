@@ -19,6 +19,7 @@ export default function CustomerProfile() {
   const [photos, setPhotos]       = useState([]);
   const [loading, setLoading]     = useState(true);
   const [uploading, setUploading] = useState(false);
+  const [openCost, setOpenCost]   = useState(null);
   const [docs, setDocs]           = useState([]);
   const [uploadingDoc, setUploadingDoc] = useState(false);
   const [activeJob, setActiveJob] = useState(null);
@@ -42,7 +43,8 @@ export default function CustomerProfile() {
     if(projs?.length) {
       const ids = projs.map(p=>p.id);
       const { data:quotes } = await supabase.from("quotes")
-        .select("*").in("project_id", ids)
+        .select("id,project_id,grand_total,final_price,material_cost,overhead_cost,labor_cost,profit_margin_pct,status,created_at")
+        .in("project_id", ids)
         .order("created_at", { ascending:false });
 
       // group quotes by project
@@ -278,24 +280,82 @@ export default function CustomerProfile() {
                     {/* actions */}
                     <div style={{display:"flex",gap:6,padding:"10px 14px",flexWrap:"wrap"}}>
                       <button onClick={()=>navigate(`/field-report/${job.id}`)}
-                        style={{flex:1,minWidth:80,border:"none",background:"#3b82f6",
+                        style={{flex:1,minWidth:70,border:"none",background:"#3b82f6",
                           color:"white",padding:"8px 0",borderRadius:8,
                           cursor:"pointer",fontSize:12,fontWeight:700}}>
                         📋 Office
                       </button>
                       <button onClick={()=>navigate(`/quote/${job.id}`)}
-                        style={{flex:1,minWidth:80,border:"none",background:"#f97316",
+                        style={{flex:1,minWidth:70,border:"none",background:"#f97316",
                           color:"white",padding:"8px 0",borderRadius:8,
                           cursor:"pointer",fontSize:12,fontWeight:700}}>
                         📄 Quote
                       </button>
                       <button onClick={()=>navigate(`/project/${job.id}`)}
-                        style={{flex:1,minWidth:80,border:"1px solid #e2e8f0",
+                        style={{flex:1,minWidth:70,border:"1px solid #e2e8f0",
                           background:"white",color:"#0f172a",padding:"8px 0",
                           borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:700}}>
                         ✏️ Edit
                       </button>
+                      <button onClick={()=>setOpenCost(openCost===job.id?null:job.id)}
+                        style={{flex:1,minWidth:70,border:"1px solid #e2e8f0",
+                          background:openCost===job.id?"#f0fdf4":"white",
+                          color:"#059669",padding:"8px 0",borderRadius:8,
+                          cursor:"pointer",fontSize:12,fontWeight:700}}>
+                        💰 Cost
+                      </button>
                     </div>
+
+                    {/* cost breakdown */}
+                    {openCost===job.id && job.quotes[0] && (
+                      <div style={{margin:"0 14px 10px",padding:"12px",
+                          background:"#f0fdf4",borderRadius:8,border:"1px solid #86efac"}}>
+                        <div style={{fontSize:11,fontWeight:700,color:"#059669",
+                            marginBottom:8,textTransform:"uppercase",letterSpacing:0.4}}>
+                          💰 Cost Breakdown (Internal)
+                        </div>
+                        {[
+                          ["Materials", job.quotes[0].material_cost],
+                          ["Overhead",  job.quotes[0].overhead_cost],
+                          ["Labor",     job.quotes[0].labor_cost],
+                        ].map(([label,val],i)=>(
+                          <div key={i} style={{display:"flex",justifyContent:"space-between",
+                              fontSize:12,color:"#374151",paddingBottom:4,marginBottom:4,
+                              borderBottom:"1px dashed #86efac"}}>
+                            <span>{label}</span>
+                            <span>${Number(val||0).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})}</span>
+                          </div>
+                        ))}
+                        {(()=>{
+                          const q = job.quotes[0];
+                          const totalCost = Number(q.material_cost||0)+Number(q.overhead_cost||0)+Number(q.labor_cost||0);
+                          const finalPrice = Number(q.final_price||q.grand_total||0);
+                          const profit = finalPrice - totalCost;
+                          const margin = finalPrice>0?(profit/finalPrice*100).toFixed(1):0;
+                          return (
+                            <>
+                              <div style={{display:"flex",justifyContent:"space-between",
+                                  fontSize:12,fontWeight:700,color:"#0f172a",
+                                  paddingBottom:4,marginBottom:4,borderBottom:"1px solid #059669"}}>
+                                <span>Total Cost</span>
+                                <span>${totalCost.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})}</span>
+                              </div>
+                              <div style={{display:"flex",justifyContent:"space-between",
+                                  fontSize:12,color:"#374151",marginBottom:4}}>
+                                <span>Profit ({margin}%)</span>
+                                <span style={{color:"#059669"}}>${profit.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})}</span>
+                              </div>
+                              <div style={{display:"flex",justifyContent:"space-between",
+                                  fontSize:14,fontWeight:800,color:"#0f172a",
+                                  paddingTop:4,borderTop:"2px solid #059669"}}>
+                                <span>Final Price</span>
+                                <span style={{color:"#059669"}}>${finalPrice.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})}</span>
+                              </div>
+                            </>
+                          );
+                        })()}
+                      </div>
+                    )}
                   </div>
                 ))}
 
