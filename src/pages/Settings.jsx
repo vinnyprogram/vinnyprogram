@@ -106,11 +106,11 @@ export default function Settings() {
 
   function seedConsumables() {
     setConsumables([
-      { id:null, name:"Plastic Sheeting",   unit_price:8,  qty_per_job:3, markup_pct:0, unit:"roll", sort_order:1 },
-      { id:null, name:"Staples & Tape",     unit_price:5,  qty_per_job:2, markup_pct:0, unit:"box",  sort_order:2 },
-      { id:null, name:"Protective Suits",   unit_price:4,  qty_per_job:5, markup_pct:0, unit:"each", sort_order:3 },
-      { id:null, name:"Masks & PPE",        unit_price:2.5,qty_per_job:4, markup_pct:0, unit:"each", sort_order:4 },
-      { id:null, name:"Miscellaneous Tools",unit_price:30, qty_per_job:1, markup_pct:0, unit:"job",  sort_order:5 },
+      { id:null, name:"Plastic Sheeting",   unit_price:8,  qty_per_job:3, unit:"roll", sort_order:1 },
+      { id:null, name:"Staples & Tape",     unit_price:5,  qty_per_job:2, unit:"box",  sort_order:2 },
+      { id:null, name:"Protective Suits",   unit_price:4,  qty_per_job:5, unit:"each", sort_order:3 },
+      { id:null, name:"Masks & PPE",        unit_price:2.5,qty_per_job:4, unit:"each", sort_order:4 },
+      { id:null, name:"Miscellaneous Tools",unit_price:30, qty_per_job:1, unit:"job",  sort_order:5 },
     ]);
   }
 
@@ -531,7 +531,7 @@ export default function Settings() {
 
             {/* header */}
             <div style={{ display:"grid",
-                gridTemplateColumns:"2fr 60px 55px 55px 60px 70px 70px 28px",
+                gridTemplateColumns:"2fr 70px 80px 70px 80px 28px",
                 gap:4, padding:"8px 12px", background:"#f8fafc",
                 border:`1px solid ${C.border}`,
                 borderRadius:"10px 10px 0 0",
@@ -539,11 +539,9 @@ export default function Settings() {
                 textTransform:"uppercase", letterSpacing:0.4 }}>
               <span>Item</span>
               <span>Unit</span>
-              <span>Price</span>
+              <span>Unit Price</span>
               <span>Qty/job</span>
               <span>Cost/job</span>
-              <span>Markup</span>
-              <span>Sell/job</span>
               <span></span>
             </div>
 
@@ -551,10 +549,9 @@ export default function Settings() {
                 borderRadius:"0 0 10px 10px", overflow:"hidden", marginBottom:10 }}>
               {consumables.map((c,i)=>{
                 const costJob = Number(c.unit_price||0) * Number(c.qty_per_job||1);
-                const sellJob = costJob * (1 + Number(c.markup_pct||0)/100);
                 return (
                   <div key={i} style={{ display:"grid",
-                      gridTemplateColumns:"2fr 60px 55px 55px 60px 70px 70px 28px",
+                      gridTemplateColumns:"2fr 70px 80px 70px 80px 28px",
                       gap:4, padding:"8px 12px",
                       borderBottom:i<consumables.length-1?`1px solid ${C.border}`:"none",
                       background:i%2===0?C.white:"#fafbfc", alignItems:"center" }}>
@@ -575,20 +572,11 @@ export default function Settings() {
                     <input type="number" value={c.qty_per_job||1}
                       onChange={e=>updateConsumable(i,"qty_per_job",e.target.value)}
                       style={{...I, height:28, fontSize:11, textAlign:"center"}} />
-                    <div style={{ fontSize:11, fontWeight:600, color:C.ink,
+                    <div style={{ fontSize:12, fontWeight:700, color:C.green,
                         textAlign:"right" }}>
                       ${fmt(costJob)}
                     </div>
-                    <div style={{ display:"flex", alignItems:"center", gap:1 }}>
-                      <input type="number" value={c.markup_pct||0}
-                        onChange={e=>updateConsumable(i,"markup_pct",e.target.value)}
-                        style={{...I, height:28, fontSize:11, textAlign:"right"}} />
-                      <span style={{ fontSize:10, color:C.muted }}>%</span>
-                    </div>
-                    <div style={{ fontSize:12, fontWeight:700, color:C.green,
-                        textAlign:"right" }}>
-                      ${fmt(sellJob)}
-                    </div>
+
                     <button onClick={()=>removeConsumable(i)}
                       style={{...Btn, padding:"0 6px", height:26,
                         color:C.faint, fontSize:13}}>✕</button>
@@ -611,22 +599,13 @@ export default function Settings() {
                   ${fmt(totalConsumables)}
                 </div>
               </div>
-              <div style={{ textAlign:"right" }}>
-                <div style={{ color:"#94a3b8", fontSize:11 }}>Total Sell/job (internal)</div>
-                <div style={{ color:C.green, fontWeight:800, fontSize:18 }}>
-                  ${fmt(consumables.reduce((s,c)=>{
-                    const cost=Number(c.unit_price||0)*Number(c.qty_per_job||1);
-                    return s+cost*(1+Number(c.markup_pct||0)/100);
-                  },0))}
-                </div>
-              </div>
+
             </div>
 
             <div style={{ marginTop:10, padding:"10px 14px", background:"#fffbeb",
                 borderRadius:8, border:"1px solid #fde68a", fontSize:12, color:"#92400e" }}>
-              💡 These costs scale automatically by job sqft.
-              A 2,000 sqft job uses ~2× more consumables than a 1,000 sqft job.
-              The app calculates the rate from your average job size.
+              💡 Consumables are added to total job cost before applying profit margin.
+              They scale automatically by job sqft — bigger jobs use more materials.
             </div>
           </div>
         )}
