@@ -275,8 +275,10 @@ function AreaRow({ area, materials, onChange, onDelete }) {
     if(area._collapsed) setExpanded(false);
   },[area._collapsed]);
 
+  // options always read from parent prop
+  const areaOptions = area.options||[];
+
   // ensure options always come from parent area prop
-  const areaOptions = areaOptions;
 
   const XS = { height:30, fontSize:12, borderRadius:5, border:`1px solid ${C.border}`,
     background:C.white, padding:"0 4px", boxSizing:"border-box", color:C.ink,
