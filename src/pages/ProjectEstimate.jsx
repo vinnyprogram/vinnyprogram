@@ -1303,7 +1303,7 @@ export default function ProjectEstimate() {
         const annual=(Number(a.purchase_price||0)-Number(a.salvage_value||0))/Number(a.useful_life_years||5);
         return s+annual/12;
       },0);
-      const depreciationCost = jobsPerMonth>0 ? monthlyDepr/20 : 0;
+      const depreciationCost = monthlyDepr/20;
 
       // commission
       const repData = selectedRep ? salesReps.find(r=>r.id===selectedRep) : null;
