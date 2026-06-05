@@ -275,6 +275,9 @@ function AreaRow({ area, materials, onChange, onDelete }) {
     if(area._collapsed) setExpanded(false);
   },[area._collapsed]);
 
+  // ensure options always come from parent area prop
+  const areaOptions = areaOptions;
+
   const XS = { height:30, fontSize:12, borderRadius:5, border:`1px solid ${C.border}`,
     background:C.white, padding:"0 4px", boxSizing:"border-box", color:C.ink,
     minWidth:0, width:"100%" };
@@ -391,7 +394,7 @@ const GS = {
         </div>
       ))}
       {/* options preview */}
-      {(area.options||[]).map((opt,i)=>(
+      {(areaOptions).map((opt,i)=>(
         <div key={i} style={{fontSize:10,color:"#f97316",marginTop:2}}>
           ⚡ Option {i+1}: {[opt.material,opt.thickness_in||area.thickness_in,opt.r_value].filter(Boolean).join(" · ")}
         </div>
@@ -673,17 +676,17 @@ const GS = {
 
       {/* OPTIONS */}
       <div style={{marginBottom:6}}>
-        {(area.options||[]).map((opt,oi)=>{
+        {(areaOptions).map((opt,oi)=>{
           const isOptCombo = opt.material==="__combo__" || (opt.mat_lines||[]).length>1;
           const optLines = (opt.mat_lines||[]).length>0 ? opt.mat_lines
             : [{id:1,material:opt.material||"",thickness_in:opt.thickness_in||matLines[0].thickness_in||"",r_value:opt.r_value||matLines[0].r_value||"",oc:""}];
           function updateOpt(field,val){
-            const opts=[...(area.options||[])];
+            const opts=[...(areaOptions)];
             opts[oi]={...opts[oi],[field]:val};
             onChange("options",opts);
           }
           function updateOptLine(li,field,val){
-            const opts=[...(area.options||[])];
+            const opts=[...(areaOptions)];
             const lines=[...optLines];
             lines[li]={...lines[li],[field]:val};
             opts[oi]={...opts[oi],mat_lines:lines,material:lines[0].material||"__combo__"};
@@ -697,7 +700,7 @@ const GS = {
                 <span style={{fontSize:10,fontWeight:700,color:"#92400e"}}>
                   ⚡ Option {oi+1}
                 </span>
-                <button onClick={()=>onChange("options",(area.options||[]).filter((_,j)=>j!==oi))}
+                <button onClick={()=>onChange("options",(areaOptions).filter((_,j)=>j!==oi))}
                   style={{border:"none",background:"none",color:C.faint,
                     cursor:"pointer",fontSize:12,padding:0}}>✕</button>
               </div>
@@ -759,7 +762,7 @@ const GS = {
                         {optLines.length>2 && (
                           <button onClick={()=>{
                               const lines=optLines.filter((_,j)=>j!==li);
-                              const opts=[...(area.options||[])];
+                              const opts=[...(areaOptions)];
                               opts[oi]={...opts[oi],mat_lines:lines};
                               onChange("options",opts);
                             }}
@@ -784,7 +787,7 @@ const GS = {
                   ))}
                   <button onClick={()=>{
                       const lines=[...optLines,{id:Date.now(),material:"",thickness_in:matLines[0].thickness_in||"",r_value:matLines[0].r_value||"",oc:""}];
-                      const opts=[...(area.options||[])];
+                      const opts=[...(areaOptions)];
                       opts[oi]={...opts[oi],mat_lines:lines};
                       onChange("options",opts);
                     }}
@@ -798,9 +801,9 @@ const GS = {
             </div>
           );
         })}
-        {(area.options||[]).length < 3 && (
+        {(areaOptions).length < 3 && (
           <button onClick={()=>{
-              const opts=[...(area.options||[])];
+              const opts=[...(areaOptions)];
               opts.push({material:"",thickness_in:matLines[0].thickness_in||"",r_value:matLines[0].r_value||"",mat_lines:[]});
               onChange("options",opts);
             }}
@@ -1237,9 +1240,9 @@ export default function ProjectEstimate() {
       );
       const last = collapsed[collapsed.length-1];
       const n = last
-        ? {...last, temp_id:Date.now(), sqft:0, measurements:[], mh:"", ml:"", mq:"1", deduct_sqft:"", _collapsed:false}
+        ? {...last, temp_id:Date.now(), sqft:0, measurements:[], mh:"", ml:"", mq:"1", deduct_sqft:"", _collapsed:false, options:[]}
         : { temp_id:Date.now(), floor, area_type:"", material:"", thickness_in:"", r_value:"",
-            oc:"", sqft:0, measurements:[], mh:"", ml:"", mq:"1", deduct_sqft:"", _collapsed:false };
+            oc:"", sqft:0, measurements:[], mh:"", ml:"", mq:"1", deduct_sqft:"", _collapsed:false, options:[] };
       return {...prev, [floor]:[...collapsed, n]};
     });
   }
@@ -1417,7 +1420,6 @@ export default function ProjectEstimate() {
           });
         })
       );
-      console.log("Saving areas with options:", allAreas.map(a=>({area_type:a.area_type,options:a.options})));
       if(allAreas.length>0){
         const {data:areaRows,error:ae}=await supabase.from("areas").insert(allAreas).select();
         if(ae) throw ae;
