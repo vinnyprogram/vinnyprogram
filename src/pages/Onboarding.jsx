@@ -27,9 +27,7 @@ export default function Onboarding() {
     setLoading(true); setError("");
 
     try {
-      const { data: { user }, error: authErr } = await supabase.auth.getUser();
-      console.log("Auth user:", user?.id, "Error:", authErr);
-      alert("User ID: " + (user?.id || "NULL") + " Error: " + (authErr?.message || "none"));
+      const { data: { user } } = await supabase.auth.getUser();
       if (!user) { navigate("/login"); return; }
 
       let logo_url = null;
@@ -49,32 +47,38 @@ export default function Onboarding() {
         }
       }
 
-      const { error: ce } = await supabase.from("companies").insert([{
-        user_id: user.id,
-        name: form.name,
-        address: form.address || null,
-        phone: form.phone || null,
-        email: form.email || null,
-        office_email: form.office_email || null,
-        website: form.website || null,
-        logo_url,
-        status: "trial",
-      }]);
-
-      if (ce) {
-        console.error("Insert error:", JSON.stringify(ce));
-        throw new Error("Insert failed: " + (ce.message || JSON.stringify(ce)));
-      }
-
-      // verify company was saved before redirecting
-      const { data: check, error: checkErr } = await supabase.from("companies")
+      // check if company already exists for this user
+      const { data: existing } = await supabase.from("companies")
         .select("id").eq("user_id", user.id).maybeSingle();
 
-      console.log("Check result:", check, checkErr);
+      if (existing) {
+        // update existing company
+        await supabase.from("companies").update({
+          name: form.name,
+          address: form.address || null,
+          phone: form.phone || null,
+          email: form.email || null,
+          office_email: form.office_email || null,
+          website: form.website || null,
+          logo_url: logo_url || existing.logo_url,
+        }).eq("id", existing.id);
+      } else {
+        // insert new company
+        const { error: ce } = await supabase.from("companies").insert([{
+          user_id: user.id,
+          name: form.name,
+          address: form.address || null,
+          phone: form.phone || null,
+          email: form.email || null,
+          office_email: form.office_email || null,
+          website: form.website || null,
+          logo_url,
+          status: "trial",
+        }]);
+        if (ce) throw new Error(ce.message || "Could not save company");
+      }
 
-      if (!check) throw new Error("Company was not saved. Please try again.");
-
-      // force a hard reload so AuthContext picks up the new company
+      // force a hard reload so AuthContext picks up the company
       window.location.href = "/";
     } catch (err) {
       setError(err.message || "Something went wrong");
