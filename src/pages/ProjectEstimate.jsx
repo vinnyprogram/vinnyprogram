@@ -852,9 +852,6 @@ function EstimatePanel({ floors, areas, materialMap, crewNotes, projectName, pro
           const mls = (a.mat_lines&&a.mat_lines.length>0)
             ? a.mat_lines
             : [{material:a.material||"",thickness_in:a.thickness_in||"",r_value:a.r_value||"",oc:a.oc||""}];
-          // restore options from DB — areas.options is a jsonb array
-          const savedOptions = Array.isArray(a.options) ? a.options : 
-            (typeof a.options === 'string' ? JSON.parse(a.options||'[]') : []);
           const matKey = mls.map(ml=>[ml.material,ml.thickness_in,ml.r_value,ml.oc].join(":")).join("+");
           const key = a.area_type + "||||" + matKey;
           if(!groupMap[key]) groupMap[key]={
@@ -1082,7 +1079,8 @@ export default function ProjectEstimate() {
             mh:"", ml:"", mq:"1",
             deduct_sqft:"",
             _collapsed: true,
-            options: savedOptions,
+            options: Array.isArray(a.options) ? a.options :
+              (typeof a.options === 'string' ? JSON.parse(a.options||'[]') : []),
             mat_lines: [{
               id:1, material:a.material||"",
               thickness_in:a.thickness_in||"",
