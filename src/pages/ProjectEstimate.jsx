@@ -1402,7 +1402,7 @@ export default function ProjectEstimate() {
                 style={{...BtnD,background:"#3b82f6",height:32,fontSize:12,padding:"0 10px",borderRadius:8}}>
                 📋 Office
               </button>
-              <button onClick={()=>navigate(`/quote/${savedProjectId}`)}
+              <button onClick={()=>navigate(`/quote-pricing/${savedProjectId}`)}
                 style={{...BtnD,background:"#f97316",height:32,fontSize:12,padding:"0 10px",borderRadius:8}}>
                 📄 Quote
               </button>
@@ -1481,104 +1481,6 @@ export default function ProjectEstimate() {
             <input placeholder="Other info for crew…" value={crewNotes.extra_notes}
               onChange={e=>setCrewNotes(p=>({...p,extra_notes:e.target.value}))}
               style={{...I,width:"100%",height:30,fontSize:12}} />
-          </div>
-
-          {/* labor estimate card */}
-          <div style={{...CARD_BLUE, marginBottom:5}}>
-            <div style={{fontSize:10,fontWeight:700,color:"#1e40af",
-                textTransform:"uppercase",letterSpacing:0.4,marginBottom:6}}>
-              ⏱ Labor (Estimated)
-            </div>
-            {/* header */}
-            <div style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 1fr 1fr 1fr",
-                gap:3,marginBottom:4}}>
-              {["Role","Hrs/day","Days","People","$/hr","Cost"].map(h=>(
-                <div key={h} style={{fontSize:9,color:"#94a3b8",fontWeight:700,
-                    textTransform:"uppercase",letterSpacing:0.3}}>{h}</div>
-              ))}
-            </div>
-            {laborRoles.map((r,i)=>{
-              const cost = Number(r.hours||0)*Number(r.days||1)*Number(r.people||1)*Number(r.rate||0);
-              return (
-                <div key={i} style={{display:"grid",
-                    gridTemplateColumns:"2fr 1fr 1fr 1fr 1fr 1fr",
-                    gap:3,marginBottom:4,alignItems:"center"}}>
-                  <input placeholder={i===0?"Lead":i===1?"Helper":"Role"}
-                    value={r.role}
-                    onChange={e=>setLaborRoles(p=>p.map((x,j)=>j===i?{...x,role:e.target.value}:x))}
-                    style={{...I,height:28,fontSize:11}} />
-                  <input type="number" placeholder="8" inputMode="decimal"
-                    value={r.hours}
-                    onChange={e=>setLaborRoles(p=>p.map((x,j)=>j===i?{...x,hours:e.target.value}:x))}
-                    style={{...I,height:28,fontSize:11,textAlign:"center"}} />
-                  <input type="number" placeholder="1"
-                    value={r.days}
-                    onChange={e=>setLaborRoles(p=>p.map((x,j)=>j===i?{...x,days:e.target.value}:x))}
-                    style={{...I,height:28,fontSize:11,textAlign:"center"}} />
-                  <input type="number" placeholder="1"
-                    value={r.people}
-                    onChange={e=>setLaborRoles(p=>p.map((x,j)=>j===i?{...x,people:e.target.value}:x))}
-                    style={{...I,height:28,fontSize:11,textAlign:"center"}} />
-                  <input type="number" placeholder="0"
-                    value={r.rate||""}
-                    onChange={e=>setLaborRoles(p=>p.map((x,j)=>j===i?{...x,rate:e.target.value}:x))}
-                    style={{...I,height:28,fontSize:11,textAlign:"center"}} />
-                  <div style={{fontSize:11,fontWeight:700,
-                      color:cost>0?"#059669":"#94a3b8",textAlign:"right"}}>
-                    {cost>0?`$${cost.toLocaleString("en-US",{maximumFractionDigits:0})}`:"—"}
-                  </div>
-                </div>
-              );
-            })}
-            {/* total */}
-            {(()=>{
-              const total = laborRoles.reduce((s,r)=>
-                s+Number(r.hours||0)*Number(r.days||1)*Number(r.people||1)*Number(r.rate||0),0);
-              return total>0 ? (
-                <div style={{display:"flex",justifyContent:"space-between",
-                    paddingTop:6,borderTop:"1px solid #bfdbfe",marginTop:2}}>
-                  <span style={{fontSize:11,fontWeight:700,color:"#1e40af"}}>Total Labor</span>
-                  <span style={{fontSize:12,fontWeight:800,color:"#059669"}}>
-                    ${total.toLocaleString("en-US",{maximumFractionDigits:0})}
-                  </span>
-                </div>
-              ) : null;
-            })()}
-          </div>
-
-          {/* fuel + sales rep card */}
-          <div style={{...CARD, marginBottom:5, display:"flex", gap:8}}>
-            <div style={{flex:1}}>
-              <div style={{fontSize:10,fontWeight:700,color:C.muted,
-                  textTransform:"uppercase",letterSpacing:0.4,marginBottom:4}}>
-                ⛽ Miles (one-way)
-              </div>
-              <div style={{display:"flex",alignItems:"center",gap:4}}>
-                <input type="number" placeholder="0" inputMode="decimal"
-                  value={jobMiles}
-                  onChange={e=>setJobMiles(e.target.value)}
-                  style={{...I,height:30,fontSize:13,textAlign:"center"}} />
-                <span style={{fontSize:11,color:C.muted,whiteSpace:"nowrap"}}>
-                  {jobMiles>0?`$${((Number(jobMiles)*2)*fuelRate).toFixed(2)}`:""}
-                </span>
-              </div>
-            </div>
-            <div style={{flex:1}}>
-              <div style={{fontSize:10,fontWeight:700,color:C.muted,
-                  textTransform:"uppercase",letterSpacing:0.4,marginBottom:4}}>
-                👤 Sales Rep
-              </div>
-              <select value={selectedRep}
-                onChange={e=>setSelectedRep(e.target.value)}
-                style={{...I,height:30,fontSize:12}}>
-                <option value="">Select rep…</option>
-                {salesReps.map(r=>(
-                  <option key={r.id} value={r.id}>
-                    {r.name} ({r.commission_pct}%)
-                  </option>
-                ))}
-              </select>
-            </div>
           </div>
 
           {/* floor tabs */}

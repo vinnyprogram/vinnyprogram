@@ -12,42 +12,39 @@ import EstimateSearch from "./pages/EstimateSearch";
 import HowToUse from "./pages/HowToUse";
 import CustomerProfile from "./pages/CustomerProfile";
 import Settings from "./pages/Settings";
+import QuotePricing from "./pages/QuotePricing";
 import EstimateDrawings from "./pages/EstimateDrawings";
 
-function Dashboard() { return <h2 style={{ padding: 20 }}>Dashboard</h2>; }
-function Jobs() { return <h2 style={{ padding: 20 }}>Jobs</h2>; }
+function Dashboard() { return <h2 style={{padding:20}}>Dashboard</h2>; }
+function Jobs()      { return <h2 style={{padding:20}}>Jobs</h2>; }
 
 function ProtectedApp() {
   const { user, company, loading } = useAuth();
   const location = useLocation();
 
-  if (loading) return (
-    <div style={{
-      minHeight: "100vh", display: "flex", alignItems: "center",
-      justifyContent: "center", fontFamily: "system-ui", color: "#64748b"
-    }}>
+  if(loading) return (
+    <div style={{ minHeight:"100vh", display:"flex", alignItems:"center",
+        justifyContent:"center", fontFamily:"system-ui", color:"#64748b" }}>
       Loading…
     </div>
   );
 
-  if (!user) return <Navigate to="/login" replace />;
+  if(!user) return <Navigate to="/login" replace />;
 
   // Don't redirect to onboarding while still loading or already on onboarding
-  if (!company && !loading && location.pathname !== "/onboarding")
+  if(!company && !loading && location.pathname !== "/onboarding")
     return <Navigate to="/onboarding" replace />;
 
   // check trial/status
-  if (company.status === "suspended") return (
-    <div style={{
-      minHeight: "100vh", display: "flex", alignItems: "center",
-      justifyContent: "center", fontFamily: "system-ui", padding: 20, textAlign: "center"
-    }}>
+  if(company.status==="suspended") return (
+    <div style={{ minHeight:"100vh", display:"flex", alignItems:"center",
+        justifyContent:"center", fontFamily:"system-ui", padding:20, textAlign:"center" }}>
       <div>
-        <div style={{ fontSize: 40, marginBottom: 12 }}>⚠️</div>
-        <div style={{ fontSize: 20, fontWeight: 700, color: "#0f172a", marginBottom: 8 }}>
+        <div style={{ fontSize:40, marginBottom:12 }}>⚠️</div>
+        <div style={{ fontSize:20, fontWeight:700, color:"#0f172a", marginBottom:8 }}>
           Account Suspended
         </div>
-        <div style={{ fontSize: 14, color: "#64748b" }}>
+        <div style={{ fontSize:14, color:"#64748b" }}>
           Please contact support to reactivate your account.
         </div>
       </div>
@@ -69,6 +66,7 @@ function ProtectedApp() {
         <Route path="field-report/:projectId" element={<FieldReport />} />
         <Route path="customer/:customerId" element={<CustomerProfile />} />
         <Route path="settings" element={<Settings />} />
+        <Route path="quote-pricing/:projectId" element={<QuotePricing />} />
         <Route path="project/drawings" element={<EstimateDrawings />} />
       </Route>
     </Routes>

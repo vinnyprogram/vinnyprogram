@@ -171,7 +171,7 @@ export default function EstimateSearch() {
                     fontSize:12,fontWeight:700}}>
                   📋 Office
                 </button>
-                <button onClick={()=>navigate(`/quote/${p.id}`)}
+                <button onClick={()=>navigate(`/quote-pricing/${p.id}`)}
                   style={{flex:1,border:"none",background:"#f97316",color:"white",
                     padding:"7px 0",borderRadius:7,cursor:"pointer",
                     fontSize:12,fontWeight:700}}>

@@ -375,7 +375,7 @@ export default function CustomerProfile() {
                           cursor:"pointer",fontSize:12,fontWeight:700}}>
                         📋 Office
                       </button>
-                      <button onClick={()=>navigate(`/quote/${job.id}`)}
+                      <button onClick={()=>navigate(`/quote-pricing/${job.id}`)}
                         style={{flex:1,minWidth:70,border:"none",background:"#f97316",
                           color:"white",padding:"8px 0",borderRadius:8,
                           cursor:"pointer",fontSize:12,fontWeight:700}}>
