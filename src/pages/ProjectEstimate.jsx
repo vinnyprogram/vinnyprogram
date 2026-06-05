@@ -1154,9 +1154,11 @@ export default function ProjectEstimate() {
   function updateArea(floor,idx,field,value) {
     setAreas(prev=>{
       const upd=[...(prev[floor]||[])];
-      upd[idx]={...upd[idx],[field]:value};
+      const existing = prev[floor][idx]||{};
+      upd[idx]={...existing,[field]:value};
+      // always preserve options unless explicitly updating them
+      if(field!=="options") upd[idx].options = existing.options||[];
       if(field==="area_type"){
-        // find most recent area with same type — copy material + mat_lines (including combos)
         const match=Object.values(prev).flat().reverse().find(a=>a.area_type===value&&a.material);
         if(match){
           upd[idx]={...upd[idx],
@@ -1164,8 +1166,8 @@ export default function ProjectEstimate() {
             thickness_in:match.thickness_in,
             r_value:match.r_value,
             oc:match.oc,
-            // copy mat_lines so combos are preserved
             mat_lines: match.mat_lines ? match.mat_lines.map(ml=>({...ml})) : undefined,
+            options: existing.options||[],
           };
         }
       }
