@@ -27,7 +27,9 @@ export default function Onboarding() {
     setLoading(true); setError("");
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { user }, error: authErr } = await supabase.auth.getUser();
+      console.log("Auth user:", user?.id, "Error:", authErr);
+      alert("User ID: " + (user?.id || "NULL") + " Error: " + (authErr?.message || "none"));
       if (!user) { navigate("/login"); return; }
 
       let logo_url = null;
@@ -59,11 +61,16 @@ export default function Onboarding() {
         status: "trial",
       }]);
 
-      if (ce) throw ce;
+      if (ce) {
+        console.error("Insert error:", JSON.stringify(ce));
+        throw new Error("Insert failed: " + (ce.message || JSON.stringify(ce)));
+      }
 
       // verify company was saved before redirecting
-      const { data: check } = await supabase.from("companies")
+      const { data: check, error: checkErr } = await supabase.from("companies")
         .select("id").eq("user_id", user.id).maybeSingle();
+
+      console.log("Check result:", check, checkErr);
 
       if (!check) throw new Error("Company was not saved. Please try again.");
 
