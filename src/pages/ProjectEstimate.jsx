@@ -450,7 +450,7 @@ const GS = {
 
       {/* material selector — single or combo */}
       <div style={{marginBottom:4}}>
-        {matLines[0].material !== "__combo__" && matLines.length===1 && (
+        {(matLines[0].material !== "__combo__" && matLines.length===1 && matLines[0].material !== "__combo__") && (
           <>
             {/* ROW 2: material + thick */}
             <div style={{ display:"flex", gap:4, marginBottom:2,
@@ -852,6 +852,9 @@ function EstimatePanel({ floors, areas, materialMap, crewNotes, projectName, pro
           const mls = (a.mat_lines&&a.mat_lines.length>0)
             ? a.mat_lines
             : [{material:a.material||"",thickness_in:a.thickness_in||"",r_value:a.r_value||"",oc:a.oc||""}];
+          // restore options from DB — areas.options is a jsonb array
+          const savedOptions = Array.isArray(a.options) ? a.options : 
+            (typeof a.options === 'string' ? JSON.parse(a.options||'[]') : []);
           const matKey = mls.map(ml=>[ml.material,ml.thickness_in,ml.r_value,ml.oc].join(":")).join("+");
           const key = a.area_type + "||||" + matKey;
           if(!groupMap[key]) groupMap[key]={
@@ -1079,6 +1082,7 @@ export default function ProjectEstimate() {
             mh:"", ml:"", mq:"1",
             deduct_sqft:"",
             _collapsed: true,
+            options: savedOptions,
             mat_lines: [{
               id:1, material:a.material||"",
               thickness_in:a.thickness_in||"",
@@ -1371,6 +1375,13 @@ export default function ProjectEstimate() {
 
       if(selectedLeadId) await supabase.from("customers")
         .update({estimate_amount:Math.round(finalPriceWithLabor*100)/100}).eq("id",selectedLeadId);
+      // collect all area options for storage
+      const allOptions = floors.flatMap(floor=>
+        (areas[floor]||[]).filter(a=>a.area_type&&a.sqft&&(a.options||[]).length>0)
+          .map(a=>({ area_type:a.area_type, floor, sqft:a.sqft,
+            options:a.options, mat_lines:a.mat_lines }))
+      );
+
       await supabase.from("quotes").insert([{
         project_id:proj.id,
         subtotal: pricing.material_cost,
@@ -1389,6 +1400,7 @@ export default function ProjectEstimate() {
         commission_pct: commissionPct,
         job_miles: Number(jobMiles||0),
         sales_rep_id: selectedRep||null,
+        notes: allOptions.length>0 ? JSON.stringify(allOptions) : null,
         status:"Draft", company_id:companyId,
       }]);
       setSaved(true);
