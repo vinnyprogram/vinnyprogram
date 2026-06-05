@@ -1417,6 +1417,7 @@ export default function ProjectEstimate() {
           });
         })
       );
+      console.log("Saving areas with options:", allAreas.map(a=>({area_type:a.area_type,options:a.options})));
       if(allAreas.length>0){
         const {data:areaRows,error:ae}=await supabase.from("areas").insert(allAreas).select();
         if(ae) throw ae;
