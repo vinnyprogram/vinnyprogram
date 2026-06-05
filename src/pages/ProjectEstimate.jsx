@@ -1373,6 +1373,38 @@ export default function ProjectEstimate() {
     };
   }
 
+  // Save options only — updates existing areas without creating new version
+  async function saveOptionsOnly() {
+    if(saving) return;
+    setSaving(true);
+    try {
+      // get all area rows for this project
+      const { data:existingAreas } = await supabase.from("areas")
+        .select("id,area_type,sqft,floor_id,order_index")
+        .eq("project_id", savedProjectId||projectId)
+        .order("order_index");
+      if(!existingAreas?.length){ setSaving(false); return; }
+
+      // match areas by area_type and sqft, update options
+      for(const floor of floors){
+        for(const a of (areas[floor]||[])){
+          if(!isAreaComplete(a)) continue;
+          const match = existingAreas.find(ea=>
+            ea.area_type===a.area_type && Math.abs(ea.sqft - a.sqft)<0.01
+          );
+          if(match && (a.options||[]).length>0){
+            await supabase.from("areas").update({
+              options: a.options||[]
+            }).eq("id", match.id);
+          }
+        }
+      }
+      setSaved(true);
+      setTimeout(()=>setSaved(false),2000);
+    } catch(err){ alert("Error saving options: "+err.message); }
+    setSaving(false);
+  }
+
   async function saveProject() {
     if(saving) return;  // prevent double-tap
     if(!selectedLeadId){
@@ -1573,6 +1605,14 @@ export default function ProjectEstimate() {
                 📄 Quote
               </button>
             </>
+          )}
+          {(savedProjectId||projectId) && floors.some(f=>(areas[f]||[]).some(a=>(a.options||[]).length>0)) && (
+            <button onClick={saveOptionsOnly} disabled={saving}
+              style={{...BtnD, fontSize:11, height:32, padding:"0 10px",
+                background:"#fff7ed", color:"#f97316",
+                border:"1px solid #f97316", borderRadius:8}}>
+              💾 Opts
+            </button>
           )}
           <button onClick={saveProject} disabled={saving}
             style={{...BtnD, fontSize:13, height:32, padding:"0 14px",
