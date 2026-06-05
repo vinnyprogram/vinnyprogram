@@ -673,42 +673,135 @@ const GS = {
 
       {/* OPTIONS */}
       <div style={{marginBottom:6}}>
-        {(area.options||[]).map((opt,oi)=>(
-          <div key={oi} style={{background:"#fff7ed",border:"1px solid #fed7aa",
-              borderRadius:6,padding:"6px 8px",marginBottom:4}}>
-            <div style={{display:"flex",justifyContent:"space-between",
-                alignItems:"center",marginBottom:4}}>
-              <span style={{fontSize:10,fontWeight:700,color:"#92400e"}}>
-                ⚡ Option {oi+1}
-              </span>
-              <button onClick={()=>onChange("options",(area.options||[]).filter((_,j)=>j!==oi))}
-                style={{border:"none",background:"none",color:C.faint,
-                  cursor:"pointer",fontSize:12,padding:0}}>✕</button>
+        {(area.options||[]).map((opt,oi)=>{
+          const isOptCombo = opt.material==="__combo__" || (opt.mat_lines||[]).length>1;
+          const optLines = (opt.mat_lines||[]).length>0 ? opt.mat_lines
+            : [{id:1,material:opt.material||"",thickness_in:opt.thickness_in||matLines[0].thickness_in||"",r_value:opt.r_value||matLines[0].r_value||"",oc:""}];
+          function updateOpt(field,val){
+            const opts=[...(area.options||[])];
+            opts[oi]={...opts[oi],[field]:val};
+            onChange("options",opts);
+          }
+          function updateOptLine(li,field,val){
+            const opts=[...(area.options||[])];
+            const lines=[...optLines];
+            lines[li]={...lines[li],[field]:val};
+            opts[oi]={...opts[oi],mat_lines:lines,material:lines[0].material||"__combo__"};
+            onChange("options",opts);
+          }
+          return (
+            <div key={oi} style={{background:"#fff7ed",border:"1px solid #fed7aa",
+                borderRadius:6,padding:"6px 8px",marginBottom:4}}>
+              <div style={{display:"flex",justifyContent:"space-between",
+                  alignItems:"center",marginBottom:4}}>
+                <span style={{fontSize:10,fontWeight:700,color:"#92400e"}}>
+                  ⚡ Option {oi+1}
+                </span>
+                <button onClick={()=>onChange("options",(area.options||[]).filter((_,j)=>j!==oi))}
+                  style={{border:"none",background:"none",color:C.faint,
+                    cursor:"pointer",fontSize:12,padding:0}}>✕</button>
+              </div>
+
+              {/* material selector — single or combo */}
+              {!isOptCombo ? (
+                <>
+                  <div style={{display:"flex",gap:4,marginBottom:4}}>
+                    <select style={{...XS,flex:2}} value={opt.material||""}
+                      onChange={e=>{
+                        if(e.target.value==="__combo__"){
+                          updateOpt("mat_lines",[
+                            {id:1,material:"",thickness_in:matLines[0].thickness_in||"",r_value:matLines[0].r_value||"",oc:""},
+                            {id:2,material:"",thickness_in:matLines[0].thickness_in||"",r_value:matLines[0].r_value||"",oc:""},
+                          ]);
+                          updateOpt("material","__combo__");
+                        } else {
+                          updateOpt("material",e.target.value);
+                        }
+                      }}>
+                      <option value="">Material</option>
+                      {materials.map(m=><option key={m.id}>{m.name}</option>)}
+                      <option value="__combo__">⚡ Combo</option>
+                    </select>
+                    <select style={{...XS,flex:"0 0 52px"}} value={opt.thickness_in||matLines[0].thickness_in||""}
+                      onChange={e=>updateOpt("thickness_in",e.target.value)}>
+                      <option value="">Thick</option>
+                      {THICK_OPTS.map(t=><option key={t}>{t}</option>)}
+                    </select>
+                    <select style={{...XS,flex:"0 0 52px"}} value={opt.r_value||matLines[0].r_value||""}
+                      onChange={e=>updateOpt("r_value",e.target.value)}>
+                      <option value="">R-Val</option>
+                      {R_VALS.map(r=><option key={r}>{r}</option>)}
+                    </select>
+                  </div>
+                </>
+              ) : (
+                <div style={{background:"#fff7ed",borderRadius:6,padding:"6px 8px",marginBottom:4}}>
+                  <div style={{fontSize:9,fontWeight:700,color:"#92400e",marginBottom:6,
+                      display:"flex",justifyContent:"space-between"}}>
+                    ⚡ Combo
+                    <button onClick={()=>{
+                        updateOpt("mat_lines",[{id:1,material:"",thickness_in:matLines[0].thickness_in||"",r_value:matLines[0].r_value||"",oc:""}]);
+                        updateOpt("material","");
+                      }}
+                      style={{border:"none",background:"none",color:"#94a3b8",cursor:"pointer",fontSize:10,padding:0}}>
+                      × remove combo
+                    </button>
+                  </div>
+                  {optLines.map((ol,li)=>(
+                    <div key={li} style={{marginBottom:6,paddingBottom:6,
+                        borderBottom:li<optLines.length-1?"1px dashed #fde68a":"none"}}>
+                      <div style={{display:"flex",gap:4,marginBottom:3,alignItems:"center"}}>
+                        <select style={{...XS,flex:1}} value={ol.material||""}
+                          onChange={e=>updateOptLine(li,"material",e.target.value)}>
+                          <option value="">Material {li+1}</option>
+                          {materials.map(m=><option key={m.id}>{m.name}</option>)}
+                        </select>
+                        {optLines.length>2 && (
+                          <button onClick={()=>{
+                              const lines=optLines.filter((_,j)=>j!==li);
+                              const opts=[...(area.options||[])];
+                              opts[oi]={...opts[oi],mat_lines:lines};
+                              onChange("options",opts);
+                            }}
+                            style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:13,padding:0}}>✕</button>
+                        )}
+                      </div>
+                      <div style={{display:"flex",gap:4}}>
+                        <select style={{...XS,flex:1}} value={ol.thickness_in||""}
+                          onChange={e=>updateOptLine(li,"thickness_in",e.target.value)}>
+                          <option value="">Thick</option>{THICK_OPTS.map(t=><option key={t}>{t}</option>)}
+                        </select>
+                        <select style={{...XS,flex:1}} value={ol.r_value||""}
+                          onChange={e=>updateOptLine(li,"r_value",e.target.value)}>
+                          <option value="">R-Val</option>{R_VALS.map(r=><option key={r}>{r}</option>)}
+                        </select>
+                        <select style={{...XS,flex:1}} value={ol.oc||""}
+                          onChange={e=>updateOptLine(li,"oc",e.target.value)}>
+                          <option value="">OC</option>{OC_OPTS.map(o=><option key={o}>{o}</option>)}
+                        </select>
+                      </div>
+                    </div>
+                  ))}
+                  <button onClick={()=>{
+                      const lines=[...optLines,{id:Date.now(),material:"",thickness_in:matLines[0].thickness_in||"",r_value:matLines[0].r_value||"",oc:""}];
+                      const opts=[...(area.options||[])];
+                      opts[oi]={...opts[oi],mat_lines:lines};
+                      onChange("options",opts);
+                    }}
+                    style={{width:"100%",padding:"5px",borderRadius:5,
+                      border:"1px dashed #fde68a",background:"none",color:"#92400e",
+                      cursor:"pointer",fontSize:10,fontWeight:600,height:"auto"}}>
+                    + Add material to combo
+                  </button>
+                </div>
+              )}
             </div>
-            <div style={{display:"flex",gap:4}}>
-              <select style={{...XS,flex:2}} value={opt.material||""}
-                onChange={e=>{ const opts=[...(area.options||[])]; opts[oi]={...opts[oi],material:e.target.value}; onChange("options",opts); }}>
-                <option value="">Material</option>
-                {materials.map(m=><option key={m.id}>{m.name}</option>)}
-                <option value="__combo__">⚡ Combo</option>
-              </select>
-              <select style={{...XS,flex:"0 0 52px"}} value={opt.thickness_in||area.thickness_in||""}
-                onChange={e=>{ const opts=[...(area.options||[])]; opts[oi]={...opts[oi],thickness_in:e.target.value}; onChange("options",opts); }}>
-                <option value="">Thick</option>
-                {THICK_OPTS.map(t=><option key={t}>{t}</option>)}
-              </select>
-              <select style={{...XS,flex:"0 0 52px"}} value={opt.r_value||area.r_value||""}
-                onChange={e=>{ const opts=[...(area.options||[])]; opts[oi]={...opts[oi],r_value:e.target.value}; onChange("options",opts); }}>
-                <option value="">R-Val</option>
-                {R_VALS.map(r=><option key={r}>{r}</option>)}
-              </select>
-            </div>
-          </div>
-        ))}
+          );
+        })}
         {(area.options||[]).length < 3 && (
           <button onClick={()=>{
               const opts=[...(area.options||[])];
-              opts.push({material:"",thickness_in:matLines[0].thickness_in||"",r_value:matLines[0].r_value||""});
+              opts.push({material:"",thickness_in:matLines[0].thickness_in||"",r_value:matLines[0].r_value||"",mat_lines:[]});
               onChange("options",opts);
             }}
             style={{width:"100%",padding:"5px",borderRadius:6,
