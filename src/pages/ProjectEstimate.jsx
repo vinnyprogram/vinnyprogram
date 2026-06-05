@@ -390,6 +390,12 @@ const GS = {
           )}
         </div>
       ))}
+      {/* options preview */}
+      {(area.options||[]).map((opt,i)=>(
+        <div key={i} style={{fontSize:10,color:"#f97316",marginTop:2}}>
+          ⚡ Option {i+1}: {[opt.material,opt.thickness_in||area.thickness_in,opt.r_value].filter(Boolean).join(" · ")}
+        </div>
+      ))}
     </div>
   );
 
@@ -662,6 +668,55 @@ const GS = {
               + Add material to combo
             </button>
           </div>
+        )}
+      </div>
+
+      {/* OPTIONS */}
+      <div style={{marginBottom:6}}>
+        {(area.options||[]).map((opt,oi)=>(
+          <div key={oi} style={{background:"#fff7ed",border:"1px solid #fed7aa",
+              borderRadius:6,padding:"6px 8px",marginBottom:4}}>
+            <div style={{display:"flex",justifyContent:"space-between",
+                alignItems:"center",marginBottom:4}}>
+              <span style={{fontSize:10,fontWeight:700,color:"#92400e"}}>
+                ⚡ Option {oi+1}
+              </span>
+              <button onClick={()=>onChange("options",(area.options||[]).filter((_,j)=>j!==oi))}
+                style={{border:"none",background:"none",color:C.faint,
+                  cursor:"pointer",fontSize:12,padding:0}}>✕</button>
+            </div>
+            <div style={{display:"flex",gap:4}}>
+              <select style={{...XS,flex:2}} value={opt.material||""}
+                onChange={e=>{ const opts=[...(area.options||[])]; opts[oi]={...opts[oi],material:e.target.value}; onChange("options",opts); }}>
+                <option value="">Material</option>
+                {materials.map(m=><option key={m.id}>{m.name}</option>)}
+                <option value="__combo__">⚡ Combo</option>
+              </select>
+              <select style={{...XS,flex:"0 0 52px"}} value={opt.thickness_in||area.thickness_in||""}
+                onChange={e=>{ const opts=[...(area.options||[])]; opts[oi]={...opts[oi],thickness_in:e.target.value}; onChange("options",opts); }}>
+                <option value="">Thick</option>
+                {THICK_OPTS.map(t=><option key={t}>{t}</option>)}
+              </select>
+              <select style={{...XS,flex:"0 0 52px"}} value={opt.r_value||area.r_value||""}
+                onChange={e=>{ const opts=[...(area.options||[])]; opts[oi]={...opts[oi],r_value:e.target.value}; onChange("options",opts); }}>
+                <option value="">R-Val</option>
+                {R_VALS.map(r=><option key={r}>{r}</option>)}
+              </select>
+            </div>
+          </div>
+        ))}
+        {(area.options||[]).length < 3 && (
+          <button onClick={()=>{
+              const opts=[...(area.options||[])];
+              opts.push({material:"",thickness_in:matLines[0].thickness_in||"",r_value:matLines[0].r_value||""});
+              onChange("options",opts);
+            }}
+            style={{width:"100%",padding:"5px",borderRadius:6,
+              border:"1px dashed #fed7aa",background:"#fff7ed",
+              color:"#92400e",cursor:"pointer",fontSize:11,fontWeight:600,
+              marginBottom:4,height:"auto"}}>
+            + Add Option
+          </button>
         )}
       </div>
 
@@ -1260,7 +1315,8 @@ export default function ProjectEstimate() {
             return { project_id:proj.id, floor_id:floorMap[floor],
               area_type:a.area_type, material:ml.material, thickness_in:ml.thickness_in||null,
               r_value:ml.r_value, sqft:a.sqft, qty, unit, unit_price, line_total,
-              order_index:i*10+mi, company_id:companyId };
+              order_index:i*10+mi, company_id:companyId,
+              options: mi===0 ? (a.options||[]) : [] };
           });
         })
       );
