@@ -719,7 +719,7 @@ const GS = {
               {!isOptCombo ? (
                 <>
                   <div style={{display:"flex",gap:4,marginBottom:4}}>
-                    <select style={{...XS,flex:"0 0 160px"}} value={opt.material||""}
+                    <select style={{...XS,flex:3}} value={opt.material||""}
                       onChange={e=>{
                         if(e.target.value==="__combo__"){
                           updateOpt("mat_lines",[
@@ -735,12 +735,12 @@ const GS = {
                       {materials.map(m=><option key={m.id}>{m.name}</option>)}
                       <option value="__combo__">⚡ Combo</option>
                     </select>
-                    <select style={{...XS,flex:"0 0 44px"}} value={opt.thickness_in||matLines[0].thickness_in||""}
+                    <select style={{...XS,flex:1}} value={opt.thickness_in||matLines[0].thickness_in||""}
                       onChange={e=>updateOpt("thickness_in",e.target.value)}>
-                      <option value="">Thk</option>
+                      <option value="">Thick</option>
                       {THICK_OPTS.map(t=><option key={t}>{t}</option>)}
                     </select>
-                    <select style={{...XS,flex:"0 0 50px"}} value={opt.r_value||matLines[0].r_value||""}
+                    <select style={{...XS,flex:1}} value={opt.r_value||matLines[0].r_value||""}
                       onChange={e=>updateOpt("r_value",e.target.value)}>
                       <option value="">R-Val</option>
                       {R_VALS.map(r=><option key={r}>{r}</option>)}
