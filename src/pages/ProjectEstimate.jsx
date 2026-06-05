@@ -702,16 +702,24 @@ const GS = {
                 <span style={{fontSize:10,fontWeight:700,color:"#92400e"}}>
                   ⚡ Option {oi+1}
                 </span>
-                <button onClick={()=>onChange("options",(areaOptions).filter((_,j)=>j!==oi))}
-                  style={{border:"none",background:"none",color:C.faint,
-                    cursor:"pointer",fontSize:12,padding:0}}>✕</button>
+                <div style={{display:"flex",gap:4,alignItems:"center"}}>
+                  <button onClick={()=>saveOptionsOnly()}
+                    style={{border:"1px solid #f97316",background:"#fff7ed",
+                      color:"#f97316",cursor:"pointer",fontSize:9,
+                      padding:"2px 5px",borderRadius:4,fontWeight:700}}>
+                    💾 Save
+                  </button>
+                  <button onClick={()=>onChange("options",(areaOptions).filter((_,j)=>j!==oi))}
+                    style={{border:"none",background:"none",color:C.faint,
+                      cursor:"pointer",fontSize:12,padding:0}}>✕</button>
+                </div>
               </div>
 
               {/* material selector — single or combo */}
               {!isOptCombo ? (
                 <>
                   <div style={{display:"flex",gap:4,marginBottom:4}}>
-                    <select style={{...XS,flex:2}} value={opt.material||""}
+                    <select style={{...XS,flex:"0 0 110px"}} value={opt.material||""}
                       onChange={e=>{
                         if(e.target.value==="__combo__"){
                           updateOpt("mat_lines",[
@@ -727,12 +735,12 @@ const GS = {
                       {materials.map(m=><option key={m.id}>{m.name}</option>)}
                       <option value="__combo__">⚡ Combo</option>
                     </select>
-                    <select style={{...XS,flex:"0 0 52px"}} value={opt.thickness_in||matLines[0].thickness_in||""}
+                    <select style={{...XS,flex:1}} value={opt.thickness_in||matLines[0].thickness_in||""}
                       onChange={e=>updateOpt("thickness_in",e.target.value)}>
                       <option value="">Thick</option>
                       {THICK_OPTS.map(t=><option key={t}>{t}</option>)}
                     </select>
-                    <select style={{...XS,flex:"0 0 52px"}} value={opt.r_value||matLines[0].r_value||""}
+                    <select style={{...XS,flex:1}} value={opt.r_value||matLines[0].r_value||""}
                       onChange={e=>updateOpt("r_value",e.target.value)}>
                       <option value="">R-Val</option>
                       {R_VALS.map(r=><option key={r}>{r}</option>)}
@@ -1606,14 +1614,7 @@ export default function ProjectEstimate() {
               </button>
             </>
           )}
-          {(savedProjectId||projectId) && floors.some(f=>(areas[f]||[]).some(a=>(a.options||[]).length>0)) && (
-            <button onClick={saveOptionsOnly} disabled={saving}
-              style={{...BtnD, fontSize:11, height:32, padding:"0 10px",
-                background:"#fff7ed", color:"#f97316",
-                border:"1px solid #f97316", borderRadius:8}}>
-              💾 Opts
-            </button>
-          )}
+
           <button onClick={saveProject} disabled={saving}
             style={{...BtnD, fontSize:13, height:32, padding:"0 14px",
               background:saving?"#64748b":C.ink, borderRadius:8,

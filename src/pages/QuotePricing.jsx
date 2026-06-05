@@ -49,18 +49,18 @@ export default function QuotePricing() {
 
     // load project
     const { data:proj } = await supabase.from("projects")
-      .select("*").eq("id", projectId).single();
+      .select("*").eq("id", projectId).maybeSingle();
     setProject(proj);
 
     // load quote
     const { data:q } = await supabase.from("quotes")
-      .select("*").eq("project_id", projectId).single();
+      .select("*").eq("project_id", projectId).maybeSingle();
     setQuote(q);
 
     // load customer
     if(proj?.lead_id){
       const { data:cust } = await supabase.from("customers")
-        .select("*").eq("id", proj.lead_id).single();
+        .select("*").eq("id", proj.lead_id).maybeSingle();
       setCustomer(cust);
     }
 

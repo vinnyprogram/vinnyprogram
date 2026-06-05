@@ -35,7 +35,6 @@ export default function FieldReport() {
   useEffect(()=>{
     if(!projectId) return;
     async function load() {
-      console.log("Loading field report for project:", projectId);
       try {
         const { data:{ user } } = await supabase.auth.getUser();
         setUser(user);

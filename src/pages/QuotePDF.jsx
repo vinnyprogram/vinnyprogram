@@ -68,21 +68,21 @@ export default function QuotePDF() {
 
       // project
       const { data:proj } = await supabase.from("projects")
-        .select("*").eq("id", projectId).single();
+        .select("*").eq("id", projectId).maybeSingle();
       if(!proj){ setLoading(false); return; }
       setProject(proj);
 
       // lead/customer
       if(proj.lead_id){
         const { data:l } = await supabase.from("customers")
-          .select("*").eq("id", proj.lead_id).single();
+          .select("*").eq("id", proj.lead_id).maybeSingle();
         setLead(l);
       }
 
       // quote
       const { data:q } = await supabase.from("quotes")
         .select("*").eq("project_id", projectId)
-        .order("created_at", { ascending:false }).limit(1).single();
+        .order("created_at", { ascending:false }).limit(1).maybeSingle();
       setQuote(q);
 
       // floors

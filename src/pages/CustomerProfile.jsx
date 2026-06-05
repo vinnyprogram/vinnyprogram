@@ -101,7 +101,7 @@ export default function CustomerProfile() {
 
     // customer
     const { data:cust } = await supabase.from("customers")
-      .select("*").eq("id", Number(customerId)).single();
+      .select("*").eq("id", Number(customerId)).maybeSingle();
     setCustomer(cust);
 
     // projects with quotes
@@ -170,7 +170,7 @@ export default function CustomerProfile() {
     const totalHours = roles.reduce((s,r)=>
       s+Number(r.hours||0)*Number(r.days||1)*Number(r.people||1),0);
     const { data:q } = await supabase.from("quotes")
-      .select("*").eq("project_id", projectId).single();
+      .select("*").eq("project_id", projectId).maybeSingle();
     if(!q) return;
     const totalCost = Number(q.material_cost||0) + Number(q.overhead_cost||0) + laborCost;
     const finalPrice = totalCost * (1 + Number(q.profit_margin_pct||30)/100);
