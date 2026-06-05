@@ -14,32 +14,38 @@ import CustomerProfile from "./pages/CustomerProfile";
 import Settings from "./pages/Settings";
 import EstimateDrawings from "./pages/EstimateDrawings";
 
-function Dashboard() { return <h2 style={{padding:20}}>Dashboard</h2>; }
-function Jobs()      { return <h2 style={{padding:20}}>Jobs</h2>; }
+function Dashboard() { return <h2 style={{ padding: 20 }}>Dashboard</h2>; }
+function Jobs() { return <h2 style={{ padding: 20 }}>Jobs</h2>; }
 
 function ProtectedApp() {
   const { user, company, loading } = useAuth();
 
-  if(loading) return (
-    <div style={{ minHeight:"100vh", display:"flex", alignItems:"center",
-        justifyContent:"center", fontFamily:"system-ui", color:"#64748b" }}>
+  if (loading) return (
+    <div style={{
+      minHeight: "100vh", display: "flex", alignItems: "center",
+      justifyContent: "center", fontFamily: "system-ui", color: "#64748b"
+    }}>
       Loading…
     </div>
   );
 
-  if(!user) return <Navigate to="/login" replace />;
-  if(!company) return <Navigate to="/onboarding" replace />;
+  if (!user) return <Navigate to="/login" replace />;
+
+  // Don't redirect to onboarding while still loading
+  if (!company && !loading) return <Navigate to="/onboarding" replace />;
 
   // check trial/status
-  if(company.status==="suspended") return (
-    <div style={{ minHeight:"100vh", display:"flex", alignItems:"center",
-        justifyContent:"center", fontFamily:"system-ui", padding:20, textAlign:"center" }}>
+  if (company.status === "suspended") return (
+    <div style={{
+      minHeight: "100vh", display: "flex", alignItems: "center",
+      justifyContent: "center", fontFamily: "system-ui", padding: 20, textAlign: "center"
+    }}>
       <div>
-        <div style={{ fontSize:40, marginBottom:12 }}>⚠️</div>
-        <div style={{ fontSize:20, fontWeight:700, color:"#0f172a", marginBottom:8 }}>
+        <div style={{ fontSize: 40, marginBottom: 12 }}>⚠️</div>
+        <div style={{ fontSize: 20, fontWeight: 700, color: "#0f172a", marginBottom: 8 }}>
           Account Suspended
         </div>
-        <div style={{ fontSize:14, color:"#64748b" }}>
+        <div style={{ fontSize: 14, color: "#64748b" }}>
           Please contact support to reactivate your account.
         </div>
       </div>
