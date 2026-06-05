@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import MainLayout from "./Layout/MainLayout";
 import Login from "./pages/Login";
@@ -19,6 +19,7 @@ function Jobs() { return <h2 style={{ padding: 20 }}>Jobs</h2>; }
 
 function ProtectedApp() {
   const { user, company, loading } = useAuth();
+  const location = useLocation();
 
   if (loading) return (
     <div style={{
@@ -31,8 +32,9 @@ function ProtectedApp() {
 
   if (!user) return <Navigate to="/login" replace />;
 
-  // Don't redirect to onboarding while still loading
-  if (!company && !loading) return <Navigate to="/onboarding" replace />;
+  // Don't redirect to onboarding while still loading or already on onboarding
+  if (!company && !loading && location.pathname !== "/onboarding")
+    return <Navigate to="/onboarding" replace />;
 
   // check trial/status
   if (company.status === "suspended") return (

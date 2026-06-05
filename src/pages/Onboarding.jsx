@@ -1,9 +1,11 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
 import { supabase } from "../lib/supabase";
 
 export default function Onboarding() {
   const navigate = useNavigate();
+  const { loadCompany } = useAuth();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [logoFile, setLogoFile] = useState(null);
@@ -78,8 +80,10 @@ export default function Onboarding() {
         if (ce) throw new Error(ce.message || "Could not save company");
       }
 
-      // force a hard reload so AuthContext picks up the company
-      window.location.href = "/";
+      // reload company in context then navigate
+      const { data: { user: u } } = await supabase.auth.getUser();
+      if (u) await loadCompany(u.id);
+      navigate("/");
     } catch (err) {
       setError(err.message || "Something went wrong");
     }
