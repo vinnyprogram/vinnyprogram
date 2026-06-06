@@ -8,20 +8,31 @@ export default function EstimateSearch() {
   const [openCost, setOpenCost] = useState(null);
   const [drafts, setDrafts]     = useState([]);
 
-  // Load all drafts from localStorage
+  // Load all drafts from localStorage, clean up duplicates
   useEffect(()=>{
     const found = [];
+    const keysToDelete = [];
     for(let i=0; i<localStorage.length; i++){
       const key = localStorage.key(i);
       if(key?.startsWith("draft_estimate_")){
         try {
           const d = JSON.parse(localStorage.getItem(key));
           if(d) found.push({...d, key});
-        } catch(e) {}
+        } catch(e) { keysToDelete.push(key); }
       }
     }
+    // delete bad/corrupt drafts
+    keysToDelete.forEach(k=>localStorage.removeItem(k));
+    // deduplicate by leadId — keep newest per customer
+    const seen = {};
+    const deduped = [];
     found.sort((a,b)=>new Date(b.savedAt)-new Date(a.savedAt));
-    setDrafts(found);
+    found.forEach(d=>{
+      const id = d.selectedLeadId||"anon";
+      if(!seen[id]){ seen[id]=true; deduped.push(d); }
+      else { localStorage.removeItem(d.key); } // remove older duplicate
+    });
+    setDrafts(deduped);
   },[]);
 
   function discardDraft(key) {

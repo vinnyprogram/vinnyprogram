@@ -1082,8 +1082,8 @@ export default function ProjectEstimate() {
   const [loadingProject, setLoadingProject] = useState(isEditing);
 
   // ── Draft helpers ───────────────────────────────────────────
-  function getDraftKey(leadId, address) {
-    return `draft_estimate_${leadId||"new"}_${(address||"").replace(/\s+/g,"_").toLowerCase()}`;
+  function getDraftKey(leadId) {
+    return `draft_estimate_${leadId||"new"}`;
   }
 
   function saveDraft() {
@@ -1118,7 +1118,7 @@ export default function ProjectEstimate() {
   // Set draft key as soon as we have a lead
   useEffect(()=>{
     if(selectedLeadId){
-      const key = getDraftKey(selectedLeadId, projectAddress||"");
+      const key = getDraftKey(selectedLeadId);
       setDraftKey(key);
     }
   },[selectedLeadId, projectAddress]);
@@ -1262,7 +1262,7 @@ export default function ProjectEstimate() {
   // Check for existing draft when lead changes
   useEffect(()=>{
     if(!isEditing && selectedLeadId){
-      const key = getDraftKey(selectedLeadId, projectAddress||"");
+      const key = getDraftKey(selectedLeadId);
       const draft = loadDraft(key);
       if(draft && !draftRestored){
         const age = Math.round((Date.now()-new Date(draft.savedAt).getTime())/60000);
@@ -1283,10 +1283,11 @@ export default function ProjectEstimate() {
     }
   },[selectedLeadId, projectAddress]);
 
-  // Save draft when customer/address changes
+  // Save draft when customer changes (debounced for address)
   useEffect(()=>{
     if(!isEditing && selectedLeadId){
-      saveDraftNow();
+      const t = setTimeout(()=>saveDraftNow(), 1500);
+      return ()=>clearTimeout(t);
     }
   },[selectedLeadId, projectAddress, projectName]);
 
@@ -1335,7 +1336,7 @@ export default function ProjectEstimate() {
   // Save draft immediately — called on any meaningful change
   function saveDraftNow(overrideAreas) {
     if(!selectedLeadId) return;
-    const key = getDraftKey(selectedLeadId, projectAddress||"");
+    const key = getDraftKey(selectedLeadId);
     try {
       const draft = {
         savedAt: new Date().toISOString(),
