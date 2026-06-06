@@ -42,9 +42,9 @@ export default function EstimateSearch() {
 
   function resumeDraft(draft) {
     if(draft.selectedLeadId){
-      navigate(`/estimate/new?leadId=${draft.selectedLeadId}&address=${encodeURIComponent(draft.projectAddress||"")}&resume=1`);
+      navigate(`/project/new?leadId=${draft.selectedLeadId}&address=${encodeURIComponent(draft.projectAddress||"")}&resume=1`);
     } else {
-      navigate("/estimate/new");
+      navigate("/project/new");
     }
   } // project id with cost panel open
   const [groups, setGroups]     = useState([]);
@@ -134,31 +134,28 @@ export default function EstimateSearch() {
               .filter(f=>(d.areas[f]||[]).some(a=>a.area_type)).join(", ");
             return (
               <div key={d.key} style={{background:"#fff7ed",border:"1px solid #fed7aa",
-                  borderLeft:"3px solid #f97316",borderRadius:8,padding:"10px 14px",
-                  marginBottom:8}}>
-                <div style={{display:"flex",justifyContent:"space-between",
-                    alignItems:"flex-start",marginBottom:6}}>
-                  <div>
-                    <div style={{fontSize:13,fontWeight:700,color:"#0f172a"}}>
-                      {d.projectName||"Unnamed customer"}
-                    </div>
-                    <div style={{fontSize:11,color:"#64748b"}}>
-                      {d.projectAddress||"No address"} · {age} min ago
-                    </div>
-                    <div style={{fontSize:11,color:"#92400e",marginTop:2}}>
-                      {areaCount} area{areaCount!==1?"s":""}{floorList?` · ${floorList}`:""}
-                    </div>
+                  borderLeft:"3px solid #f97316",borderRadius:8,
+                  padding:"8px 12px",marginBottom:6,
+                  display:"flex",alignItems:"center",gap:8}}>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:13,fontWeight:700,color:"#0f172a",
+                      overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                    {d.projectName||"Unnamed"}
                   </div>
-                  <button onClick={()=>discardDraft(d.key)}
-                    style={{border:"none",background:"none",color:"#94a3b8",
-                      cursor:"pointer",fontSize:14,padding:"0 4px"}}>✕</button>
+                  <div style={{fontSize:11,color:"#64748b",
+                      overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                    {d.projectAddress||"No address"} · {age}min ago
+                  </div>
                 </div>
                 <button onClick={()=>resumeDraft(d)}
-                  style={{width:"100%",border:"none",background:"#f97316",
-                    color:"white",padding:"8px",borderRadius:6,
-                    cursor:"pointer",fontSize:12,fontWeight:700}}>
-                  ▶ Resume Draft
+                  style={{border:"none",background:"#f97316",color:"white",
+                    padding:"6px 12px",borderRadius:6,cursor:"pointer",
+                    fontSize:12,fontWeight:700,flexShrink:0,whiteSpace:"nowrap"}}>
+                  ▶ Resume
                 </button>
+                <button onClick={()=>discardDraft(d.key)}
+                  style={{border:"none",background:"none",color:"#94a3b8",
+                    cursor:"pointer",fontSize:16,padding:"0 2px",flexShrink:0}}>✕</button>
               </div>
             );
           })}
