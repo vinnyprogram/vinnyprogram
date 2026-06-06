@@ -1107,21 +1107,18 @@ export default function ProjectEstimate() {
     } catch(e) { return null; }
   }
 
-  // Auto-save every 30 seconds when there's data
+  // Auto-save every 30 seconds
   useEffect(()=>{
-    if(!draftKey) return;
     const interval = setInterval(()=>{
-      if(selectedLeadId || floors.some(f=>(areas[f]||[]).some(a=>a.area_type||a.sqft>0))){
-        saveDraft();
-      }
+      if(selectedLeadId) saveDraftNow();
     }, 30000);
     return ()=>clearInterval(interval);
-  },[draftKey, selectedLeadId, projectName, projectAddress, crewNotes, floors, areas]);
+  },[selectedLeadId, projectName, projectAddress, crewNotes, floors, areas]);
 
-  // Set draft key when lead/address changes
+  // Set draft key as soon as we have a lead
   useEffect(()=>{
-    if(selectedLeadId || projectAddress){
-      const key = getDraftKey(selectedLeadId, projectAddress);
+    if(selectedLeadId){
+      const key = getDraftKey(selectedLeadId, projectAddress||"");
       setDraftKey(key);
     }
   },[selectedLeadId, projectAddress]);
@@ -1264,25 +1261,34 @@ export default function ProjectEstimate() {
 
   // Check for existing draft when lead changes
   useEffect(()=>{
-    if(!isEditing && selectedLeadId && projectAddress){
-      const key = getDraftKey(selectedLeadId, projectAddress);
+    if(!isEditing && selectedLeadId){
+      const key = getDraftKey(selectedLeadId, projectAddress||"");
       const draft = loadDraft(key);
       if(draft && !draftRestored){
         const age = Math.round((Date.now()-new Date(draft.savedAt).getTime())/60000);
         const areaCount = Object.values(draft.areas||{}).flat().filter(a=>a.area_type).length;
-        if(areaCount>0 && window.confirm(
-          `Resume draft from ${age} min ago?
-${areaCount} area(s) on ${Object.keys(draft.areas||{}).filter(f=>(draft.areas[f]||[]).some(a=>a.area_type)).join(", ")}`
-        )){
+        // auto-restore if came from resume button, otherwise ask
+        const shouldRestore = resumeMode || (areaCount>0 && window.confirm(
+          `You have a draft from ${age} min ago with ${areaCount} area(s). Resume it?`
+        ));
+        if(shouldRestore){
           if(draft.crewNotes) setCrewNotes(draft.crewNotes);
           if(draft.floors) setFloors(draft.floors);
           if(draft.areas) setAreas(draft.areas);
           if(draft.projectName) setProjectName(draft.projectName);
+          if(draft.projectAddress && !projectAddress) setProjectAddress(draft.projectAddress);
           setDraftRestored(true);
         }
       }
     }
   },[selectedLeadId, projectAddress]);
+
+  // Save draft when customer/address changes
+  useEffect(()=>{
+    if(!isEditing && selectedLeadId){
+      saveDraftNow();
+    }
+  },[selectedLeadId, projectAddress, projectName]);
 
   useEffect(()=>{
     if(!isEditing && leadId&&leads.length>0){
@@ -1326,23 +1332,29 @@ ${areaCount} area(s) on ${Object.keys(draft.areas||{}).filter(f=>(draft.areas[f]
     });
   }
 
+  // Save draft immediately — called on any meaningful change
+  function saveDraftNow(overrideAreas) {
+    if(!selectedLeadId) return;
+    const key = getDraftKey(selectedLeadId, projectAddress||"");
+    try {
+      const draft = {
+        savedAt: new Date().toISOString(),
+        selectedLeadId, projectName, projectAddress,
+        crewNotes, floors,
+        areas: overrideAreas || areas,
+      };
+      localStorage.setItem(key, JSON.stringify(draft));
+      if(!draftKey) setDraftKey(key);
+    } catch(e) {}
+  }
+
   function updateArea(floor,idx,field,value) {
     setAreas(prev=>{
       const upd=[...(prev[floor]||[])];
       const existing = prev[floor][idx]||{};
       upd[idx]={...existing,[field]:value};
-      // immediate draft save on area change
-      if(draftKey) {
-        try {
-          const draft = {
-            savedAt: new Date().toISOString(),
-            selectedLeadId, projectName, projectAddress,
-            crewNotes, floors,
-            areas: {...prev,[floor]:upd},
-          };
-          localStorage.setItem(draftKey, JSON.stringify(draft));
-        } catch(e) {}
-      }
+      // save draft immediately
+      if(selectedLeadId) saveDraftNow({...prev,[floor]:upd});
       // always preserve options unless explicitly updating them
       if(field!=="options") upd[idx].options = existing.options||[];
       if(field==="area_type"){

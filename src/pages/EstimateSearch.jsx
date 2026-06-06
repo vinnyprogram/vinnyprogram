@@ -30,9 +30,8 @@ export default function EstimateSearch() {
   }
 
   function resumeDraft(draft) {
-    // navigate to estimate form with lead pre-selected
     if(draft.selectedLeadId){
-      navigate(`/estimate/new?leadId=${draft.selectedLeadId}`);
+      navigate(`/estimate/new?leadId=${draft.selectedLeadId}&address=${encodeURIComponent(draft.projectAddress||"")}&resume=1`);
     } else {
       navigate("/estimate/new");
     }
