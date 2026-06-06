@@ -1124,6 +1124,22 @@ export default function ProjectEstimate() {
     }
   },[selectedLeadId, projectAddress]);
 
+  // Restore draft immediately on mount if resume=1
+  useEffect(()=>{
+    if(resumeMode && leadId){
+      const key = getDraftKey(leadId);
+      const draft = loadDraft(key);
+      if(draft){
+        if(draft.crewNotes) setCrewNotes(draft.crewNotes);
+        if(draft.floors?.length) setFloors(draft.floors);
+        if(draft.areas) setAreas(draft.areas);
+        if(draft.projectName) setProjectName(draft.projectName);
+        if(draft.projectAddress) setProjectAddress(draft.projectAddress);
+        setDraftRestored(true);
+      }
+    }
+  },[]);
+
   useEffect(()=>{
     supabase.from("materials").select("*").then(({data,error})=>{
       if(error) console.error("materials error:",error);
@@ -1335,14 +1351,15 @@ export default function ProjectEstimate() {
   }
 
   // Save draft immediately — called on any meaningful change
-  function saveDraftNow(overrideAreas) {
+  function saveDraftNow(overrideAreas, overrideFloors) {
     if(!selectedLeadId) return;
     const key = getDraftKey(selectedLeadId);
     try {
       const draft = {
         savedAt: new Date().toISOString(),
         selectedLeadId, projectName, projectAddress,
-        crewNotes, floors,
+        crewNotes,
+        floors: overrideFloors || floors,
         areas: overrideAreas || areas,
       };
       localStorage.setItem(key, JSON.stringify(draft));
