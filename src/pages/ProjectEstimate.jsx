@@ -1047,6 +1047,7 @@ export default function ProjectEstimate() {
   const navigate = useNavigate();
   const { id: projectId } = useParams(); // set when editing existing project
   const leadId = searchParams.get("leadId");
+  const resumeMode = searchParams.get("resume")==="1";
   const isEditing = !!projectId;
 
   const [floors, setFloors]           = useState(["Attic","3rd","2nd","1st","Basement"]);
