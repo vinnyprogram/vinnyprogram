@@ -1048,6 +1048,7 @@ export default function ProjectEstimate() {
   const { id: projectId } = useParams(); // set when editing existing project
   const leadId = searchParams.get("leadId");
   const resumeMode = searchParams.get("resume")==="1";
+  const addressParam = searchParams.get("address")||"";
   const isEditing = !!projectId;
 
   const [floors, setFloors]           = useState(["Attic","3rd","2nd","1st","Basement"]);
@@ -1057,7 +1058,7 @@ export default function ProjectEstimate() {
   const [leads, setLeads]             = useState([]);
   const [selectedLeadId, setSelectedLeadId] = useState(leadId||"");
   const [projectName, setProjectName]       = useState("");
-  const [projectAddress, setProjectAddress] = useState("");
+  const [projectAddress, setProjectAddress] = useState(addressParam||"");
   const [crewNotes, setCrewNotes] = useState({
     const_type:"", fire_blocking:"", parking:"", ladder:"", units:"", extra_notes:"",
   });
@@ -1124,21 +1125,30 @@ export default function ProjectEstimate() {
     }
   },[selectedLeadId, projectAddress]);
 
-  // Restore draft immediately on mount if resume=1
+  // Restore draft after leads load (so selectedLeadId is set first)
   useEffect(()=>{
-    if(resumeMode && leadId){
+    if(resumeMode && leadId && leads.length>0 && !draftRestored){
       const key = getDraftKey(leadId);
       const draft = loadDraft(key);
       if(draft){
         if(draft.crewNotes) setCrewNotes(draft.crewNotes);
         if(draft.floors?.length) setFloors(draft.floors);
-        if(draft.areas) setAreas(draft.areas);
+        if(draft.areas){
+          // merge with default empty floors to avoid undefined
+          const merged = {};
+          DEFAULT_FLOORS.forEach(f=>{ merged[f]=[]; });
+          Object.keys(draft.areas).forEach(f=>{ merged[f]=draft.areas[f]; });
+          setAreas(merged);
+        }
         if(draft.projectName) setProjectName(draft.projectName);
         if(draft.projectAddress) setProjectAddress(draft.projectAddress);
+        // set active floor to first floor with areas
+        const firstWithAreas = draft.floors?.find(f=>(draft.areas?.[f]||[]).length>0);
+        if(firstWithAreas) setActiveFloor(firstWithAreas);
         setDraftRestored(true);
       }
     }
-  },[]);
+  },[leads, resumeMode, leadId]);
 
   useEffect(()=>{
     supabase.from("materials").select("*").then(({data,error})=>{
