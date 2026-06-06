@@ -1130,7 +1130,7 @@ export default function ProjectEstimate() {
     }
   },[selectedLeadId, projectAddress]);
 
-  // Restore draft after leads load (so selectedLeadId is set first)
+  // Restore draft after leads load
   useEffect(()=>{
     if(resumeMode && leadId && leads.length>0 && !draftRestored){
       const key = getDraftKey(leadId);
@@ -1139,22 +1139,20 @@ export default function ProjectEstimate() {
         if(draft.crewNotes) setCrewNotes(draft.crewNotes);
         if(draft.floors?.length) setFloors(draft.floors);
         if(draft.areas){
-          // merge with default empty floors to avoid undefined
           const merged = {};
           DEFAULT_FLOORS.forEach(f=>{ merged[f]=[]; });
           Object.keys(draft.areas).forEach(f=>{ merged[f]=draft.areas[f]; });
           setAreas(merged);
         }
         if(draft.projectName) setProjectName(draft.projectName);
-        if(draft.projectAddress){
-          setProjectAddress(draft.projectAddress);
-          // force re-sync after render
-          setTimeout(()=>setProjectAddress(draft.projectAddress), 50);
-        }
+        // Set address with delay so lead useEffect doesn't overwrite it
+        const addr = draft.projectAddress||addressParam||"";
+        setTimeout(()=>{ if(addr) setProjectAddress(addr); }, 200);
         setDraftRestored(true);
-        // set active floor after state updates settle
-        const firstWithAreas = (draft.floors||[]).find(f=>(draft.areas?.[f]||[]).some(a=>a.area_type||a.sqft>0));
-        if(firstWithAreas) setTimeout(()=>setActiveFloor(firstWithAreas), 100);
+        // set active floor last
+        const firstWithAreas = (draft.floors||[]).find(f=>
+          (draft.areas?.[f]||[]).some(a=>a.area_type||a.sqft>0));
+        setTimeout(()=>{ if(firstWithAreas) setActiveFloor(firstWithAreas); }, 250);
       }
     }
   },[leads, resumeMode, leadId]);
@@ -1333,7 +1331,8 @@ export default function ProjectEstimate() {
       if(l){
         setSelectedLeadId(String(l.id));
         setProjectName(l.name||"");
-        setProjectAddress(l.address||"");
+        // don't overwrite address if resuming a draft or addressParam exists
+        if(!resumeMode && !addressParam) setProjectAddress(l.address||"");
       }
     }
   },[leadId,leads]);
