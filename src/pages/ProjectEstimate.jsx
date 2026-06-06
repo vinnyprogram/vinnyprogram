@@ -1062,8 +1062,8 @@ export default function ProjectEstimate() {
 
   // Also sync from addressParam if state is empty
   useEffect(()=>{
-    if(addressParam && !projectAddress) setProjectAddress(addressParam);
-  },[addressParam]);
+    if(addressParam) setProjectAddress(decodeURIComponent(addressParam));
+  },[]);
   const [crewNotes, setCrewNotes] = useState({
     const_type:"", fire_blocking:"", parking:"", ladder:"", units:"", extra_notes:"",
   });
@@ -1146,12 +1146,15 @@ export default function ProjectEstimate() {
           setAreas(merged);
         }
         if(draft.projectName) setProjectName(draft.projectName);
-        if(draft.projectAddress) setProjectAddress(draft.projectAddress);
-        // set active floor to first floor with areas
-        const firstWithAreas = (draft.floors||[]).find(f=>(draft.areas?.[f]||[]).some(a=>a.area_type||a.sqft>0));
-        if(firstWithAreas) setActiveFloor(firstWithAreas);
+        if(draft.projectAddress){
+          setProjectAddress(draft.projectAddress);
+          // force re-sync after render
+          setTimeout(()=>setProjectAddress(draft.projectAddress), 50);
+        }
         setDraftRestored(true);
-        console.log("Draft restored:", draft.projectAddress, firstWithAreas);
+        // set active floor after state updates settle
+        const firstWithAreas = (draft.floors||[]).find(f=>(draft.areas?.[f]||[]).some(a=>a.area_type||a.sqft>0));
+        if(firstWithAreas) setTimeout(()=>setActiveFloor(firstWithAreas), 100);
       }
     }
   },[leads, resumeMode, leadId]);
