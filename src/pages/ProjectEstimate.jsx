@@ -1048,7 +1048,7 @@ export default function ProjectEstimate() {
   const { id: projectId } = useParams(); // set when editing existing project
   const leadId = searchParams.get("leadId");
   const resumeMode = searchParams.get("resume")==="1";
-  const addressParam = searchParams.get("address")||"";
+  const addressParam = decodeURIComponent(searchParams.get("address")||"");
   const isEditing = !!projectId;
 
   const [floors, setFloors]           = useState(["Attic","3rd","2nd","1st","Basement"]);
@@ -1058,7 +1058,12 @@ export default function ProjectEstimate() {
   const [leads, setLeads]             = useState([]);
   const [selectedLeadId, setSelectedLeadId] = useState(leadId||"");
   const [projectName, setProjectName]       = useState("");
-  const [projectAddress, setProjectAddress] = useState(addressParam||"");
+  const [projectAddress, setProjectAddress] = useState(()=>addressParam||"");
+
+  // Also sync from addressParam if state is empty
+  useEffect(()=>{
+    if(addressParam && !projectAddress) setProjectAddress(addressParam);
+  },[addressParam]);
   const [crewNotes, setCrewNotes] = useState({
     const_type:"", fire_blocking:"", parking:"", ladder:"", units:"", extra_notes:"",
   });
@@ -1143,9 +1148,10 @@ export default function ProjectEstimate() {
         if(draft.projectName) setProjectName(draft.projectName);
         if(draft.projectAddress) setProjectAddress(draft.projectAddress);
         // set active floor to first floor with areas
-        const firstWithAreas = draft.floors?.find(f=>(draft.areas?.[f]||[]).length>0);
+        const firstWithAreas = (draft.floors||[]).find(f=>(draft.areas?.[f]||[]).some(a=>a.area_type||a.sqft>0));
         if(firstWithAreas) setActiveFloor(firstWithAreas);
         setDraftRestored(true);
+        console.log("Draft restored:", draft.projectAddress, firstWithAreas);
       }
     }
   },[leads, resumeMode, leadId]);
