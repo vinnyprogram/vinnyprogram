@@ -5,7 +5,38 @@ import { supabase } from "../lib/supabase";
 export default function EstimateSearch() {
   const navigate = useNavigate();
   const [search, setSearch]     = useState("");
-  const [openCost, setOpenCost] = useState(null); // project id with cost panel open
+  const [openCost, setOpenCost] = useState(null);
+  const [drafts, setDrafts]     = useState([]);
+
+  // Load all drafts from localStorage
+  useEffect(()=>{
+    const found = [];
+    for(let i=0; i<localStorage.length; i++){
+      const key = localStorage.key(i);
+      if(key?.startsWith("draft_estimate_")){
+        try {
+          const d = JSON.parse(localStorage.getItem(key));
+          if(d) found.push({...d, key});
+        } catch(e) {}
+      }
+    }
+    found.sort((a,b)=>new Date(b.savedAt)-new Date(a.savedAt));
+    setDrafts(found);
+  },[]);
+
+  function discardDraft(key) {
+    localStorage.removeItem(key);
+    setDrafts(p=>p.filter(d=>d.key!==key));
+  }
+
+  function resumeDraft(draft) {
+    // navigate to estimate form with lead pre-selected
+    if(draft.selectedLeadId){
+      navigate(`/estimate/new?leadId=${draft.selectedLeadId}`);
+    } else {
+      navigate("/estimate/new");
+    }
+  } // project id with cost panel open
   const [groups, setGroups]     = useState([]);
   const [loading, setLoading]   = useState(true);
 
@@ -77,6 +108,52 @@ export default function EstimateSearch() {
           + New
         </button>
       </div>
+
+      {/* drafts section */}
+      {drafts.length>0 && (
+        <div style={{margin:"12px 14px 0"}}>
+          <div style={{fontSize:11,fontWeight:700,color:"#f97316",
+              textTransform:"uppercase",letterSpacing:0.4,marginBottom:8,
+              display:"flex",alignItems:"center",gap:6}}>
+            ⚠️ Drafts on this device
+          </div>
+          {drafts.map(d=>{
+            const age = Math.round((Date.now()-new Date(d.savedAt).getTime())/60000);
+            const areaCount = Object.values(d.areas||{}).flat().filter(a=>a.area_type).length;
+            const floorList = Object.keys(d.areas||{})
+              .filter(f=>(d.areas[f]||[]).some(a=>a.area_type)).join(", ");
+            return (
+              <div key={d.key} style={{background:"#fff7ed",border:"1px solid #fed7aa",
+                  borderLeft:"3px solid #f97316",borderRadius:8,padding:"10px 14px",
+                  marginBottom:8}}>
+                <div style={{display:"flex",justifyContent:"space-between",
+                    alignItems:"flex-start",marginBottom:6}}>
+                  <div>
+                    <div style={{fontSize:13,fontWeight:700,color:"#0f172a"}}>
+                      {d.projectName||"Unnamed customer"}
+                    </div>
+                    <div style={{fontSize:11,color:"#64748b"}}>
+                      {d.projectAddress||"No address"} · {age} min ago
+                    </div>
+                    <div style={{fontSize:11,color:"#92400e",marginTop:2}}>
+                      {areaCount} area{areaCount!==1?"s":""}{floorList?` · ${floorList}`:""}
+                    </div>
+                  </div>
+                  <button onClick={()=>discardDraft(d.key)}
+                    style={{border:"none",background:"none",color:"#94a3b8",
+                      cursor:"pointer",fontSize:14,padding:"0 4px"}}>✕</button>
+                </div>
+                <button onClick={()=>resumeDraft(d)}
+                  style={{width:"100%",border:"none",background:"#f97316",
+                    color:"white",padding:"8px",borderRadius:6,
+                    cursor:"pointer",fontSize:12,fontWeight:700}}>
+                  ▶ Resume Draft
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* search */}
       <input

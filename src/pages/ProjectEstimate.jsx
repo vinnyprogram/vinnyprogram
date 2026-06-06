@@ -1061,6 +1061,8 @@ export default function ProjectEstimate() {
     const_type:"", fire_blocking:"", parking:"", ladder:"", units:"", extra_notes:"",
   });
   const [saving, setSaving]       = useState(false);
+  const [draftKey, setDraftKey]   = useState(null);
+  const [draftRestored, setDraftRestored] = useState(false);
   const [saved, setSaved]         = useState(false);
   const [savedProjectId, setSavedProjectId] = useState(projectId||null);
   const [laborRoles, setLaborRoles] = useState([
@@ -1078,6 +1080,51 @@ export default function ProjectEstimate() {
   const [addingFloor, setAddingFloor]   = useState(false);
   const [panelOpen, setPanelOpen]       = useState(false);
   const [loadingProject, setLoadingProject] = useState(isEditing);
+
+  // ── Draft helpers ───────────────────────────────────────────
+  function getDraftKey(leadId, address) {
+    return `draft_estimate_${leadId||"new"}_${(address||"").replace(/\s+/g,"_").toLowerCase()}`;
+  }
+
+  function saveDraft() {
+    if(!draftKey) return;
+    const draft = {
+      savedAt: new Date().toISOString(),
+      selectedLeadId, projectName, projectAddress,
+      crewNotes, floors, areas,
+    };
+    try { localStorage.setItem(draftKey, JSON.stringify(draft)); } catch(e) {}
+  }
+
+  function clearDraft() {
+    if(draftKey) { try { localStorage.removeItem(draftKey); } catch(e) {} }
+  }
+
+  function loadDraft(key) {
+    try {
+      const raw = localStorage.getItem(key);
+      return raw ? JSON.parse(raw) : null;
+    } catch(e) { return null; }
+  }
+
+  // Auto-save every 30 seconds when there's data
+  useEffect(()=>{
+    if(!draftKey) return;
+    const interval = setInterval(()=>{
+      if(selectedLeadId || floors.some(f=>(areas[f]||[]).some(a=>a.area_type||a.sqft>0))){
+        saveDraft();
+      }
+    }, 30000);
+    return ()=>clearInterval(interval);
+  },[draftKey, selectedLeadId, projectName, projectAddress, crewNotes, floors, areas]);
+
+  // Set draft key when lead/address changes
+  useEffect(()=>{
+    if(selectedLeadId || projectAddress){
+      const key = getDraftKey(selectedLeadId, projectAddress);
+      setDraftKey(key);
+    }
+  },[selectedLeadId, projectAddress]);
 
   useEffect(()=>{
     supabase.from("materials").select("*").then(({data,error})=>{
@@ -1215,6 +1262,28 @@ export default function ProjectEstimate() {
     loadProject();
   },[projectId, leads]);
 
+  // Check for existing draft when lead changes
+  useEffect(()=>{
+    if(!isEditing && selectedLeadId && projectAddress){
+      const key = getDraftKey(selectedLeadId, projectAddress);
+      const draft = loadDraft(key);
+      if(draft && !draftRestored){
+        const age = Math.round((Date.now()-new Date(draft.savedAt).getTime())/60000);
+        const areaCount = Object.values(draft.areas||{}).flat().filter(a=>a.area_type).length;
+        if(areaCount>0 && window.confirm(
+          `Resume draft from ${age} min ago?
+${areaCount} area(s) on ${Object.keys(draft.areas||{}).filter(f=>(draft.areas[f]||[]).some(a=>a.area_type)).join(", ")}`
+        )){
+          if(draft.crewNotes) setCrewNotes(draft.crewNotes);
+          if(draft.floors) setFloors(draft.floors);
+          if(draft.areas) setAreas(draft.areas);
+          if(draft.projectName) setProjectName(draft.projectName);
+          setDraftRestored(true);
+        }
+      }
+    }
+  },[selectedLeadId, projectAddress]);
+
   useEffect(()=>{
     if(!isEditing && leadId&&leads.length>0){
       const l=leads.find(l=>String(l.id)===String(leadId));
@@ -1262,6 +1331,18 @@ export default function ProjectEstimate() {
       const upd=[...(prev[floor]||[])];
       const existing = prev[floor][idx]||{};
       upd[idx]={...existing,[field]:value};
+      // immediate draft save on area change
+      if(draftKey) {
+        try {
+          const draft = {
+            savedAt: new Date().toISOString(),
+            selectedLeadId, projectName, projectAddress,
+            crewNotes, floors,
+            areas: {...prev,[floor]:upd},
+          };
+          localStorage.setItem(draftKey, JSON.stringify(draft));
+        } catch(e) {}
+      }
       // always preserve options unless explicitly updating them
       if(field!=="options") upd[idx].options = existing.options||[];
       if(field==="area_type"){
@@ -1543,6 +1624,7 @@ export default function ProjectEstimate() {
       }]);
       setSaved(true);
       setSavedProjectId(proj.id);
+      clearDraft(); // draft saved successfully
     } catch(err) {
       console.error(err); alert("Error: "+(err.message||JSON.stringify(err)));
     } finally { setSaving(false); }
