@@ -1160,11 +1160,11 @@ useEffect(()=>{
 
 // Switch to the correct floor AFTER areas state is committed
 useEffect(()=>{
-  if(pendingFloor && areas[pendingFloor]?.length > 0){
+  if(pendingFloor){
     setActiveFloor(pendingFloor);
     setPendingFloor(null);
   }
-},[areas, pendingFloor]);
+},[pendingFloor]);
 
   useEffect(()=>{
     supabase.from("materials").select("*").then(({data,error})=>{
