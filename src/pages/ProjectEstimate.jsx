@@ -1138,12 +1138,13 @@ export default function ProjectEstimate() {
       if(draft){
         if(draft.crewNotes) setCrewNotes(draft.crewNotes);
         if(draft.floors?.length) setFloors(draft.floors);
-        if(draft.areas){
-          const merged = {};
-          DEFAULT_FLOORS.forEach(f=>{ merged[f]=[]; });
-          Object.keys(draft.areas).forEach(f=>{ merged[f]=draft.areas[f]; });
-          setAreas(merged);
-        }
+       if(draft.areas){
+        const merged = {};
+        // seed ALL possible floors (default + any custom from draft)
+        const allFloors = [...new Set([...DEFAULT_FLOORS, ...(draft.floors||[])])];
+        allFloors.forEach(f=>{ merged[f] = draft.areas[f] || []; });
+        setAreas(merged);
+      }
         if(draft.projectName) setProjectName(draft.projectName);
         // Set address with delay so lead useEffect doesn't overwrite it
         const addr = draft.projectAddress||addressParam||"";
@@ -1151,8 +1152,11 @@ export default function ProjectEstimate() {
         setDraftRestored(true);
         // set active floor last
         const firstWithAreas = (draft.floors||[]).find(f=>
-          (draft.areas?.[f]||[]).some(a=>a.area_type||a.sqft>0));
-          if(firstWithAreas) setActiveFloor(firstWithAreas); // state batches in React 18, no timeout needed
+        (draft.areas?.[f]||[]).some(a=>a.area_type||a.sqft>0));
+        // Must use setTimeout here — setAreas is async and activeFloor
+        // reads from the NEW areas state. Without delay, it switches floor
+        // before React commits the areas update.
+        setTimeout(()=>{ if(firstWithAreas) setActiveFloor(firstWithAreas); }, 100);
       }
     }
   },[leads, resumeMode, leadId]);
