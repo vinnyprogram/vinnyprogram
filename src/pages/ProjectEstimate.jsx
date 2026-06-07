@@ -1131,35 +1131,40 @@ export default function ProjectEstimate() {
   },[selectedLeadId, projectAddress]);
 
   // Restore draft after leads load
-  useEffect(()=>{
-    if(resumeMode && leadId && leads.length>0 && !draftRestored){
-      const key = getDraftKey(leadId);
-      const draft = loadDraft(key);
-      if(draft){
-        if(draft.crewNotes) setCrewNotes(draft.crewNotes);
-        if(draft.floors?.length) setFloors(draft.floors);
-       if(draft.areas){
+// REPLACE WITH:
+const [pendingFloor, setPendingFloor] = useState(null);
+
+useEffect(()=>{
+  if(resumeMode && leadId && leads.length>0 && !draftRestored){
+    const key = getDraftKey(leadId);
+    const draft = loadDraft(key);
+    if(draft){
+      if(draft.crewNotes) setCrewNotes(draft.crewNotes);
+      if(draft.floors?.length) setFloors(draft.floors);
+      if(draft.areas){
         const merged = {};
-        // seed ALL possible floors (default + any custom from draft)
         const allFloors = [...new Set([...DEFAULT_FLOORS, ...(draft.floors||[])])];
         allFloors.forEach(f=>{ merged[f] = draft.areas[f] || []; });
         setAreas(merged);
       }
-        if(draft.projectName) setProjectName(draft.projectName);
-        // Set address with delay so lead useEffect doesn't overwrite it
-        const addr = draft.projectAddress||addressParam||"";
-        if(addr) setProjectAddress(addr);  // set immediately — leadId effect checks draftRestored
-        setDraftRestored(true);
-        // set active floor last
-        const firstWithAreas = (draft.floors||[]).find(f=>
+      if(draft.projectName) setProjectName(draft.projectName);
+      const addr = draft.projectAddress||addressParam||"";
+      if(addr) setProjectAddress(addr);
+      setDraftRestored(true);
+      const firstWithAreas = (draft.floors||[]).find(f=>
         (draft.areas?.[f]||[]).some(a=>a.area_type||a.sqft>0));
-        // Must use setTimeout here — setAreas is async and activeFloor
-        // reads from the NEW areas state. Without delay, it switches floor
-        // before React commits the areas update.
-        setTimeout(()=>{ if(firstWithAreas) setActiveFloor(firstWithAreas); }, 100);
-      }
+      if(firstWithAreas) setPendingFloor(firstWithAreas);
     }
-  },[leads, resumeMode, leadId]);
+  }
+},[leads, resumeMode, leadId]);
+
+// Switch to the correct floor AFTER areas state is committed
+useEffect(()=>{
+  if(pendingFloor && areas[pendingFloor]?.length > 0){
+    setActiveFloor(pendingFloor);
+    setPendingFloor(null);
+  }
+},[areas, pendingFloor]);
 
   useEffect(()=>{
     supabase.from("materials").select("*").then(({data,error})=>{
