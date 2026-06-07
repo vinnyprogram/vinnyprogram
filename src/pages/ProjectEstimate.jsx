@@ -1147,12 +1147,12 @@ export default function ProjectEstimate() {
         if(draft.projectName) setProjectName(draft.projectName);
         // Set address with delay so lead useEffect doesn't overwrite it
         const addr = draft.projectAddress||addressParam||"";
-        setTimeout(()=>{ if(addr) setProjectAddress(addr); }, 200);
+        if(addr) setProjectAddress(addr);  // set immediately — leadId effect checks draftRestored
         setDraftRestored(true);
         // set active floor last
         const firstWithAreas = (draft.floors||[]).find(f=>
           (draft.areas?.[f]||[]).some(a=>a.area_type||a.sqft>0));
-        setTimeout(()=>{ if(firstWithAreas) setActiveFloor(firstWithAreas); }, 250);
+          if(firstWithAreas) setActiveFloor(firstWithAreas); // state batches in React 18, no timeout needed
       }
     }
   },[leads, resumeMode, leadId]);
@@ -1296,6 +1296,7 @@ export default function ProjectEstimate() {
   // Check for existing draft when lead changes
   useEffect(()=>{
     if(!isEditing && selectedLeadId){
+      if(draftRestored) return; // already restored by resumeMode path — don't double-fire
       const key = getDraftKey(selectedLeadId);
       const draft = loadDraft(key);
       if(draft && !draftRestored){
@@ -1305,14 +1306,14 @@ export default function ProjectEstimate() {
         const shouldRestore = resumeMode || (areaCount>0 && window.confirm(
           `You have a draft from ${age} min ago with ${areaCount} area(s). Resume it?`
         ));
-        if(shouldRestore){
-          if(draft.crewNotes) setCrewNotes(draft.crewNotes);
-          if(draft.floors) setFloors(draft.floors);
-          if(draft.areas) setAreas(draft.areas);
-          if(draft.projectName) setProjectName(draft.projectName);
-          if(draft.projectAddress && !projectAddress) setProjectAddress(draft.projectAddress);
-          setDraftRestored(true);
-        }
+      if(shouldRestore){
+      if(draft.crewNotes) setCrewNotes(draft.crewNotes);
+      if(draft.floors) setFloors(draft.floors);
+      if(draft.areas) setAreas(draft.areas);
+      if(draft.projectName) setProjectName(draft.projectName);
+      if(draft.projectAddress) setProjectAddress(draft.projectAddress); // always restore address here
+      setDraftRestored(true);
+    }
       }
     }
   },[selectedLeadId, projectAddress]);
@@ -1326,16 +1327,18 @@ export default function ProjectEstimate() {
   },[selectedLeadId, projectAddress, projectName]);
 
   useEffect(()=>{
-    if(!isEditing && leadId&&leads.length>0){
-      const l=leads.find(l=>String(l.id)===String(leadId));
-      if(l){
-        setSelectedLeadId(String(l.id));
-        setProjectName(l.name||"");
-        // don't overwrite address if resuming a draft or addressParam exists
-        if(!resumeMode && !addressParam) setProjectAddress(l.address||"");
+  if(!isEditing && leadId&&leads.length>0){
+    const l=leads.find(l=>String(l.id)===String(leadId));
+    if(l){
+      setSelectedLeadId(String(l.id));
+      setProjectName(l.name||"");
+      // NEVER overwrite address if resuming or addressParam set — draft address wins
+      if(!resumeMode && !addressParam && !draftRestored){
+        setProjectAddress(l.address||"");
       }
     }
-  },[leadId,leads]);
+  }
+},[leadId,leads]);
 
   const materialMap  = useMemo(()=>Object.fromEntries(materials.map(m=>[m.name,m])),[materials]);
   const selectedLead = leads.find(l=>String(l.id)===String(selectedLeadId));
