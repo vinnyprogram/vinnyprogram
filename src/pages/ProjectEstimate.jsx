@@ -912,13 +912,16 @@ export default function ProjectEstimate() {
     });
   },[]);
 
-  function loadLeads() {
+function loadLeads() {
+  supabase.auth.getSession().then(({data:{session}})=>{
+    if(!session){ console.warn("No session, retrying in 1s..."); setTimeout(loadLeads, 1000); return; }
     supabase.from("customers").select("id,name,phone,address,email,company_name")
       .order("name").then(({data,error})=>{
-        if(error){ console.error("leads error:",JSON.stringify(error)); return; }
+        if(error){ console.error("leads error:", JSON.stringify(error)); return; }
         if(data) setLeads(data);
       });
-  }
+  });
+}
 
   // Load existing project for editing
   useEffect(()=>{
