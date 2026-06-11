@@ -253,7 +253,7 @@ function CustomerSection({ leads, selectedLead, selectedLeadId, projectAddress,
 }
 
 // ── AreaRow ───────────────────────────────────────────────────────────────────
-function AreaRow({ area, materials, onChange, onDelete, saveOptionsOnly }) {
+function AreaRow({ area, materials, onChange, onDelete, saveOptionsOnly, onMaterialAdded }) {
   const [expanded, setExpanded] = useState(!area._collapsed);
 
   useEffect(()=>{
@@ -462,7 +462,7 @@ function AreaRow({ area, materials, onChange, onDelete, saveOptionsOnly }) {
                       await supabase.from("materials").insert([{
                         company_id:cd.id, name:val, unit:"board_ft", price_per_unit:0
                       }]);
-                      loadMaterials();
+                      onMaterialAdded?.();
                     }
                   });
                 }
@@ -485,7 +485,7 @@ function AreaRow({ area, materials, onChange, onDelete, saveOptionsOnly }) {
                         await supabase.from("materials").insert([{
                           company_id:cd.id, name:val, unit:"board_ft", price_per_unit:0
                         }]);
-                        loadMaterials();
+                        onMaterialAdded?.();
                       }
                     });
                   }
@@ -1409,7 +1409,8 @@ function loadLeads(retries = 3) {
                 <AreaRow key={area.id||area.temp_id} area={area} materials={materials}
                   onChange={(field,value)=>updateArea(activeFloor,idx,field,value)}
                   onDelete={()=>deleteArea(activeFloor,idx)}
-                  saveOptionsOnly={saveOptionsOnly} />
+                  saveOptionsOnly={saveOptionsOnly}
+                  onMaterialAdded={loadMaterials} />
               ))}
               {currentAreas.some(a=>isAreaComplete(a)) && (
                 <div style={{fontSize:9,fontWeight:700,color:"#059669",textTransform:"uppercase",letterSpacing:0.5,marginBottom:4,marginTop:2,paddingLeft:2}}>
