@@ -892,10 +892,16 @@ export default function ProjectEstimate() {
   },[pendingFloor]);
 
   // Initial data load
-  useEffect(()=>{
-    supabase.from("materials").select("*").then(({data})=>{ if(data) setMaterials(data); });
-    loadLeads();
-    supabase.auth.getUser().then(async({data:{user}})=>{
+useEffect(()=>{
+  // Wait for auth to restore from localStorage before loading anything
+  supabase.auth.onAuthStateChange((event, session)=>{
+    if(session){
+      supabase.from("materials").select("*").then(({data})=>{ if(data) setMaterials(data); });
+      supabase.from("customers").select("id,name,phone,address,email,company_name")
+        .order("name").then(({data})=>{ if(data) setLeads(data); });
+    }
+  });
+  supabase.auth.getUser().then(async({data:{user}})=>{
       if(!user) return;
       const {data:cd} = await supabase.from("companies").select("id").eq("user_id",user.id).maybeSingle();
       if(!cd) return;
@@ -912,9 +918,12 @@ export default function ProjectEstimate() {
     });
   },[]);
 
-function loadLeads() {
+function loadLeads(retries = 3) {
   supabase.auth.getSession().then(({data:{session}})=>{
-    if(!session){ console.warn("No session, retrying in 1s..."); setTimeout(loadLeads, 1000); return; }
+    if(!session){
+      if(retries > 0) setTimeout(()=>loadLeads(retries-1), 800);
+      return;
+    }
     supabase.from("customers").select("id,name,phone,address,email,company_name")
       .order("name").then(({data,error})=>{
         if(error){ console.error("leads error:", JSON.stringify(error)); return; }
