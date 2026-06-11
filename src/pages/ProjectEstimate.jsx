@@ -411,7 +411,7 @@ function AreaRow({ area, materials, onChange, onDelete, saveOptionsOnly, onMater
       {!isComboMode && (
         <div style={{marginBottom:4}}>
           <div style={{ display:"flex", gap:4, marginBottom:2, borderBottom:`1px solid ${C.border}`, paddingBottom:3 }}>
-            <select className="area-select" style={{...GS, flex:2}} value={matLines[0].material||""}
+            <select className="area-select" style={{...GS, flex:1.7}} value={matLines[0].material||""}
               onChange={e=>{
                 const val = e.target.value;
                 if(val==="__combo__"){
@@ -430,7 +430,7 @@ function AreaRow({ area, materials, onChange, onDelete, saveOptionsOnly, onMater
               <option value="__combo__">⚡ Combo</option>
               <option value="__custom_mat__">✏️ Other</option>
             </select>
-            <select className="area-select" style={{...GS, flex:"0 0 52px"}}
+            <select className="area-select" style={{...GS, flex:"0 0 62px"}}
               value={area._custom_thick ? "__other__" : (matLines[0].thickness_in||"")}
               onChange={e=>{
                 if(e.target.value==="__other__"){ updateMatLine(0,"thickness_in",""); onChange("_custom_thick",true); }
@@ -777,7 +777,7 @@ function EstimatePanel({ floors, areas, materialMap, crewNotes, projectName, pro
         const groupMap = {};
         allAreas.forEach(a=>{
           const mls = (a.mat_lines&&a.mat_lines.length>0) ? a.mat_lines : [{material:a.material||"",thickness_in:a.thickness_in||"",r_value:a.r_value||"",oc:a.oc||""}];
-          const matKey = mls.map(ml=>[ml.material,ml.thickness_in,ml.r_value,ml.oc].join(":")).join("+");
+          const matKey = mls.map(ml=>[ml.material,ml.thickness_in].join(":")).join("+");
           const key = a.area_type + "||||" + matKey;
           if(!groupMap[key]) groupMap[key]={ area_type:a.area_type, floors:[], mat_lines:mls, totalSqft:0, totalCost:0, floorOrder:floors.indexOf(a.floor) };
           const g = groupMap[key];
