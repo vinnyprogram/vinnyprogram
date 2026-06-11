@@ -462,6 +462,7 @@ function AreaRow({ area, materials, onChange, onDelete, saveOptionsOnly }) {
                       await supabase.from("materials").insert([{
                         company_id:cd.id, name:val, unit:"board_ft", price_per_unit:0
                       }]);
+                      loadMaterials();
                     }
                   });
                 }
@@ -484,6 +485,7 @@ function AreaRow({ area, materials, onChange, onDelete, saveOptionsOnly }) {
                         await supabase.from("materials").insert([{
                           company_id:cd.id, name:val, unit:"board_ft", price_per_unit:0
                         }]);
+                        loadMaterials();
                       }
                     });
                   }
@@ -938,7 +940,7 @@ useEffect(()=>{
   // Wait for auth to restore from localStorage before loading anything
   supabase.auth.onAuthStateChange((event, session)=>{
     if(session){
-      supabase.from("materials").select("*").then(({data})=>{ if(data) setMaterials(data); });
+      loadMaterials();
       supabase.from("customers").select("id,name,phone,address,email,company_name")
         .order("name").then(({data})=>{ if(data) setLeads(data); });
     }
@@ -959,6 +961,11 @@ useEffect(()=>{
       if(reps?.length) setSalesReps(reps);
     });
   },[]);
+
+function loadMaterials() {
+  supabase.from("materials").select("*")
+    .then(({data})=>{ if(data) setMaterials(data); });
+}
 
 function loadLeads(retries = 3) {
   supabase.auth.getSession().then(({data:{session}})=>{
