@@ -195,7 +195,7 @@ function CustomerSection({ leads, selectedLead, selectedLeadId, projectAddress,
           {/* standalone project name + address (no customer) */}
           {!query && (
             <div style={{ display:"flex", gap:4, marginTop:2 }}>
-              <input style={{...TI, flex:1}} placeholder="Project name"
+              <input style={{...TI, flex:1}} placeholder="Customer"
                 value={projectName} onChange={e=>onNameChange(e.target.value)} />
               <input style={{...TI, flex:2}} placeholder="Job address"
                 value={projectAddress} onChange={e=>onAddressChange(e.target.value)} />
