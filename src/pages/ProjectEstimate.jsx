@@ -798,7 +798,7 @@ function EstimatePanel({ floors, areas, materialMap, crewNotes, projectName, pro
             <div key={i} style={{paddingBottom:5,marginBottom:5,borderBottom:`1px solid ${C.chip}`}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
                 <div style={{flex:1,paddingRight:4,lineHeight:1.5}}>
-                  <div style={{fontWeight:700,fontSize:12,color:C.ink}}>{floorLabel} — {g.area_type}</div>
+                  <div style={{fontWeight:700,fontSize:12,color:C.ink,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{floorLabel} — {g.area_type}</div>
                   <div style={{fontSize:10,color:C.muted,lineHeight:1.5}}>
                     {thick && <span>{thick} </span>}{matLabel}{" · "}{fmt(g.totalSqft)} ft²
                     {qty>0&&` → ${fmt(qty)} ${unit?.replace("_"," ")}`}
