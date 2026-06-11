@@ -90,12 +90,20 @@ function CustomerSection({ leads, selectedLead, selectedLeadId, projectAddress,
     setNewForm({ name:"", phone:"", company_name:"", email:"", address:"" });
     setMode("search");
   }
-  const results = query.trim().length >= 1
-    ? leads.filter(l =>
-        (l.name||"").toLowerCase().includes(query.toLowerCase()) ||
-        (l.phone||"").includes(query)
-      ).slice(0, 5)
-    : [];
+ const results = query.trim().length >= 1
+  ? leads.filter(l =>
+      (l.name||"").toLowerCase().includes(query.toLowerCase()) ||
+      (l.phone||"").includes(query)
+    ).sort((a,b)=>{
+      // Prioritize names that START with the query
+      const q = query.toLowerCase();
+      const aStarts = (a.name||"").toLowerCase().startsWith(q);
+      const bStarts = (b.name||"").toLowerCase().startsWith(q);
+      if(aStarts && !bStarts) return -1;
+      if(!aStarts && bStarts) return 1;
+      return (a.name||"").localeCompare(b.name||"");
+    }).slice(0, 8)
+  : [];
 
   function selectLead(lead) {
     onSelect(lead);
@@ -925,7 +933,7 @@ function loadLeads(retries = 3) {
       return;
     }
     supabase.from("customers").select("id,name,phone,address,email,company_name")
-      .order("name").then(({data,error})=>{
+      .order("name").limit(1000).then(({data,error})=>{
         if(error){ console.error("leads error:", JSON.stringify(error)); return; }
         if(data) setLeads(data);
       });
