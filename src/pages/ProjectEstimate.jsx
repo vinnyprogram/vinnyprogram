@@ -445,29 +445,7 @@ function AreaRow({ area, materials, onChange, onDelete, saveOptionsOnly }) {
             <input autoFocus placeholder="Type material name…" style={{...XS, width:"100%", marginBottom:3}}
               value={area.custom_material||""}
               onChange={e=>onChange("custom_material",e.target.value)}
-             onBlur={()=>{
-              const val=(area.custom_material||"").trim();
-              if(val){
-                onChange("mat_lines",[{id:1,material:val,
-                  thickness_in:matLines[0].thickness_in||"",
-                  r_value:matLines[0].r_value||"",oc:matLines[0].oc||""}]);
-                onChange("material",val);
-                // Save permanently to materials table
-                supabase.auth.getUser().then(async({data:{user}})=>{
-                  if(!user) return;
-                  const {data:cd} = await supabase.from("companies").select("id").eq("user_id",user.id).maybeSingle();
-                  if(!cd) return;
-                  const {data:existing} = await supabase.from("materials").select("id").eq("company_id",cd.id).eq("name",val).maybeSingle();
-                  if(!existing){
-                    await supabase.from("materials").insert([{
-                      company_id:cd.id, name:val, unit:"board_ft", price_per_unit:0
-                    }]);
-                  }
-                });
-              }
-            }}
-            onKeyDown={e=>{
-              if(e.key==="Enter"){
+              onBlur={()=>{
                 const val=(area.custom_material||"").trim();
                 if(val){
                   onChange("mat_lines",[{id:1,material:val,
@@ -487,9 +465,31 @@ function AreaRow({ area, materials, onChange, onDelete, saveOptionsOnly }) {
                     }
                   });
                 }
-                e.target.blur();
-              }
-            }}
+              }}
+              onKeyDown={e=>{
+                if(e.key==="Enter"){
+                  const val=(area.custom_material||"").trim();
+                  if(val){
+                    onChange("mat_lines",[{id:1,material:val,
+                      thickness_in:matLines[0].thickness_in||"",
+                      r_value:matLines[0].r_value||"",oc:matLines[0].oc||""}]);
+                    onChange("material",val);
+                    // Save permanently to materials table
+                    supabase.auth.getUser().then(async({data:{user}})=>{
+                      if(!user) return;
+                      const {data:cd} = await supabase.from("companies").select("id").eq("user_id",user.id).maybeSingle();
+                      if(!cd) return;
+                      const {data:existing} = await supabase.from("materials").select("id").eq("company_id",cd.id).eq("name",val).maybeSingle();
+                      if(!existing){
+                        await supabase.from("materials").insert([{
+                          company_id:cd.id, name:val, unit:"board_ft", price_per_unit:0
+                        }]);
+                      }
+                    });
+                  }
+                  e.target.blur();
+                }
+              }} />
           )}
           {area._custom_thick && (
             <input placeholder="Thickness e.g. 3in" style={{...XS, width:"100%", marginBottom:3}}
