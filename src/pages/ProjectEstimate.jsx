@@ -459,10 +459,10 @@ function AreaRow({ area, materials, onChange, onDelete, saveOptionsOnly, onMater
                     if(!cd) return;
                     const {data:existing} = await supabase.from("materials").select("id").eq("company_id",cd.id).eq("name",val).maybeSingle();
                     if(!existing){
-                      await supabase.from("materials").insert([{
+                      const {data:newMat} = await supabase.from("materials").insert([{
                         company_id:cd.id, name:val, unit:"board_ft", price_per_unit:0
-                      }]);
-                      onMaterialAdded?.();
+                      }]).select().single();
+                      onMaterialAdded?.(newMat);
                     }
                   });
                 }
@@ -962,7 +962,11 @@ useEffect(()=>{
     });
   },[]);
 
-function loadMaterials() {
+function loadMaterials(newMaterial) {
+  if(newMaterial){
+    // instantly add to local state, then sync from DB
+    setMaterials(prev=>[...prev, newMaterial]);
+  }
   supabase.from("materials").select("*")
     .then(({data})=>{ if(data) setMaterials(data); });
 }
