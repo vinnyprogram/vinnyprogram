@@ -88,7 +88,7 @@ export default function Login() {
                   onClick={async()=>{
                     if(!email){ alert("Enter your email first"); return; }
                     const { error } = await supabase.auth.resetPasswordForEmail(email, {
-                      redirectTo: window.location.origin + "/reset-password",
+                      redirectTo: "https://vinnyprogram.vercel.app/reset-password"
                     });
                     if(error) alert(error.message);
                     else alert("Password reset email sent! Check your inbox.");
