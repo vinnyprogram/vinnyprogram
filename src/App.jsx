@@ -14,6 +14,7 @@ import CustomerProfile from "./pages/CustomerProfile";
 import Settings from "./pages/Settings";
 import QuotePricing from "./pages/QuotePricing";
 import EstimateDrawings from "./pages/EstimateDrawings";
+import ResetPassword from "./pages/ResetPassword";
 
 function Dashboard() { return <h2 style={{padding:20}}>Dashboard</h2>; }
 function Jobs()      { return <h2 style={{padding:20}}>Jobs</h2>; }
@@ -80,6 +81,7 @@ export default function App() {
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/onboarding" element={<Onboarding />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="/*" element={<ProtectedApp />} />
         </Routes>
       </AuthProvider>
