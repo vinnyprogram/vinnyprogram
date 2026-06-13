@@ -117,7 +117,11 @@ export default function FieldReport() {
   const salesRep = user?.user_metadata?.full_name || user?.email || "Field Rep";
 
   // crew_notes not stored in DB yet — show empty
-  let crewNotes = {};
+  const crewNotes = project?.crew_notes
+  ? (typeof project.crew_notes === "string"
+      ? JSON.parse(project.crew_notes)
+      : project.crew_notes)
+  : {};
 
   if(loading) return (
     <div style={{padding:40,textAlign:"center",fontFamily:"system-ui",color:"#64748b"}}>
@@ -350,11 +354,11 @@ export default function FieldReport() {
                 // combo: "2x6 Closed Cell R-15 + Open Cell R-21"
                 // single: "2x6 Open Cell R-21"
                 const matLabel = isCombo
-                  ? thick+" "+g.materials.map(m=>
-                      ((m.material||"")+" "+(m.r_value||"")).trim()
+                  ? g.materials.map(m=>
+                      [m.thickness_in, m.material, m.r_value].filter(Boolean).join(" ")
                     ).join(" + ")
-                  : ((g.materials[0]?.material||"")+" "+thick+" "+(g.materials[0]?.r_value||"")).trim();
-
+                  : [g.materials[0]?.thickness_in, g.materials[0]?.material, g.materials[0]?.r_value]
+                      .filter(Boolean).join(" ");
                 const measStr = g.segs.length>0
                   ? [...new Set(g.segs.map(s=>s.height+"×"+s.length))].join("  ")
                   : "";

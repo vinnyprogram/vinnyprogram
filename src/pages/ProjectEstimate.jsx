@@ -505,13 +505,20 @@ function AreaRow({ area, materials, onChange, onDelete, saveOptionsOnly, onMater
         borderRadius:7, padding:"6px 8px", marginBottom:4 }}>
 
       {isComplete && (
-        <div onClick={()=>setExpanded(false)}
-          style={{ margin:"-6px -8px 8px -8px", padding:"10px 12px", background:"#059669",
-            borderRadius:"7px 7px 0 0", display:"flex", justifyContent:"space-between", alignItems:"center", cursor:"pointer" }}>
-          <span style={{fontSize:13,fontWeight:700,color:"#fff"}}>✓ Done editing</span>
-          <span style={{fontSize:15,color:"#fff"}}>▼</span>
-        </div>
-      )}
+      <div style={{ margin:"-6px -8px 8px -8px", padding:"10px 12px", background:"#059669",
+          borderRadius:"7px 7px 0 0", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+        <button onClick={()=>setExpanded(false)}
+          style={{border:"none",background:"rgba(255,255,255,0.2)",color:"#fff",
+            padding:"6px 16px",borderRadius:6,cursor:"pointer",fontSize:13,fontWeight:700}}>
+          ✓ Done
+        </button>
+        <button onClick={onDelete}
+          style={{border:"none",background:"rgba(255,0,0,0.3)",color:"#fff",
+            padding:"6px 12px",borderRadius:6,cursor:"pointer",fontSize:13,fontWeight:700}}>
+          🗑 Delete
+        </button>
+      </div>
+    )}
 
       {/* area type */}
       <div style={{ display:"flex", gap:4, marginBottom:2, alignItems:"center", borderBottom:`1px solid ${C.border}`, paddingBottom:3 }}>
@@ -525,7 +532,9 @@ function AreaRow({ area, materials, onChange, onDelete, saveOptionsOnly, onMater
           {AREA_TYPES.map(a=><option key={a}>{a}</option>)}
           <option value="__other__">✏️ Other</option>
         </select>
+        {!isComplete && (
         <button onClick={onDelete} style={{ border:"none", background:"none", color:C.faint, cursor:"pointer", fontSize:16, padding:"0 2px", lineHeight:1, flexShrink:0 }}>✕</button>
+      )}
       </div>
       {(area._show_custom_area || (area.area_type && !AREA_TYPES.includes(area.area_type))) && (
         <input placeholder="Type area type…" style={{...XS, width:"100%", marginBottom:3}}
@@ -1120,7 +1129,11 @@ export default function ProjectEstimate() {
       const {data:{user}}=await supabase.auth.getUser();
       const {data:cd}=await supabase.from("companies").select("id").eq("user_id",user.id).maybeSingle();
       const companyId=cd?.id||null;
-      const {data:proj,error:pe}=await supabase.from("projects").insert([{lead_id:Number(selectedLeadId),name:projectName||"New Project",address:projectAddress||"",status:"Active",source:"field",company_id:companyId}]).select().single();
+      const {data:proj,error:pe} = await supabase.from("projects").insert([{
+        lead_id:Number(selectedLeadId), name:projectName||"New Project", address:projectAddress||"",
+        status:"Active", source:"field", company_id:companyId,
+        crew_notes: JSON.stringify(crewNotes),
+      }]).select().single();
       if(pe)throw pe;
       const {data:floorRows}=await supabase.from("floors").insert(floors.map((name,i)=>({project_id:proj.id,name,order_index:i+1,company_id:companyId}))).select();
       const floorMap={};(floorRows||[]).forEach(f=>{floorMap[f.name]=f.id;});
@@ -1186,7 +1199,7 @@ export default function ProjectEstimate() {
             onClear={()=>{setSelectedLeadId("");setProjectName("");setProjectAddress("");}}
             onSaveNew={saveNewCustomer} onAddressChange={setProjectAddress} onNameChange={setProjectName} />
 
-          <div style={CARD_ORANGE}>
+            <div style={CARD_ORANGE} className={currentAreas.some(a=>!isAreaComplete(a))?"area-focus-bg":""}>
             <div style={{display:"flex",gap:6,marginBottom:6}}>
               <select style={{...S,flex:1,height:32,fontSize:12}} value={crewNotes.const_type} onChange={e=>setCrewNotes(p=>({...p,const_type:e.target.value}))}><option value="">Job type…</option>{CONST_TYPES.map(t=><option key={t}>{t}</option>)}</select>
               <select style={{...S,flex:1,height:32,fontSize:12}} value={crewNotes.ladder} onChange={e=>setCrewNotes(p=>({...p,ladder:e.target.value}))}><option value="">Ladder…</option>{LADDER_OPTS.map(l=><option key={l}>{l}</option>)}</select>
@@ -1201,7 +1214,7 @@ export default function ProjectEstimate() {
             <input placeholder="Other info for crew…" value={crewNotes.extra_notes} onChange={e=>setCrewNotes(p=>({...p,extra_notes:e.target.value}))} style={{...I,width:"100%",height:30,fontSize:12}} />
           </div>
 
-          <div style={{display:"flex",flexWrap:"wrap",gap:4,marginBottom:5}}>
+          <div style={{display:"flex",flexWrap:"wrap",gap:4,marginBottom:5}} className={currentAreas.some(a=>!isAreaComplete(a))?"area-focus-bg":""}>
             {floors.map(floor=>{
               const act=activeFloor===floor;
               return (<button key={floor} onClick={()=>setActiveFloor(floor)} className="floor-btn" style={{padding:"8px 14px",borderRadius:8,height:"auto",border:act?"2px solid #059669":"2px solid #86efac",background:act?"#059669":C.white,color:act?"#fff":"#059669",cursor:"pointer",fontSize:14,fontWeight:700,whiteSpace:"nowrap",boxShadow:act?"0 2px 8px rgba(5,150,105,.3)":"none"}}>{floor}</button>);
@@ -1217,9 +1230,18 @@ export default function ProjectEstimate() {
             )}
           </div>
 
-          <button onClick={()=>addArea(activeFloor)} style={{width:"100%",padding:"7px",borderRadius:7,border:`1px dashed ${C.border}`,background:C.white,color:C.muted,cursor:"pointer",fontSize:11,fontWeight:600,marginBottom:6,height:"auto"}}>+ Add area to {activeFloor}</button>
+          <button onClick={()=>addArea(activeFloor)} className={currentAreas.some(a=>!isAreaComplete(a))?"area-focus-bg":""} style={{width:"100%",padding:"7px",borderRadius:7,border:`1px dashed ${C.border}`,background:C.white,color:C.muted,cursor:"pointer",fontSize:11,fontWeight:600,marginBottom:6,height:"auto"}}>+ Add area to {activeFloor}</button>
 
-          {currentAreas.length===0?(
+          {/* Focus overlay when an area is being edited */}
+         {currentAreas.some(a=>!isAreaComplete(a)) && (
+          <style>{`
+            @media (max-width: 899px) {
+              .area-focus-bg { opacity: 0.3; pointer-events: none; transition: opacity 0.2s; }
+            }
+          `}</style>
+        )}
+
+          {currentAreas.length===0 ? (
             <div style={{textAlign:"center",padding:"14px",color:C.faint,fontSize:11,background:C.white,borderRadius:7,border:`1px solid ${C.border}`,marginBottom:5}}>No areas for {activeFloor} — tap above to add one</div>
           ):(
             <>
