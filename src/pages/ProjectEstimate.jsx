@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useSearchParams, useNavigate, useParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 
@@ -65,6 +65,96 @@ function calcArea(sqft, thick, mat) {
   return { qty:q, unit:u, unit_price:p, line_total:Math.round(q*p*100)/100 };
 }
 
+// ── Google Places Address Autocomplete ────────────────────────────────────────
+const GOOGLE_KEY = import.meta.env.VITE_GOOGLE_PLACES_KEY;
+let gmapsLoaded = false;
+let gmapsLoading = false;
+const gmapsCallbacks = [];
+
+function loadGoogleMaps(cb) {
+  if(gmapsLoaded){ cb(); return; }
+  gmapsCallbacks.push(cb);
+  if(gmapsLoading) return;
+  gmapsLoading = true;
+  const s = document.createElement("script");
+  s.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_KEY}&libraries=places`;
+  s.async = true;
+  s.onload = ()=>{ gmapsLoaded=true; gmapsCallbacks.forEach(fn=>fn()); gmapsCallbacks.length=0; };
+  document.head.appendChild(s);
+}
+
+function AddressInput({ value, onChange, placeholder, style }) {
+  const [suggestions, setSuggestions] = useState([]);
+  const [show, setShow] = useState(false);
+  const serviceRef = useRef(null);
+  const tokenRef = useRef(null);
+
+  useEffect(()=>{
+    if(!GOOGLE_KEY) return;
+    loadGoogleMaps(()=>{
+      if(!window.google?.maps?.places) return;
+      serviceRef.current = new window.google.maps.places.AutocompleteService();
+      tokenRef.current = new window.google.maps.places.AutocompleteSessionToken();
+    });
+  },[]);
+
+  function fetch(input) {
+    if(!input||input.length<3||!serviceRef.current){ setSuggestions([]); return; }
+    serviceRef.current.getPlacePredictions({
+      input, sessionToken:tokenRef.current,
+      componentRestrictions:{ country:"us" }, types:["address"],
+    },(preds,status)=>{
+      if(status===window.google.maps.places.PlacesServiceStatus.OK&&preds){
+        setSuggestions(preds.slice(0,5)); setShow(true);
+      } else { setSuggestions([]); }
+    });
+  }
+
+  function select(pred) {
+    onChange(pred.description);
+    setSuggestions([]); setShow(false);
+    if(window.google?.maps?.places)
+      tokenRef.current = new window.google.maps.places.AutocompleteSessionToken();
+  }
+
+  return (
+    <div style={{ position:"relative", flex: style?.flex||undefined, width: style?.width||undefined }}>
+      <input style={{...style, width:"100%", flex:undefined}}
+        placeholder={placeholder} value={value} autoComplete="off"
+        onChange={e=>{ onChange(e.target.value); fetch(e.target.value); }}
+        onFocus={()=>{ if(suggestions.length>0) setShow(true); }}
+        onBlur={()=>setTimeout(()=>setShow(false),150)} />
+      {show && suggestions.length>0 && (
+        <div style={{ position:"absolute", top:"100%", left:0, right:0, zIndex:999,
+            background:"white", border:"1px solid #e2e8f0", borderRadius:8,
+            boxShadow:"0 4px 16px rgba(0,0,0,.15)", marginTop:2, overflow:"hidden" }}>
+          {suggestions.map((s,i)=>(
+            <div key={s.place_id} onMouseDown={()=>select(s)}
+              style={{ padding:"10px 12px", cursor:"pointer", fontSize:13,
+                borderBottom:i<suggestions.length-1?"1px solid #f1f5f9":"none",
+                display:"flex", alignItems:"flex-start", gap:8, background:"white" }}
+              onMouseEnter={e=>e.currentTarget.style.background="#f8fafc"}
+              onMouseLeave={e=>e.currentTarget.style.background="white"}>
+              <span style={{fontSize:14,marginTop:1,flexShrink:0}}>📍</span>
+              <div>
+                <div style={{fontWeight:600,color:"#0f172a",lineHeight:1.4,fontSize:13}}>
+                  {s.structured_formatting?.main_text||s.description}
+                </div>
+                <div style={{fontSize:11,color:"#64748b",lineHeight:1.4}}>
+                  {s.structured_formatting?.secondary_text||""}
+                </div>
+              </div>
+            </div>
+          ))}
+          <div style={{padding:"5px 12px",fontSize:10,color:"#94a3b8",textAlign:"right",background:"#fafbfc"}}>
+            Powered by Google
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── CustomerSection ───────────────────────────────────────────────────────────
 function CustomerSection({ leads, selectedLead, selectedLeadId, projectAddress,
     projectName, onSelect, onClear, onSaveNew, onAddressChange, onNameChange }) {
@@ -75,47 +165,39 @@ function CustomerSection({ leads, selectedLead, selectedLeadId, projectAddress,
   const [newForm, setNewForm] = useState({ name:"", phone:"", company_name:"", email:"", address:"" });
 
   useEffect(()=>{
-    if(selectedLead && mode === "search") setMode("selected");
-  }, [selectedLead]);
+    if(selectedLead && mode==="search") setMode("selected");
+  },[selectedLead]);
 
   function openNew() {
-  setNewForm({ name:query||"", phone:"", company_name:"", email:"", address:"" });
-  setNewStep(1);
-  setMode("new");
-}
+    setNewForm({ name:query||"", phone:"", company_name:"", email:"", address:"" });
+    setNewStep(1); setMode("new");
+  }
   function clear() {
-    onClear();
-    setQuery("");
+    onClear(); setQuery("");
     setNewForm({ name:"", phone:"", company_name:"", email:"", address:"" });
     setMode("search");
   }
   const results = query.trim().length >= 1
-    ? leads.filter(l =>
-        (l.name||"").toLowerCase().includes(query.toLowerCase()) ||
+    ? leads.filter(l=>
+        (l.name||"").toLowerCase().includes(query.toLowerCase())||
         (l.phone||"").includes(query)
       ).sort((a,b)=>{
-        const q = query.toLowerCase();
-        const aStarts = (a.name||"").toLowerCase().startsWith(q);
-        const bStarts = (b.name||"").toLowerCase().startsWith(q);
-        if(aStarts && !bStarts) return -1;
-        if(!aStarts && bStarts) return 1;
+        const q=query.toLowerCase();
+        const aS=(a.name||"").toLowerCase().startsWith(q);
+        const bS=(b.name||"").toLowerCase().startsWith(q);
+        if(aS&&!bS) return -1; if(!aS&&bS) return 1;
         return (a.name||"").localeCompare(b.name||"");
-      }).slice(0, 8)
+      }).slice(0,8)
     : [];
 
-  function selectLead(lead) {
-    onSelect(lead);
-    setQuery("");
-    setMode("selected");
-  }
+  function selectLead(lead) { onSelect(lead); setQuery(""); setMode("selected"); }
 
   async function saveNew() {
-    if (!newForm.name && !newForm.phone) return;
+    if(!newForm.name&&!newForm.phone) return;
     setSaving(true);
     await onSaveNew(newForm);
     setNewForm({ name:"", phone:"", company_name:"", email:"", address:"" });
-    setMode("selected");
-    setSaving(false);
+    setMode("selected"); setSaving(false);
   }
 
   const nf = (k,v) => setNewForm(p=>({...p,[k]:v}));
@@ -123,6 +205,7 @@ function CustomerSection({ leads, selectedLead, selectedLeadId, projectAddress,
 
   return (
     <div style={{...CARD_BLUE, marginBottom:5}}>
+      {/* SELECTED */}
       {mode==="selected" && selectedLead && (
         <div>
           <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:4 }}>
@@ -133,26 +216,28 @@ function CustomerSection({ leads, selectedLead, selectedLeadId, projectAddress,
             </div>
             <button onClick={clear} style={{ border:"none", background:"none", color:C.faint, fontSize:13, cursor:"pointer", padding:"0 4px", flexShrink:0 }}>✕</button>
           </div>
-          <input style={{...TI, width:"100%"}} placeholder="Job address for this project…"
-            value={projectAddress} onChange={e=>onAddressChange(e.target.value)} />
+          <AddressInput style={{...TI, width:"100%"}}
+            placeholder="Job address for this project…"
+            value={projectAddress} onChange={onAddressChange} />
         </div>
       )}
 
+      {/* SEARCH */}
       {mode==="search" && (
         <div>
-          <div style={{ display:"flex", gap:4, marginBottom: results.length||query ? 4 : 0 }}>
+          <div style={{ display:"flex", gap:4, marginBottom:results.length||query?4:0 }}>
             <input style={{ ...TI, flex:1 }} placeholder="Search customer by name or phone…"
               value={query} onChange={e=>setQuery(e.target.value)} />
             <button onClick={openNew} style={{ ...BtnD, fontSize:11, height:26, padding:"0 10px", flexShrink:0 }}>+ New</button>
           </div>
-          {results.length > 0 && (
+          {results.length>0 && (
             <div style={{ border:`1px solid ${C.border}`, borderRadius:6, overflow:"hidden", marginBottom:4 }}>
               {results.map((l,i)=>(
                 <div key={l.id} onClick={()=>selectLead(l)}
                   style={{ display:"flex", justifyContent:"space-between", alignItems:"center",
                     padding:"8px 10px", cursor:"pointer", fontSize:12,
-                    background: i%2===0?C.white:"#fafbfc",
-                    borderBottom: i<results.length-1?`1px solid ${C.border}`:"none", minHeight:40 }}>
+                    background:i%2===0?C.white:"#fafbfc",
+                    borderBottom:i<results.length-1?`1px solid ${C.border}`:"none", minHeight:40 }}>
                   <div>
                     <div style={{ fontWeight:600 }}>{l.name}</div>
                     {l.company_name && <div style={{ color:C.muted, fontSize:10 }}>{l.company_name}</div>}
@@ -162,20 +247,23 @@ function CustomerSection({ leads, selectedLead, selectedLeadId, projectAddress,
               ))}
             </div>
           )}
-          {query.trim().length >= 2 && results.length === 0 && (
+          {query.trim().length>=2 && results.length===0 && (
             <div style={{ fontSize:11, color:C.faint, marginBottom:4, padding:"6px 0", textAlign:"center" }}>
               No match — <button onClick={openNew} style={{ border:"none", background:"none", color:C.green, cursor:"pointer", fontSize:11, padding:0, fontWeight:700 }}>Register new</button>
             </div>
           )}
           {!query && (
             <div style={{ display:"flex", gap:4, marginTop:2 }}>
-              <input style={{...TI, flex:1}} placeholder="Customer" value={projectName} onChange={e=>onNameChange(e.target.value)} />
-              <input style={{...TI, flex:2}} placeholder="Job address" value={projectAddress} onChange={e=>onAddressChange(e.target.value)} />
+              <input style={{...TI, flex:1}} placeholder="Customer"
+                value={projectName} onChange={e=>onNameChange(e.target.value)} />
+              <AddressInput style={{...TI, flex:2}}
+                placeholder="Job address" value={projectAddress} onChange={onAddressChange} />
             </div>
           )}
         </div>
       )}
 
+      {/* NEW CUSTOMER */}
       {mode==="new" && (
         <div>
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:6 }}>
@@ -196,7 +284,8 @@ function CustomerSection({ leads, selectedLead, selectedLeadId, projectAddress,
             <>
               <input style={{...TI, width:"100%", marginBottom:6}} placeholder="Company name" value={newForm.company_name} onChange={e=>nf("company_name",e.target.value)} />
               <input style={{...TI, width:"100%", marginBottom:6}} placeholder="Email" value={newForm.email} onChange={e=>nf("email",e.target.value)} />
-              <input style={{...TI, width:"100%", marginBottom:8}} placeholder="Company address" value={newForm.address} onChange={e=>nf("address",e.target.value)} />
+              <AddressInput style={{...TI, width:"100%", marginBottom:8}}
+                placeholder="Company address" value={newForm.address} onChange={v=>nf("address",v)} />
               <div style={{ display:"flex", gap:6 }}>
                 <button onClick={()=>setNewStep(1)} style={{ ...Btn, flex:1, justifyContent:"center", height:32 }}>← Back</button>
                 <button onClick={saveNew} disabled={saving} style={{ ...BtnD, flex:2, justifyContent:"center", height:32, fontSize:12, opacity:saving?0.5:1 }}>
@@ -266,7 +355,6 @@ function AreaRow({ area, materials, onChange, onDelete, saveOptionsOnly, onMater
     return sum + calcArea(area.sqft, ml.thickness_in, mat).line_total;
   }, 0);
 
-  // isComplete also accepts custom material names (not just ones in materials list)
   const firstMat = matLines[0].material;
   const isComplete = !!(area.area_type && firstMat && firstMat !== "__custom_mat__" && area.sqft > 0);
 
@@ -293,12 +381,8 @@ function AreaRow({ area, materials, onChange, onDelete, saveOptionsOnly, onMater
 
   async function saveCustomMaterial(val) {
     if(!val) return;
-    // Update area state with the real name
-    onChange("mat_lines",[{id:1,material:val,
-      thickness_in:matLines[0].thickness_in||"",
-      r_value:matLines[0].r_value||"",oc:matLines[0].oc||""}]);
+    onChange("mat_lines",[{id:1,material:val,thickness_in:matLines[0].thickness_in||"",r_value:matLines[0].r_value||"",oc:matLines[0].oc||""}]);
     onChange("material",val);
-    // Save to DB
     try {
       const {data:{user}} = await supabase.auth.getUser();
       if(!user) return;
@@ -306,13 +390,9 @@ function AreaRow({ area, materials, onChange, onDelete, saveOptionsOnly, onMater
       if(!cd) return;
       const {data:existing} = await supabase.from("materials").select("id").eq("company_id",cd.id).eq("name",val).maybeSingle();
       if(!existing){
-        const {data:newMat} = await supabase.from("materials").insert([{
-          company_id:cd.id, name:val, unit:"board_ft", price_per_unit:0
-        }]).select().single();
+        const {data:newMat} = await supabase.from("materials").insert([{company_id:cd.id,name:val,unit:"board_ft",price_per_unit:0}]).select().single();
         onMaterialAdded?.(newMat);
-      } else {
-        onMaterialAdded?.();
-      }
+      } else { onMaterialAdded?.(); }
     } catch(e){ console.error("saveCustomMaterial error:",e); }
   }
 
@@ -320,7 +400,6 @@ function AreaRow({ area, materials, onChange, onDelete, saveOptionsOnly, onMater
   const liveL = parseFloat(area.ml)||0;
   const liveQ = parseFloat(area.mq)||1;
   const livePreview = (liveH>0&&liveL>0) ? Math.round(liveH*liveL*liveQ*100)/100 : 0;
-
   const isComboMode = matLines.length > 1 || matLines[0].material === "__combo__";
 
   // ── COLLAPSED ──
@@ -364,12 +443,12 @@ function AreaRow({ area, materials, onChange, onDelete, saveOptionsOnly, onMater
         <div onClick={()=>setExpanded(false)}
           style={{ margin:"-6px -8px 8px -8px", padding:"10px 12px", background:"#059669",
             borderRadius:"7px 7px 0 0", display:"flex", justifyContent:"space-between", alignItems:"center", cursor:"pointer" }}>
-          <span style={{fontSize:13, fontWeight:700, color:"#fff"}}>✓ Done editing</span>
-          <span style={{fontSize:15, color:"#fff"}}>▼</span>
+          <span style={{fontSize:13,fontWeight:700,color:"#fff"}}>✓ Done editing</span>
+          <span style={{fontSize:15,color:"#fff"}}>▼</span>
         </div>
       )}
 
-      {/* ROW 1: area type */}
+      {/* area type */}
       <div style={{ display:"flex", gap:4, marginBottom:2, alignItems:"center", borderBottom:`1px solid ${C.border}`, paddingBottom:3 }}>
         <select className="area-select" style={{...GS, flex:1}}
           value={area._show_custom_area ? "__other__" : (area.area_type||"")}
@@ -385,26 +464,23 @@ function AreaRow({ area, materials, onChange, onDelete, saveOptionsOnly, onMater
       </div>
       {(area._show_custom_area || (area.area_type && !AREA_TYPES.includes(area.area_type))) && (
         <input placeholder="Type area type…" style={{...XS, width:"100%", marginBottom:3}}
-          value={area.area_type||""}
-          onChange={e=>onChange("area_type",e.target.value)} />
+          value={area.area_type||""} onChange={e=>onChange("area_type",e.target.value)} />
       )}
 
-      {/* MATERIAL — single mode */}
+      {/* MATERIAL — single */}
       {!isComboMode && (
         <div style={{marginBottom:4}}>
           <div style={{ display:"flex", gap:4, marginBottom:2, borderBottom:`1px solid ${C.border}`, paddingBottom:3 }}>
-            <select className="area-select" style={{...GS, flex:1.7}} value={
-                matLines[0].material==="__custom_mat__" ? "__custom_mat__" : (matLines[0].material||"")
-              }
+            <select className="area-select" style={{...GS, flex:1.7}}
+              value={matLines[0].material==="__custom_mat__"?"__custom_mat__":(matLines[0].material||"")}
               onChange={e=>{
-                const val = e.target.value;
+                const val=e.target.value;
                 if(val==="__combo__"){
                   onChange("mat_lines",[{id:1,material:"",thickness_in:"",r_value:"",oc:""},{id:2,material:"",thickness_in:"",r_value:"",oc:""}]);
                   onChange("material","__combo__");
                 } else if(val==="__custom_mat__"){
                   onChange("mat_lines",[{id:1,material:"__custom_mat__",thickness_in:matLines[0].thickness_in||"",r_value:matLines[0].r_value||"",oc:matLines[0].oc||""}]);
-                  onChange("material","__custom_mat__");
-                  onChange("custom_material","");
+                  onChange("material","__custom_mat__"); onChange("custom_material","");
                 } else {
                   onChange("mat_lines",[{id:1,material:val,thickness_in:matLines[0].thickness_in||"",r_value:matLines[0].r_value||"",oc:matLines[0].oc||""}]);
                   onChange("material",val);
@@ -416,7 +492,7 @@ function AreaRow({ area, materials, onChange, onDelete, saveOptionsOnly, onMater
               <option value="__custom_mat__">✏️ Other</option>
             </select>
             <select className="area-select" style={{...GS, flex:"0 0 62px"}}
-              value={area._custom_thick ? "__other__" : (matLines[0].thickness_in||"")}
+              value={area._custom_thick?"__other__":(matLines[0].thickness_in||"")}
               onChange={e=>{
                 if(e.target.value==="__other__"){ updateMatLine(0,"thickness_in",""); onChange("_custom_thick",true); }
                 else { updateMatLine(0,"thickness_in",e.target.value); onChange("_custom_thick",false); }
@@ -426,65 +502,47 @@ function AreaRow({ area, materials, onChange, onDelete, saveOptionsOnly, onMater
               <option value="__other__">✏️</option>
             </select>
           </div>
-
-          {/* Custom material input */}
           {matLines[0].material==="__custom_mat__" && (
             <input autoFocus placeholder="Type material name, press Enter…"
-              style={{...XS, width:"100%", marginBottom:3,
-                border:"2px solid #059669", borderRadius:6, padding:"0 8px", height:34, fontSize:13}}
+              style={{...XS,width:"100%",marginBottom:3,border:"2px solid #059669",borderRadius:6,padding:"0 8px",height:34,fontSize:13}}
               value={area.custom_material||""}
               onChange={e=>onChange("custom_material",e.target.value)}
-              onBlur={()=>{
-                const val=(area.custom_material||"").trim();
-                if(val) saveCustomMaterial(val);
-              }}
-              onKeyDown={e=>{
-                if(e.key==="Enter"){
-                  const val=(area.custom_material||"").trim();
-                  if(val) saveCustomMaterial(val);
-                  e.target.blur();
-                }
-              }} />
+              onBlur={()=>{ const v=(area.custom_material||"").trim(); if(v) saveCustomMaterial(v); }}
+              onKeyDown={e=>{ if(e.key==="Enter"){ const v=(area.custom_material||"").trim(); if(v) saveCustomMaterial(v); e.target.blur(); }}} />
           )}
-
           {area._custom_thick && (
-            <input placeholder="Thickness e.g. 3in" style={{...XS, width:"100%", marginBottom:3}}
+            <input placeholder="Thickness e.g. 3in" style={{...XS,width:"100%",marginBottom:3}}
               value={matLines[0].thickness_in||""} onChange={e=>updateMatLine(0,"thickness_in",e.target.value)} />
           )}
           {(()=>{
             const mat=materials.find(m=>m.name===matLines[0].material);
             const {qty,unit,unit_price,line_total}=calcArea(area.sqft,matLines[0].thickness_in,mat);
-            return line_total>0 ? (
+            return line_total>0?(
               <div style={{display:"flex",justifyContent:"flex-end",gap:6,fontSize:10,color:C.muted,marginBottom:2}}>
                 <span>{fmt(qty)} {unit?.replace("_"," ")} × ${unit_price}</span>
                 <span style={{fontWeight:700,color:C.green,fontSize:11}}>${fmt(line_total)}</span>
               </div>
-            ) : null;
+            ):null;
           })()}
         </div>
       )}
 
-      {/* MATERIAL — combo mode */}
+      {/* MATERIAL — combo */}
       {isComboMode && (
         <div style={{background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:8,padding:"8px 10px",marginBottom:4,marginTop:2}}>
           <div style={{fontSize:10,fontWeight:700,color:"#0369a1",marginBottom:6,textTransform:"uppercase",letterSpacing:0.4}}>
             ⚡ Combo
             <button onClick={()=>{ onChange("mat_lines",[{id:1,material:"",thickness_in:"",r_value:"",oc:""}]); onChange("material",""); }}
-              style={{border:"none",background:"none",color:"#94a3b8",cursor:"pointer",fontSize:11,marginLeft:8,padding:0}}>
-              × remove combo
-            </button>
+              style={{border:"none",background:"none",color:"#94a3b8",cursor:"pointer",fontSize:11,marginLeft:8,padding:0}}>× remove combo</button>
           </div>
           {matLines.map((ml,idx)=>(
             <div key={ml.id||idx} style={{marginBottom:8,paddingBottom:8,borderBottom:idx<matLines.length-1?`1px solid #e0f2fe`:"none"}}>
               <div style={{display:"flex",gap:4,marginBottom:4,alignItems:"center"}}>
-                <select style={{...XS,flex:1}} value={ml.material||""}
-                  onChange={e=>updateMatLine(idx,"material",e.target.value)}>
+                <select style={{...XS,flex:1}} value={ml.material||""} onChange={e=>updateMatLine(idx,"material",e.target.value)}>
                   <option value="">Material {idx+1}</option>
                   {materials.map(m=><option key={m.id}>{m.name}</option>)}
                 </select>
-                {matLines.length>2 && (
-                  <button onClick={()=>removeMatLine(idx)} style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:14,padding:"0 2px",lineHeight:1,flexShrink:0}}>✕</button>
-                )}
+                {matLines.length>2 && <button onClick={()=>removeMatLine(idx)} style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:14,padding:"0 2px",lineHeight:1,flexShrink:0}}>✕</button>}
               </div>
               <div style={{display:"flex",gap:4,marginBottom:2}}>
                 <select style={{...XS,flex:1}} value={ml.thickness_in||""} onChange={e=>updateMatLine(idx,"thickness_in",e.target.value)}>
@@ -500,29 +558,21 @@ function AreaRow({ area, materials, onChange, onDelete, saveOptionsOnly, onMater
               {(()=>{
                 const mat=materials.find(m=>m.name===ml.material);
                 const {qty,unit,unit_price,line_total}=calcArea(area.sqft,ml.thickness_in,mat);
-                return line_total>0?(
-                  <div style={{display:"flex",justifyContent:"flex-end",gap:6,fontSize:10,color:"#0369a1"}}>
-                    <span>{fmt(qty)} {unit?.replace("_"," ")} × ${unit_price}</span>
-                    <span style={{fontWeight:700}}>${fmt(line_total)}</span>
-                  </div>
-                ):null;
+                return line_total>0?(<div style={{display:"flex",justifyContent:"flex-end",gap:6,fontSize:10,color:"#0369a1"}}><span>{fmt(qty)} {unit?.replace("_"," ")} × ${unit_price}</span><span style={{fontWeight:700}}>${fmt(line_total)}</span></div>):null;
               })()}
             </div>
           ))}
-          <button onClick={addMatLine} style={{width:"100%",padding:"7px",borderRadius:6,border:"1px dashed #7dd3fc",background:"none",color:"#0369a1",cursor:"pointer",fontSize:11,fontWeight:600,height:"auto"}}>
-            + Add material to combo
-          </button>
+          <button onClick={addMatLine} style={{width:"100%",padding:"7px",borderRadius:6,border:"1px dashed #7dd3fc",background:"none",color:"#0369a1",cursor:"pointer",fontSize:11,fontWeight:600,height:"auto"}}>+ Add material to combo</button>
         </div>
       )}
 
       {/* OPTIONS */}
       <div style={{marginBottom:6}}>
         {areaOptions.map((opt,oi)=>{
-          const isOptCombo = opt.material==="__combo__" || (opt.mat_lines||[]).length>1;
-          const optLines = (opt.mat_lines||[]).length>0 ? opt.mat_lines
-            : [{id:1,material:opt.material||"",thickness_in:opt.thickness_in||matLines[0].thickness_in||"",r_value:opt.r_value||matLines[0].r_value||"",oc:""}];
-          function updateOpt(field,val){ const opts=[...areaOptions]; opts[oi]={...opts[oi],[field]:val}; onChange("options",opts); }
-          function updateOptLine(li,field,val){ const opts=[...areaOptions]; const lines=[...optLines]; lines[li]={...lines[li],[field]:val}; opts[oi]={...opts[oi],mat_lines:lines,material:lines[0].material||"__combo__"}; onChange("options",opts); }
+          const isOptCombo=opt.material==="__combo__"||(opt.mat_lines||[]).length>1;
+          const optLines=(opt.mat_lines||[]).length>0?opt.mat_lines:[{id:1,material:opt.material||"",thickness_in:opt.thickness_in||matLines[0].thickness_in||"",r_value:opt.r_value||matLines[0].r_value||"",oc:""}];
+          function updateOpt(field,val){const opts=[...areaOptions];opts[oi]={...opts[oi],[field]:val};onChange("options",opts);}
+          function updateOptLine(li,field,val){const opts=[...areaOptions];const lines=[...optLines];lines[li]={...lines[li],[field]:val};opts[oi]={...opts[oi],mat_lines:lines,material:lines[0].material||"__combo__"};onChange("options",opts);}
           return (
             <div key={oi} style={{background:"#fff7ed",border:"1px solid #fed7aa",borderRadius:6,padding:"6px 8px",marginBottom:4}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
@@ -532,34 +582,22 @@ function AreaRow({ area, materials, onChange, onDelete, saveOptionsOnly, onMater
                   <button onClick={()=>onChange("options",areaOptions.filter((_,j)=>j!==oi))} style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:12,padding:0}}>✕</button>
                 </div>
               </div>
-              {!isOptCombo ? (
+              {!isOptCombo?(
                 <div style={{display:"flex",gap:4,marginBottom:4}}>
-                  <select style={{...XS,flex:3}} value={opt.material||""}
-                    onChange={e=>{ if(e.target.value==="__combo__"){ updateOpt("mat_lines",[{id:1,material:"",thickness_in:matLines[0].thickness_in||"",r_value:matLines[0].r_value||"",oc:""},{id:2,material:"",thickness_in:matLines[0].thickness_in||"",r_value:matLines[0].r_value||"",oc:""}]); updateOpt("material","__combo__"); } else { updateOpt("material",e.target.value); } }}>
-                    <option value="">Material</option>
-                    {materials.map(m=><option key={m.id}>{m.name}</option>)}
-                    <option value="__combo__">⚡ Combo</option>
+                  <select style={{...XS,flex:3}} value={opt.material||""} onChange={e=>{if(e.target.value==="__combo__"){updateOpt("mat_lines",[{id:1,material:"",thickness_in:matLines[0].thickness_in||"",r_value:matLines[0].r_value||"",oc:""},{id:2,material:"",thickness_in:matLines[0].thickness_in||"",r_value:matLines[0].r_value||"",oc:""}]);updateOpt("material","__combo__");}else{updateOpt("material",e.target.value);}}}>
+                    <option value="">Material</option>{materials.map(m=><option key={m.id}>{m.name}</option>)}<option value="__combo__">⚡ Combo</option>
                   </select>
-                  <select style={{...XS,flex:1}} value={opt.thickness_in||matLines[0].thickness_in||""} onChange={e=>updateOpt("thickness_in",e.target.value)}>
-                    <option value="">Thick</option>{THICK_OPTS.map(t=><option key={t}>{t}</option>)}
-                  </select>
-                  <select style={{...XS,flex:1}} value={opt.r_value||matLines[0].r_value||""} onChange={e=>updateOpt("r_value",e.target.value)}>
-                    <option value="">R-Val</option>{R_VALS.map(r=><option key={r}>{r}</option>)}
-                  </select>
+                  <select style={{...XS,flex:1}} value={opt.thickness_in||matLines[0].thickness_in||""} onChange={e=>updateOpt("thickness_in",e.target.value)}><option value="">Thick</option>{THICK_OPTS.map(t=><option key={t}>{t}</option>)}</select>
+                  <select style={{...XS,flex:1}} value={opt.r_value||matLines[0].r_value||""} onChange={e=>updateOpt("r_value",e.target.value)}><option value="">R-Val</option>{R_VALS.map(r=><option key={r}>{r}</option>)}</select>
                 </div>
-              ) : (
+              ):(
                 <div style={{background:"#fff7ed",borderRadius:6,padding:"6px 8px",marginBottom:4}}>
-                  <div style={{fontSize:9,fontWeight:700,color:"#92400e",marginBottom:6,display:"flex",justifyContent:"space-between"}}>
-                    ⚡ Combo
-                    <button onClick={()=>{ updateOpt("mat_lines",[{id:1,material:"",thickness_in:matLines[0].thickness_in||"",r_value:matLines[0].r_value||"",oc:""}]); updateOpt("material",""); }} style={{border:"none",background:"none",color:"#94a3b8",cursor:"pointer",fontSize:10,padding:0}}>× remove combo</button>
-                  </div>
+                  <div style={{fontSize:9,fontWeight:700,color:"#92400e",marginBottom:6,display:"flex",justifyContent:"space-between"}}>⚡ Combo<button onClick={()=>{updateOpt("mat_lines",[{id:1,material:"",thickness_in:matLines[0].thickness_in||"",r_value:matLines[0].r_value||"",oc:""}]);updateOpt("material","");}} style={{border:"none",background:"none",color:"#94a3b8",cursor:"pointer",fontSize:10,padding:0}}>× remove combo</button></div>
                   {optLines.map((ol,li)=>(
                     <div key={li} style={{marginBottom:6,paddingBottom:6,borderBottom:li<optLines.length-1?"1px dashed #fde68a":"none"}}>
                       <div style={{display:"flex",gap:4,marginBottom:3,alignItems:"center"}}>
-                        <select style={{...XS,flex:1}} value={ol.material||""} onChange={e=>updateOptLine(li,"material",e.target.value)}>
-                          <option value="">Material {li+1}</option>{materials.map(m=><option key={m.id}>{m.name}</option>)}
-                        </select>
-                        {optLines.length>2 && <button onClick={()=>{ const lines=optLines.filter((_,j)=>j!==li); const opts=[...areaOptions]; opts[oi]={...opts[oi],mat_lines:lines}; onChange("options",opts); }} style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:13,padding:0}}>✕</button>}
+                        <select style={{...XS,flex:1}} value={ol.material||""} onChange={e=>updateOptLine(li,"material",e.target.value)}><option value="">Material {li+1}</option>{materials.map(m=><option key={m.id}>{m.name}</option>)}</select>
+                        {optLines.length>2&&<button onClick={()=>{const lines=optLines.filter((_,j)=>j!==li);const opts=[...areaOptions];opts[oi]={...opts[oi],mat_lines:lines};onChange("options",opts);}} style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:13,padding:0}}>✕</button>}
                       </div>
                       <div style={{display:"flex",gap:4}}>
                         <select style={{...XS,flex:1}} value={ol.thickness_in||""} onChange={e=>updateOptLine(li,"thickness_in",e.target.value)}><option value="">Thick</option>{THICK_OPTS.map(t=><option key={t}>{t}</option>)}</select>
@@ -568,14 +606,14 @@ function AreaRow({ area, materials, onChange, onDelete, saveOptionsOnly, onMater
                       </div>
                     </div>
                   ))}
-                  <button onClick={()=>{ const lines=[...optLines,{id:Date.now(),material:"",thickness_in:matLines[0].thickness_in||"",r_value:matLines[0].r_value||"",oc:""}]; const opts=[...areaOptions]; opts[oi]={...opts[oi],mat_lines:lines}; onChange("options",opts); }} style={{width:"100%",padding:"5px",borderRadius:5,border:"1px dashed #fde68a",background:"none",color:"#92400e",cursor:"pointer",fontSize:10,fontWeight:600,height:"auto"}}>+ Add material to combo</button>
+                  <button onClick={()=>{const lines=[...optLines,{id:Date.now(),material:"",thickness_in:matLines[0].thickness_in||"",r_value:matLines[0].r_value||"",oc:""}];const opts=[...areaOptions];opts[oi]={...opts[oi],mat_lines:lines};onChange("options",opts);}} style={{width:"100%",padding:"5px",borderRadius:5,border:"1px dashed #fde68a",background:"none",color:"#92400e",cursor:"pointer",fontSize:10,fontWeight:600,height:"auto"}}>+ Add material to combo</button>
                 </div>
               )}
             </div>
           );
         })}
-        {areaOptions.length < 3 && (
-          <button onClick={()=>{ const opts=[...areaOptions]; opts.push({material:"",thickness_in:matLines[0].thickness_in||"",r_value:matLines[0].r_value||"",mat_lines:[]}); onChange("options",opts); }}
+        {areaOptions.length<3&&(
+          <button onClick={()=>{const opts=[...areaOptions];opts.push({material:"",thickness_in:matLines[0].thickness_in||"",r_value:matLines[0].r_value||"",mat_lines:[]});onChange("options",opts);}}
             style={{width:"100%",padding:"5px",borderRadius:6,border:"1px dashed #fed7aa",background:"#fff7ed",color:"#92400e",cursor:"pointer",fontSize:11,fontWeight:600,marginBottom:4,height:"auto"}}>
             + Add Option
           </button>
@@ -586,7 +624,7 @@ function AreaRow({ area, materials, onChange, onDelete, saveOptionsOnly, onMater
       <div style={{ borderTop:`1px solid ${C.border}`, paddingTop:4, marginTop:2 }}>
         <div style={{ display:"flex", gap:3, alignItems:"center", marginBottom:4 }}>
           <select className="area-select" style={{...GS, flex:"0 0 60px"}}
-            value={area._custom_rval ? "__other__" : (matLines[0].r_value||"")}
+            value={area._custom_rval?"__other__":(matLines[0].r_value||"")}
             onChange={e=>{
               if(e.target.value==="__other__"){ updateMatLine(0,"r_value",""); onChange("_custom_rval",true); }
               else { updateMatLine(0,"r_value",e.target.value); onChange("_custom_rval",false); }
@@ -596,24 +634,24 @@ function AreaRow({ area, materials, onChange, onDelete, saveOptionsOnly, onMater
             <option value="__other__">✏️</option>
           </select>
           {area._custom_rval && (
-            <input placeholder="e.g. R-22" style={{...XS, width:70}}
+            <input placeholder="e.g. R-22" style={{...XS,width:70}}
               value={matLines[0].r_value||""} onChange={e=>updateMatLine(0,"r_value",e.target.value)} />
           )}
           <input placeholder="H" inputMode="decimal" value={area.mh||""}
             onChange={e=>onChange("mh",e.target.value)}
             onBlur={commitMeasurement} onKeyDown={e=>e.key==="Enter"&&commitMeasurement()}
-            className="area-hl-input" style={{...I,...noArrow, flex:1, padding:"0 4px", textAlign:"center", height:30, fontSize:13}} />
+            className="area-hl-input" style={{...I,...noArrow,flex:1,padding:"0 4px",textAlign:"center",height:30,fontSize:13}} />
           <span style={{fontSize:11,color:C.faint}}>×</span>
           <input placeholder="L" inputMode="decimal" value={area.ml||""}
             onChange={e=>onChange("ml",e.target.value)}
             onBlur={commitMeasurement} onKeyDown={e=>e.key==="Enter"&&commitMeasurement()}
-            className="area-hl-input" style={{...I,...noArrow, flex:1, padding:"0 4px", textAlign:"center", height:30, fontSize:13}} />
+            className="area-hl-input" style={{...I,...noArrow,flex:1,padding:"0 4px",textAlign:"center",height:30,fontSize:13}} />
           <span style={{fontSize:11,color:C.faint}}>×</span>
           <input placeholder="1" inputMode="decimal" value={area.mq||""}
             onChange={e=>onChange("mq",e.target.value)}
             onBlur={commitMeasurement} onKeyDown={e=>e.key==="Enter"&&commitMeasurement()}
-            className="area-mq-input" style={{...I,...noArrow, width:36, padding:"0 3px", textAlign:"center", height:30, fontSize:13}} />
-          <span style={{fontSize:11, fontWeight:700, color:livePreview>0?C.green:C.ink, whiteSpace:"nowrap"}}>
+            className="area-mq-input" style={{...I,...noArrow,width:36,padding:"0 3px",textAlign:"center",height:30,fontSize:13}} />
+          <span style={{fontSize:11,fontWeight:700,color:livePreview>0?C.green:C.ink,whiteSpace:"nowrap"}}>
             {livePreview>0?`${fmt(livePreview)}→`:""}{fmt(area.sqft)}ft²
           </span>
         </div>
@@ -637,8 +675,8 @@ function AreaRow({ area, materials, onChange, onDelete, saveOptionsOnly, onMater
               const raw=(area.measurements||[]).reduce((s,m)=>s+m.sqft,0);
               onChange("sqft",Math.max(0,Math.round(raw-d)));
             }}
-            className="area-deduct" style={{...I,...noArrow, width:70, padding:"0 6px", height:30, fontSize:12}} />
-          {totalCost>0 && <div style={{ marginLeft:"auto", fontWeight:700, color:C.green, fontSize:13 }}>Total ${fmt(totalCost)}</div>}
+            className="area-deduct" style={{...I,...noArrow,width:70,padding:"0 6px",height:30,fontSize:12}} />
+          {totalCost>0&&<div style={{marginLeft:"auto",fontWeight:700,color:C.green,fontSize:13}}>Total ${fmt(totalCost)}</div>}
         </div>
       </div>
     </div>
@@ -651,67 +689,64 @@ function EstimatePanel({ floors, areas, materialMap, crewNotes, projectName, pro
     return (areas[floor]||[]).reduce((s,a)=>s+getAreaTotalCost(a,materialMap),0);
   }
   const total = floors.reduce((s,f)=>s+floorTotal(f),0);
-
   return (
     <div style={{ fontSize:11, lineHeight:1.55 }}>
       {customer && (
         <div style={{ marginBottom:7, paddingBottom:6, borderBottom:`1px solid ${C.border}` }}>
           <div style={{fontWeight:700,fontSize:12,color:C.ink}}>{customer.name}</div>
-          {customer.phone        && <div style={{color:C.muted}}>{customer.phone}</div>}
-          {customer.company_name && <div style={{color:C.muted}}>{customer.company_name}</div>}
-          {customer.email        && <div style={{color:C.faint,fontSize:10}}>{customer.email}</div>}
+          {customer.phone&&<div style={{color:C.muted}}>{customer.phone}</div>}
+          {customer.company_name&&<div style={{color:C.muted}}>{customer.company_name}</div>}
+          {customer.email&&<div style={{color:C.faint,fontSize:10}}>{customer.email}</div>}
         </div>
       )}
-      {(projectName||projectAddress) && (
+      {(projectName||projectAddress)&&(
         <div style={{ marginBottom:6, paddingBottom:6, borderBottom:`1px solid ${C.border}`, fontSize:11, color:C.muted }}>
-          {projectName && <span style={{fontWeight:600,color:C.ink}}>{projectName} </span>}
+          {projectName&&<span style={{fontWeight:600,color:C.ink}}>{projectName} </span>}
           {projectAddress}
         </div>
       )}
-      {(crewNotes.const_type||crewNotes.fire_blocking||crewNotes.ladder||crewNotes.parking||crewNotes.units||crewNotes.extra_notes) && (
+      {(crewNotes.const_type||crewNotes.fire_blocking||crewNotes.ladder||crewNotes.parking||crewNotes.units||crewNotes.extra_notes)&&(
         <div style={{ marginBottom:6, paddingBottom:6, borderBottom:`1px solid ${C.border}`, fontSize:10, color:C.muted, lineHeight:1.6 }}>
-          {crewNotes.const_type    && <div style={{fontWeight:700,color:C.ink}}>{crewNotes.const_type}</div>}
-          {crewNotes.fire_blocking && <span>Fire Blocking: <b style={{color:C.ink}}>{crewNotes.fire_blocking}</b> · </span>}
-          {crewNotes.ladder        && <span>Ladder: <b style={{color:C.ink}}>{crewNotes.ladder}</b> · </span>}
-          {crewNotes.parking       && <span>Parking: <b style={{color:C.ink}}>{crewNotes.parking}</b></span>}
-          {crewNotes.units         && <div>{crewNotes.units} units</div>}
-          {crewNotes.extra_notes   && <div style={{marginTop:1,fontStyle:"italic"}}>{crewNotes.extra_notes}</div>}
+          {crewNotes.const_type&&<div style={{fontWeight:700,color:C.ink}}>{crewNotes.const_type}</div>}
+          {crewNotes.fire_blocking&&<span>Fire Blocking: <b style={{color:C.ink}}>{crewNotes.fire_blocking}</b> · </span>}
+          {crewNotes.ladder&&<span>Ladder: <b style={{color:C.ink}}>{crewNotes.ladder}</b> · </span>}
+          {crewNotes.parking&&<span>Parking: <b style={{color:C.ink}}>{crewNotes.parking}</b></span>}
+          {crewNotes.units&&<div>{crewNotes.units} units</div>}
+          {crewNotes.extra_notes&&<div style={{marginTop:1,fontStyle:"italic"}}>{crewNotes.extra_notes}</div>}
         </div>
       )}
       {(()=>{
-        const allAreas = floors.flatMap(floor=>(areas[floor]||[]).filter(a=>a.area_type&&a.sqft&&a.material!=="__custom_mat__").map(a=>({...a,floor})));
+        const allAreas=floors.flatMap(floor=>(areas[floor]||[]).filter(a=>a.area_type&&a.sqft&&a.material!=="__custom_mat__").map(a=>({...a,floor})));
         if(!allAreas.length) return <div style={{color:C.faint,fontSize:10,textAlign:"center",padding:"10px 0"}}>No areas yet</div>;
-        const groupMap = {};
+        const groupMap={};
         allAreas.forEach(a=>{
-          const mls = (a.mat_lines&&a.mat_lines.length>0) ? a.mat_lines : [{material:a.material||"",thickness_in:a.thickness_in||"",r_value:a.r_value||"",oc:a.oc||""}];
-          const matKey = mls.map(ml=>ml.material).join("+");
-          const key = a.area_type + "||||" + matKey;
-          if(!groupMap[key]) groupMap[key]={ area_type:a.area_type, floors:[], mat_lines:mls, totalSqft:0, totalCost:0, floorOrder:floors.indexOf(a.floor) };
-          const g = groupMap[key];
+          const mls=(a.mat_lines&&a.mat_lines.length>0)?a.mat_lines:[{material:a.material||"",thickness_in:a.thickness_in||"",r_value:a.r_value||"",oc:a.oc||""}];
+          const matKey=mls.map(ml=>ml.material).join("+");
+          const key=a.area_type+"||||"+matKey;
+          if(!groupMap[key]) groupMap[key]={area_type:a.area_type,floors:[],mat_lines:mls,totalSqft:0,totalCost:0,floorOrder:floors.indexOf(a.floor)};
+          const g=groupMap[key];
           if(!g.floors.includes(a.floor)) g.floors.push(a.floor);
-          if(floors.indexOf(a.floor) < g.floorOrder) g.floorOrder = floors.indexOf(a.floor);
-          g.totalSqft += a.sqft||0;
-          g.totalCost += getAreaTotalCost(a, materialMap);
+          if(floors.indexOf(a.floor)<g.floorOrder) g.floorOrder=floors.indexOf(a.floor);
+          g.totalSqft+=a.sqft||0;
+          g.totalCost+=getAreaTotalCost(a,materialMap);
         });
-        const groups = Object.values(groupMap).sort((a,b)=>a.floorOrder-b.floorOrder);
+        const groups=Object.values(groupMap).sort((a,b)=>a.floorOrder-b.floorOrder);
         return groups.map((g,i)=>{
-          const thick = g.mat_lines[0]?.thickness_in||"";
-          const floorLabel = g.floors.sort((a,b)=>floors.indexOf(a)-floors.indexOf(b)).map(f=>f.replace(" Floor","")).join(", ");
-          const matLabel = g.mat_lines.length>1
-            ? g.mat_lines.map(ml=>((ml.material||"")+" "+(ml.r_value||"")).trim()).join(" · ")
-            : ((g.mat_lines[0]?.material||"")+" "+(g.mat_lines[0]?.r_value||"")+" "+(g.mat_lines[0]?.oc||"")).trim();
-          const {qty,unit} = calcArea(g.totalSqft, thick, materialMap[g.mat_lines[0]?.material]);
+          const thick=g.mat_lines[0]?.thickness_in||"";
+          const floorLabel=g.floors.sort((a,b)=>floors.indexOf(a)-floors.indexOf(b)).map(f=>f.replace(" Floor","")).join(", ");
+          const matLabel=g.mat_lines.length>1?g.mat_lines.map(ml=>((ml.material||"")+" "+(ml.r_value||"")).trim()).join(" · "):((g.mat_lines[0]?.material||"")+" "+(g.mat_lines[0]?.r_value||"")+" "+(g.mat_lines[0]?.oc||"")).trim();
+          const {qty,unit}=calcArea(g.totalSqft,thick,materialMap[g.mat_lines[0]?.material]);
           return (
             <div key={i} style={{paddingBottom:5,marginBottom:5,borderBottom:`1px solid ${C.chip}`}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
                 <div style={{flex:1,paddingRight:4,lineHeight:1.5}}>
                   <div style={{fontWeight:700,fontSize:12,color:C.ink}}>{floorLabel} — {g.area_type}</div>
                   <div style={{fontSize:10,color:C.muted,lineHeight:1.5}}>
-                    {thick && <span>{thick} </span>}{matLabel}{" · "}{fmt(g.totalSqft)} ft²
+                    {thick&&<span>{thick} </span>}{matLabel}{" · "}{fmt(g.totalSqft)} ft²
                     {qty>0&&` → ${fmt(qty)} ${unit?.replace("_"," ")}`}
                   </div>
                 </div>
-                {g.totalCost>0 && <span style={{fontWeight:700,color:C.green,fontSize:12,flexShrink:0,paddingTop:2}}>${fmt(g.totalCost)}</span>}
+                {g.totalCost>0&&<span style={{fontWeight:700,color:C.green,fontSize:12,flexShrink:0,paddingTop:2}}>${fmt(g.totalCost)}</span>}
               </div>
             </div>
           );
@@ -727,217 +762,191 @@ function EstimatePanel({ floors, areas, materialMap, crewNotes, projectName, pro
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 function isAreaComplete(area) {
-  const lines = area.mat_lines && area.mat_lines.length > 0 ? area.mat_lines : [{ material:area.material||"" }];
-  const mat = lines[0].material;
-  return !!(area.area_type && mat && mat !== "__custom_mat__" && area.sqft > 0);
+  const lines=area.mat_lines&&area.mat_lines.length>0?area.mat_lines:[{material:area.material||""}];
+  const mat=lines[0].material;
+  return !!(area.area_type&&mat&&mat!=="__custom_mat__"&&area.sqft>0);
 }
 
 function getAreaTotalCost(area, materialMap) {
-  const lines = area.mat_lines && area.mat_lines.length > 0
-    ? area.mat_lines
-    : [{ material:area.material||"", thickness_in:area.thickness_in||"", r_value:area.r_value||"", oc:area.oc||"" }];
+  const lines=area.mat_lines&&area.mat_lines.length>0?area.mat_lines:[{material:area.material||"",thickness_in:area.thickness_in||"",r_value:area.r_value||"",oc:area.oc||""}];
   return lines.reduce((sum,ml)=>{
-    const mat = materialMap[ml.material];
-    return sum + calcArea(area.sqft, ml.thickness_in, mat).line_total;
-  }, 0);
+    const mat=materialMap[ml.material];
+    return sum+calcArea(area.sqft,ml.thickness_in,mat).line_total;
+  },0);
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 export default function ProjectEstimate() {
-  const [searchParams] = useSearchParams();
-  const navigate = useNavigate();
-  const { id: projectId } = useParams();
-  const leadId      = searchParams.get("leadId");
-  const resumeMode  = searchParams.get("resume")==="1";
-  const addressParam = decodeURIComponent(searchParams.get("address")||"");
-  const isEditing   = !!projectId;
+  const [searchParams]=useSearchParams();
+  const navigate=useNavigate();
+  const {id:projectId}=useParams();
+  const leadId=searchParams.get("leadId");
+  const resumeMode=searchParams.get("resume")==="1";
+  const addressParam=decodeURIComponent(searchParams.get("address")||"");
+  const isEditing=!!projectId;
 
-  const [floors, setFloors]           = useState(["Attic","3rd","2nd","1st","Basement"]);
-  const [activeFloor, setActiveFloor] = useState("Attic");
-  const [pendingFloor, setPendingFloor] = useState(null);
-  const [areas, setAreas]             = useState(()=>{ const i={}; DEFAULT_FLOORS.forEach(f=>{i[f]=[];}); return i; });
-  const [materials, setMaterials]     = useState([]);
-  const [leads, setLeads]             = useState([]);
-  const [selectedLeadId, setSelectedLeadId] = useState(leadId||"");
-  const [projectName, setProjectName]       = useState("");
-  const [projectAddress, setProjectAddress] = useState(addressParam||"");
-  const [crewNotes, setCrewNotes] = useState({ const_type:"", fire_blocking:"", parking:"", ladder:"", units:"", extra_notes:"" });
-  const [saving, setSaving]       = useState(false);
-  const [draftKey, setDraftKey]   = useState(null);
-  const [draftRestored, setDraftRestored] = useState(false);
-  const [saved, setSaved]         = useState(false);
-  const [savedProjectId, setSavedProjectId] = useState(projectId||null);
-  const [laborRoles, setLaborRoles] = useState([
-    { role:"Lead Installer", hours:"8", days:"1", people:1, rate:55 },
-    { role:"Helper",         hours:"8", days:"1", people:1, rate:35 },
-    { role:"",               hours:"8", days:"1", people:1, rate:0  },
-    { role:"",               hours:"8", days:"1", people:1, rate:0  },
+  const [floors,setFloors]=useState(["Attic","3rd","2nd","1st","Basement"]);
+  const [activeFloor,setActiveFloor]=useState("Attic");
+  const [pendingFloor,setPendingFloor]=useState(null);
+  const [areas,setAreas]=useState(()=>{const i={};DEFAULT_FLOORS.forEach(f=>{i[f]=[];});return i;});
+  const [materials,setMaterials]=useState([]);
+  const [leads,setLeads]=useState([]);
+  const [selectedLeadId,setSelectedLeadId]=useState(leadId||"");
+  const [projectName,setProjectName]=useState("");
+  const [projectAddress,setProjectAddress]=useState(addressParam||"");
+  const [crewNotes,setCrewNotes]=useState({const_type:"",fire_blocking:"",parking:"",ladder:"",units:"",extra_notes:""});
+  const [saving,setSaving]=useState(false);
+  const [draftKey,setDraftKey]=useState(null);
+  const [draftRestored,setDraftRestored]=useState(false);
+  const [saved,setSaved]=useState(false);
+  const [savedProjectId,setSavedProjectId]=useState(projectId||null);
+  const [laborRoles,setLaborRoles]=useState([
+    {role:"Lead Installer",hours:"8",days:"1",people:1,rate:55},
+    {role:"Helper",hours:"8",days:"1",people:1,rate:35},
+    {role:"",hours:"8",days:"1",people:1,rate:0},
+    {role:"",hours:"8",days:"1",people:1,rate:0},
   ]);
-  const [jobMiles, setJobMiles]   = useState("");
-  const [fuelRate, setFuelRate]   = useState(0.67);
-  const [salesReps, setSalesReps] = useState([]);
-  const [selectedRep, setSelectedRep] = useState("");
-  const [newFloorName, setNewFloorName] = useState("");
-  const [addingFloor, setAddingFloor]   = useState(false);
-  const [panelOpen, setPanelOpen]       = useState(false);
-  const [loadingProject, setLoadingProject] = useState(isEditing);
+  const [jobMiles,setJobMiles]=useState("");
+  const [fuelRate,setFuelRate]=useState(0.67);
+  const [salesReps,setSalesReps]=useState([]);
+  const [selectedRep,setSelectedRep]=useState("");
+  const [newFloorName,setNewFloorName]=useState("");
+  const [addingFloor,setAddingFloor]=useState(false);
+  const [panelOpen,setPanelOpen]=useState(false);
+  const [loadingProject,setLoadingProject]=useState(isEditing);
 
-  function getDraftKey(id) { return `draft_estimate_${id||"new"}`; }
-  function clearDraft() { if(draftKey) { try { localStorage.removeItem(draftKey); } catch(e){} } }
-  function loadDraft(key) { try { const r=localStorage.getItem(key); return r?JSON.parse(r):null; } catch(e){return null;} }
+  function getDraftKey(id){return `draft_estimate_${id||"new"}`;}
+  function clearDraft(){if(draftKey){try{localStorage.removeItem(draftKey);}catch(e){}}}
+  function loadDraft(key){try{const r=localStorage.getItem(key);return r?JSON.parse(r):null;}catch(e){return null;}}
 
-  function saveDraftNow(overrideAreas, overrideFloors) {
+  function saveDraftNow(overrideAreas,overrideFloors){
     if(!selectedLeadId) return;
-    const key = getDraftKey(selectedLeadId);
-    try {
-      localStorage.setItem(key, JSON.stringify({
-        savedAt: new Date().toISOString(),
-        selectedLeadId, projectName, projectAddress, crewNotes,
-        floors: overrideFloors||floors,
-        areas: overrideAreas||areas,
-      }));
+    const key=getDraftKey(selectedLeadId);
+    try{
+      localStorage.setItem(key,JSON.stringify({savedAt:new Date().toISOString(),selectedLeadId,projectName,projectAddress,crewNotes,floors:overrideFloors||floors,areas:overrideAreas||areas}));
       if(!draftKey) setDraftKey(key);
-    } catch(e){}
+    }catch(e){}
   }
 
   useEffect(()=>{
-    const interval = setInterval(()=>{ if(selectedLeadId) saveDraftNow(); }, 30000);
+    const interval=setInterval(()=>{if(selectedLeadId)saveDraftNow();},30000);
     return ()=>clearInterval(interval);
-  },[selectedLeadId, projectName, projectAddress, crewNotes, floors, areas]);
+  },[selectedLeadId,projectName,projectAddress,crewNotes,floors,areas]);
+
+  useEffect(()=>{ if(selectedLeadId) setDraftKey(getDraftKey(selectedLeadId)); },[selectedLeadId]);
 
   useEffect(()=>{
-    if(selectedLeadId) setDraftKey(getDraftKey(selectedLeadId));
-  },[selectedLeadId]);
-
-  // Draft restore (resume mode)
-  useEffect(()=>{
-    if(resumeMode && leadId && leads.length>0 && !draftRestored){
-      const key = getDraftKey(leadId);
-      const draft = loadDraft(key);
+    if(resumeMode&&leadId&&leads.length>0&&!draftRestored){
+      const key=getDraftKey(leadId);
+      const draft=loadDraft(key);
       if(draft){
         if(draft.crewNotes) setCrewNotes(draft.crewNotes);
         if(draft.floors?.length) setFloors(draft.floors);
         if(draft.areas){
-          const merged = {};
-          const allFloors = [...new Set([...DEFAULT_FLOORS, ...(draft.floors||[])])];
-          allFloors.forEach(f=>{ merged[f] = draft.areas[f]||[]; });
+          const merged={};
+          const allFloors=[...new Set([...DEFAULT_FLOORS,...(draft.floors||[])])];
+          allFloors.forEach(f=>{merged[f]=draft.areas[f]||[];});
           setAreas(merged);
         }
         if(draft.projectName) setProjectName(draft.projectName);
         if(draft.projectAddress) setProjectAddress(draft.projectAddress);
         setDraftRestored(true);
-        const first = (draft.floors||[]).find(f=>(draft.areas?.[f]||[]).some(a=>a.area_type||a.sqft>0));
+        const first=(draft.floors||[]).find(f=>(draft.areas?.[f]||[]).some(a=>a.area_type||a.sqft>0));
         if(first) setPendingFloor(first);
       }
     }
-  },[leads, resumeMode, leadId]);
+  },[leads,resumeMode,leadId]);
+
+  useEffect(()=>{ if(pendingFloor){setActiveFloor(pendingFloor);setPendingFloor(null);} },[pendingFloor]);
 
   useEffect(()=>{
-    if(pendingFloor){ setActiveFloor(pendingFloor); setPendingFloor(null); }
-  },[pendingFloor]);
-
-  // Initial data load
-  useEffect(()=>{
-    supabase.auth.onAuthStateChange((event, session)=>{
+    supabase.auth.onAuthStateChange((event,session)=>{
       if(session){
         loadMaterials();
-        supabase.from("customers").select("id,name,phone,address,email,company_name")
-          .order("name").limit(1000).then(({data})=>{ if(data) setLeads(data); });
+        supabase.from("customers").select("id,name,phone,address,email,company_name").order("name").limit(1000).then(({data})=>{if(data) setLeads(data);});
       }
     });
     supabase.auth.getUser().then(async({data:{user}})=>{
       if(!user) return;
-      const {data:cd} = await supabase.from("companies").select("id").eq("user_id",user.id).maybeSingle();
+      const {data:cd}=await supabase.from("companies").select("id").eq("user_id",user.id).maybeSingle();
       if(!cd) return;
-      const {data:roles} = await supabase.from("cost_settings").select("*").eq("company_id",cd.id).eq("period","labor_role").order("sort_order");
+      const {data:roles}=await supabase.from("cost_settings").select("*").eq("company_id",cd.id).eq("period","labor_role").order("sort_order");
       if(roles?.length){
-        const filled = roles.map(r=>({role:r.name,hours:"8",days:"1",people:1,rate:Number(r.amount||0)}));
+        const filled=roles.map(r=>({role:r.name,hours:"8",days:"1",people:1,rate:Number(r.amount||0)}));
         while(filled.length<4) filled.push({role:"",hours:"8",days:"1",people:1,rate:0});
         setLaborRoles(filled);
       }
-      const {data:fuel} = await supabase.from("cost_settings").select("*").eq("company_id",cd.id).eq("period","fuel").maybeSingle();
+      const {data:fuel}=await supabase.from("cost_settings").select("*").eq("company_id",cd.id).eq("period","fuel").maybeSingle();
       if(fuel) setFuelRate(Number(fuel.amount||0.67));
-      const {data:reps} = await supabase.from("sales_reps").select("*").eq("company_id",cd.id).eq("active",true).order("created_at");
+      const {data:reps}=await supabase.from("sales_reps").select("*").eq("company_id",cd.id).eq("active",true).order("created_at");
       if(reps?.length) setSalesReps(reps);
     });
   },[]);
 
-  function loadMaterials(newMaterial) {
-    if(newMaterial) setMaterials(prev=>[...prev, newMaterial]);
-    supabase.from("materials").select("*").then(({data})=>{ if(data) setMaterials(data); });
+  function loadMaterials(newMaterial){
+    if(newMaterial) setMaterials(prev=>[...prev,newMaterial]);
+    supabase.from("materials").select("*").then(({data})=>{if(data) setMaterials(data);});
   }
 
-  function loadLeads() {
-    supabase.from("customers").select("id,name,phone,address,email,company_name")
-      .order("name").limit(1000).then(({data,error})=>{
-        if(error){ console.error("leads error:",JSON.stringify(error)); return; }
-        if(data) setLeads(data);
-      });
+  function loadLeads(){
+    supabase.from("customers").select("id,name,phone,address,email,company_name").order("name").limit(1000).then(({data,error})=>{
+      if(error){console.error("leads error:",JSON.stringify(error));return;}
+      if(data) setLeads(data);
+    });
   }
 
-  // Load existing project for editing
   useEffect(()=>{
-    if(!projectId || !leads.length) return;
-    async function loadProject() {
+    if(!projectId||!leads.length) return;
+    async function loadProject(){
       setLoadingProject(true);
-      const {data:proj} = await supabase.from("projects").select("*").eq("id",projectId).single();
-      if(!proj){ setLoadingProject(false); return; }
-      setProjectName(proj.name||"");
-      setProjectAddress(proj.address||"");
+      const {data:proj}=await supabase.from("projects").select("*").eq("id",projectId).single();
+      if(!proj){setLoadingProject(false);return;}
+      setProjectName(proj.name||""); setProjectAddress(proj.address||"");
       if(proj.lead_id) setSelectedLeadId(String(proj.lead_id));
-      const {data:floorRows} = await supabase.from("floors").select("*").eq("project_id",projectId).order("order_index");
-      if(!floorRows?.length){ setLoadingProject(false); return; }
-      const floorNames = floorRows.map(f=>f.name);
-      setFloors(floorNames);
-      setActiveFloor(floorNames[0]);
-      const {data:areaRows} = await supabase.from("areas").select("*").eq("project_id",projectId).order("order_index");
-      const areaIds = (areaRows||[]).map(a=>a.id);
-      let segRows = [];
-      if(areaIds.length){ const {data:segs} = await supabase.from("segments").select("*").in("area_id",areaIds); segRows=segs||[]; }
-      const newAreas = {};
-      floorNames.forEach(f=>{ newAreas[f]=[]; });
-      const comboMap = {};
+      const {data:floorRows}=await supabase.from("floors").select("*").eq("project_id",projectId).order("order_index");
+      if(!floorRows?.length){setLoadingProject(false);return;}
+      const floorNames=floorRows.map(f=>f.name);
+      setFloors(floorNames); setActiveFloor(floorNames[0]);
+      const {data:areaRows}=await supabase.from("areas").select("*").eq("project_id",projectId).order("order_index");
+      const areaIds=(areaRows||[]).map(a=>a.id);
+      let segRows=[];
+      if(areaIds.length){const {data:segs}=await supabase.from("segments").select("*").in("area_id",areaIds);segRows=segs||[];}
+      const newAreas={};
+      floorNames.forEach(f=>{newAreas[f]=[];});
+      const comboMap={};
       (areaRows||[]).forEach(a=>{
-        const fl = floorRows.find(f=>f.id===a.floor_id);
+        const fl=floorRows.find(f=>f.id===a.floor_id);
         if(!fl) return;
-        const comboKey = `${a.floor_id}|${a.area_type}|${a.sqft}`;
+        const comboKey=`${a.floor_id}|${a.area_type}|${a.sqft}`;
         if(!comboMap[comboKey]){
-          const measurements = segRows.filter(s=>s.area_id===a.id).map(s=>({h:s.height,l:s.length,q:1,sqft:s.sqft}));
-          comboMap[comboKey] = {
-            temp_id:a.id, floor:fl.name, area_type:a.area_type,
-            material:a.material||"", thickness_in:a.thickness_in||"", r_value:a.r_value||"", oc:a.oc||"",
-            sqft:a.sqft||0, measurements, mh:"", ml:"", mq:"1", deduct_sqft:"", _collapsed:true,
-            options: Array.isArray(a.options)?a.options:(typeof a.options==="string"?JSON.parse(a.options||"[]"):[]),
-            mat_lines:[{id:1,material:a.material||"",thickness_in:a.thickness_in||"",r_value:a.r_value||"",oc:a.oc||""}],
-          };
-        } else {
+          const measurements=segRows.filter(s=>s.area_id===a.id).map(s=>({h:s.height,l:s.length,q:1,sqft:s.sqft}));
+          comboMap[comboKey]={temp_id:a.id,floor:fl.name,area_type:a.area_type,material:a.material||"",thickness_in:a.thickness_in||"",r_value:a.r_value||"",oc:a.oc||"",sqft:a.sqft||0,measurements,mh:"",ml:"",mq:"1",deduct_sqft:"",_collapsed:true,options:Array.isArray(a.options)?a.options:(typeof a.options==="string"?JSON.parse(a.options||"[]"):[]),mat_lines:[{id:1,material:a.material||"",thickness_in:a.thickness_in||"",r_value:a.r_value||"",oc:a.oc||""}]};
+        }else{
           comboMap[comboKey].mat_lines.push({id:comboMap[comboKey].mat_lines.length+1,material:a.material||"",thickness_in:a.thickness_in||"",r_value:a.r_value||"",oc:a.oc||""});
-          comboMap[comboKey].material = "__combo__";
+          comboMap[comboKey].material="__combo__";
         }
       });
-      Object.values(comboMap).forEach(area=>{ if(newAreas[area.floor]) newAreas[area.floor].push(area); });
-      setAreas(newAreas);
-      setLoadingProject(false);
+      Object.values(comboMap).forEach(area=>{if(newAreas[area.floor]) newAreas[area.floor].push(area);});
+      setAreas(newAreas); setLoadingProject(false);
     }
     loadProject();
-  },[projectId, leads]);
+  },[projectId,leads]);
 
-  // Draft restore when lead selected manually
   useEffect(()=>{
-    if(!isEditing && selectedLeadId && !draftRestored && !resumeMode){
-      const key = getDraftKey(selectedLeadId);
-      const draft = loadDraft(key);
+    if(!isEditing&&selectedLeadId&&!draftRestored&&!resumeMode){
+      const key=getDraftKey(selectedLeadId);
+      const draft=loadDraft(key);
       if(draft){
-        const age = Math.round((Date.now()-new Date(draft.savedAt).getTime())/60000);
-        const areaCount = Object.values(draft.areas||{}).flat().filter(a=>a.area_type).length;
-        if(areaCount>0 && window.confirm(`You have a draft from ${age} min ago with ${areaCount} area(s). Resume it?`)){
+        const age=Math.round((Date.now()-new Date(draft.savedAt).getTime())/60000);
+        const areaCount=Object.values(draft.areas||{}).flat().filter(a=>a.area_type).length;
+        if(areaCount>0&&window.confirm(`You have a draft from ${age} min ago with ${areaCount} area(s). Resume it?`)){
           if(draft.crewNotes) setCrewNotes(draft.crewNotes);
           if(draft.floors) setFloors(draft.floors);
           if(draft.areas) setAreas(draft.areas);
           if(draft.projectName) setProjectName(draft.projectName);
           if(draft.projectAddress) setProjectAddress(draft.projectAddress);
           setDraftRestored(true);
-          const first = (draft.floors||[]).find(f=>(draft.areas?.[f]||[]).some(a=>a.area_type||a.sqft>0));
+          const first=(draft.floors||[]).find(f=>(draft.areas?.[f]||[]).some(a=>a.area_type||a.sqft>0));
           if(first) setPendingFloor(first);
         }
       }
@@ -945,364 +954,221 @@ export default function ProjectEstimate() {
   },[selectedLeadId]);
 
   useEffect(()=>{
-    if(!isEditing && selectedLeadId){
-      const t = setTimeout(()=>saveDraftNow(), 1500);
-      return ()=>clearTimeout(t);
-    }
-  },[selectedLeadId, projectAddress, projectName]);
+    if(!isEditing&&selectedLeadId){const t=setTimeout(()=>saveDraftNow(),1500);return()=>clearTimeout(t);}
+  },[selectedLeadId,projectAddress,projectName]);
 
   useEffect(()=>{
-    if(!isEditing && leadId && leads.length>0){
-      const l = leads.find(l=>String(l.id)===String(leadId));
+    if(!isEditing&&leadId&&leads.length>0){
+      const l=leads.find(l=>String(l.id)===String(leadId));
       if(l){
-        setSelectedLeadId(String(l.id));
-        setProjectName(l.name||"");
-        if(!resumeMode && !addressParam && !draftRestored) setProjectAddress(l.address||"");
+        setSelectedLeadId(String(l.id)); setProjectName(l.name||"");
+        if(!resumeMode&&!addressParam&&!draftRestored) setProjectAddress(l.address||"");
       }
     }
-  },[leadId, leads]);
+  },[leadId,leads]);
 
-  const materialMap  = useMemo(()=>Object.fromEntries(materials.map(m=>[m.name,m])),[materials]);
-  const selectedLead = leads.find(l=>String(l.id)===String(selectedLeadId));
+  const materialMap=useMemo(()=>Object.fromEntries(materials.map(m=>[m.name,m])),[materials]);
+  const selectedLead=leads.find(l=>String(l.id)===String(selectedLeadId));
 
-  function floorTotal(floor) {
-    return (areas[floor]||[]).reduce((s,a)=>s+getAreaTotalCost(a,materialMap),0);
-  }
-  const projectTotal = floors.reduce((s,f)=>s+floorTotal(f),0);
+  function floorTotal(floor){return(areas[floor]||[]).reduce((s,a)=>s+getAreaTotalCost(a,materialMap),0);}
+  const projectTotal=floors.reduce((s,f)=>s+floorTotal(f),0);
 
-  function addFloor() {
-    const name=newFloorName.trim(); if(!name) return;
-    setFloors(p=>[...p,name]);
-    setAreas(p=>({...p,[name]:[]}));
-    setActiveFloor(name); setNewFloorName(""); setAddingFloor(false);
+  function addFloor(){
+    const name=newFloorName.trim();if(!name)return;
+    setFloors(p=>[...p,name]);setAreas(p=>({...p,[name]:[]}));
+    setActiveFloor(name);setNewFloorName("");setAddingFloor(false);
   }
 
- function addArea(floor) {
-  setAreas(prev=>{
-    const ex = prev[floor]||[];
-    // If there's already an incomplete area open, don't add another
-    const hasIncomplete = ex.some(a=>!isAreaComplete(a));
-    if(hasIncomplete) return prev;
-    // Collapse all complete areas
-    const collapsed = ex.map(a=>isAreaComplete(a)?{...a,_collapsed:true}:a);
-    const last = collapsed[collapsed.length-1];
-    const n = last
-      ? {...last, temp_id:Date.now(), sqft:0, measurements:[], mh:"", ml:"", mq:"1", deduct_sqft:"", _collapsed:false, options:[]}
-      : { temp_id:Date.now(), floor, area_type:"", material:"", thickness_in:"", r_value:"", oc:"", sqft:0, measurements:[], mh:"", ml:"", mq:"1", deduct_sqft:"", _collapsed:false, options:[] };
-    return {...prev, [floor]:[...collapsed, n]};
-  });
-}
+  function addArea(floor){
+    setAreas(prev=>{
+      const ex=prev[floor]||[];
+      const hasIncomplete=ex.some(a=>!isAreaComplete(a));
+      if(hasIncomplete) return prev;
+      const collapsed=ex.map(a=>isAreaComplete(a)?{...a,_collapsed:true}:a);
+      const last=collapsed[collapsed.length-1];
+      const n=last
+        ?{...last,temp_id:Date.now(),sqft:0,measurements:[],mh:"",ml:"",mq:"1",deduct_sqft:"",_collapsed:false,options:[]}
+        :{temp_id:Date.now(),floor,area_type:"",material:"",thickness_in:"",r_value:"",oc:"",sqft:0,measurements:[],mh:"",ml:"",mq:"1",deduct_sqft:"",_collapsed:false,options:[]};
+      return {...prev,[floor]:[...collapsed,n]};
+    });
+  }
 
-  function updateArea(floor,idx,field,value) {
+  function updateArea(floor,idx,field,value){
     setAreas(prev=>{
       const upd=[...(prev[floor]||[])];
-      const existing = prev[floor][idx]||{};
+      const existing=prev[floor][idx]||{};
       upd[idx]={...existing,[field]:value};
-      if(field!=="options") upd[idx].options = existing.options||[];
+      if(field!=="options") upd[idx].options=existing.options||[];
       if(selectedLeadId) saveDraftNow({...prev,[floor]:upd});
       if(field==="area_type"){
         const match=Object.values(prev).flat().reverse().find(a=>a.area_type===value&&a.material&&a.material!=="__custom_mat__");
-        if(match){
-          upd[idx]={...upd[idx], material:match.material, thickness_in:match.thickness_in,
-            r_value:match.r_value, oc:match.oc,
-            mat_lines:match.mat_lines?match.mat_lines.map(ml=>({...ml})):undefined,
-            options:existing.options||[]};
-        }
+        if(match) upd[idx]={...upd[idx],material:match.material,thickness_in:match.thickness_in,r_value:match.r_value,oc:match.oc,mat_lines:match.mat_lines?match.mat_lines.map(ml=>({...ml})):undefined,options:existing.options||[]};
       }
       return {...prev,[floor]:upd};
     });
   }
 
-  function deleteArea(floor,idx) {
-    setAreas(prev=>({...prev,[floor]:prev[floor].filter((_,i)=>i!==idx)}));
+  function deleteArea(floor,idx){setAreas(prev=>({...prev,[floor]:prev[floor].filter((_,i)=>i!==idx)}));}
+
+  async function saveNewCustomer(form){
+    let companyId=null;
+    try{const {data:{user}}=await supabase.auth.getUser();const {data:cd}=await supabase.from("companies").select("id").eq("user_id",user.id).maybeSingle();companyId=cd?.id||null;}catch(e){}
+    const {data,error}=await supabase.from("customers").insert([{name:form.name||"",phone:form.phone||"",company_name:form.company_name||"",email:form.email||"",address:form.address||"",status:"New",estimate_amount:0,company_id:companyId}]).select().single();
+    if(error){alert("Could not save customer: "+(error.message||JSON.stringify(error)));return;}
+    if(data){loadLeads();setSelectedLeadId(String(data.id));setProjectName(data.name||"");setProjectAddress(data.address||"");}
   }
 
-  async function saveNewCustomer(form) {
-    let companyId = null;
-    try {
-      const {data:{user}} = await supabase.auth.getUser();
-      const {data:cd} = await supabase.from("companies").select("id").eq("user_id",user.id).maybeSingle();
-      companyId = cd?.id||null;
-    } catch(e){}
-    const {data,error} = await supabase.from("customers").insert([{
-      name:form.name||"", phone:form.phone||"", company_name:form.company_name||"",
-      email:form.email||"", address:form.address||"", status:"New",
-      estimate_amount:0, company_id:companyId,
-    }]).select().single();
-    if(error){ alert("Could not save customer: "+(error.message||JSON.stringify(error))); return; }
-    if(data){
-      loadLeads();
-      setSelectedLeadId(String(data.id));
-      setProjectName(data.name||"");
-      setProjectAddress(data.address||"");
-    }
-  }
-
-  async function calculateJobPrice(companyId, allAreas, totalSqft) {
-    const [{data:matCosts},{data:overheadCosts},{data:consumables}] = await Promise.all([
+  async function calculateJobPrice(companyId,allAreas,totalSqft){
+    const [{data:matCosts},{data:overheadCosts},{data:consumables}]=await Promise.all([
       supabase.from("material_costs").select("*").eq("company_id",companyId),
       supabase.from("cost_settings").select("*").eq("company_id",companyId).not("period","eq","job_consumable"),
       supabase.from("cost_settings").select("*").eq("company_id",companyId).eq("period","job_consumable"),
     ]);
-    const matCostMap = {};
-    (matCosts||[]).forEach(m=>{ matCostMap[m.material_name]=m; });
-    const TM = {"2x4":3.5,"2x6":5.5,"2x8":7.25,"2x10":9.25,"2x12":11.25,"I-joist":11.875};
-    let materialCost = 0;
-    allAreas.forEach(a=>{
-      const mc=matCostMap[a.material]; if(!mc) return;
-      const thick=TM[a.thickness_in]||0;
-      let qty = mc.unit==="board_ft"?(a.sqft||0)*thick : mc.unit==="bag"?Math.ceil(((a.sqft||0)*thick)/(mc.coverage_factor||1)):(a.sqft||0);
-      materialCost += qty*Number(mc.cost_per_unit||0)*(1+Number(mc.markup_pct||0)/100);
-    });
-    const overheadCost = (overheadCosts||[]).reduce((s,c)=>s+Number(c.amount||0),0)/20;
-    const consumableCost = (consumables||[]).reduce((s,c)=>s+Number(c.amount||0)*(totalSqft>0?totalSqft/1000:1),0);
-    const totalCost = materialCost+overheadCost+consumableCost;
-    const margin = 30;
-    return {
-      material_cost:Math.round(materialCost*100)/100, overhead_cost:Math.round(overheadCost*100)/100,
-      labor_cost:0, final_price:Math.round(totalCost*(1+margin/100)*100)/100,
-      profit_margin_pct:margin, grand_total:Math.round(totalCost*(1+margin/100)*100)/100,
-    };
+    const matCostMap={};(matCosts||[]).forEach(m=>{matCostMap[m.material_name]=m;});
+    const TM={"2x4":3.5,"2x6":5.5,"2x8":7.25,"2x10":9.25,"2x12":11.25,"I-joist":11.875};
+    let materialCost=0;
+    allAreas.forEach(a=>{const mc=matCostMap[a.material];if(!mc)return;const thick=TM[a.thickness_in]||0;let qty=mc.unit==="board_ft"?(a.sqft||0)*thick:mc.unit==="bag"?Math.ceil(((a.sqft||0)*thick)/(mc.coverage_factor||1)):(a.sqft||0);materialCost+=qty*Number(mc.cost_per_unit||0)*(1+Number(mc.markup_pct||0)/100);});
+    const overheadCost=(overheadCosts||[]).reduce((s,c)=>s+Number(c.amount||0),0)/20;
+    const consumableCost=(consumables||[]).reduce((s,c)=>s+Number(c.amount||0)*(totalSqft>0?totalSqft/1000:1),0);
+    const totalCost=materialCost+overheadCost+consumableCost;const margin=30;
+    return {material_cost:Math.round(materialCost*100)/100,overhead_cost:Math.round(overheadCost*100)/100,labor_cost:0,final_price:Math.round(totalCost*(1+margin/100)*100)/100,profit_margin_pct:margin,grand_total:Math.round(totalCost*(1+margin/100)*100)/100};
   }
 
-  async function saveOptionsOnly() {
-    if(saving) return;
-    setSaving(true);
-    try {
-      const {data:existingAreas} = await supabase.from("areas").select("id,area_type,sqft,floor_id,order_index")
-        .eq("project_id",savedProjectId||projectId).order("order_index");
-      if(!existingAreas?.length){ setSaving(false); return; }
-      for(const floor of floors){
-        for(const a of (areas[floor]||[])){
-          if(!isAreaComplete(a)) continue;
-          const match = existingAreas.find(ea=>ea.area_type===a.area_type&&Math.abs(ea.sqft-a.sqft)<0.01);
-          if(match&&(a.options||[]).length>0) await supabase.from("areas").update({options:a.options||[]}).eq("id",match.id);
-        }
-      }
-      setSaved(true); setTimeout(()=>setSaved(false),2000);
-    } catch(err){ alert("Error saving options: "+err.message); }
+  async function saveOptionsOnly(){
+    if(saving)return;setSaving(true);
+    try{
+      const {data:existingAreas}=await supabase.from("areas").select("id,area_type,sqft,floor_id,order_index").eq("project_id",savedProjectId||projectId).order("order_index");
+      if(!existingAreas?.length){setSaving(false);return;}
+      for(const floor of floors){for(const a of(areas[floor]||[])){if(!isAreaComplete(a))continue;const match=existingAreas.find(ea=>ea.area_type===a.area_type&&Math.abs(ea.sqft-a.sqft)<0.01);if(match&&(a.options||[]).length>0)await supabase.from("areas").update({options:a.options||[]}).eq("id",match.id);}}
+      setSaved(true);setTimeout(()=>setSaved(false),2000);
+    }catch(err){alert("Error saving options: "+err.message);}
     setSaving(false);
   }
 
-  async function saveProject() {
-    if(saving) return;
-    if(!selectedLeadId){ alert("Please select or register a customer before saving."); return; }
-    const hasAreas = floors.some(f=>(areas[f]||[]).some(a=>isAreaComplete(a)));
-    if(!hasAreas){ alert("Add at least one area before saving."); return; }
+  async function saveProject(){
+    if(saving)return;
+    if(!selectedLeadId){alert("Please select or register a customer before saving.");return;}
+    const hasAreas=floors.some(f=>(areas[f]||[]).some(a=>isAreaComplete(a)));
+    if(!hasAreas){alert("Add at least one area before saving.");return;}
     setSaving(true);
-    try {
-      const {data:{user}} = await supabase.auth.getUser();
-      const {data:cd} = await supabase.from("companies").select("id").eq("user_id",user.id).maybeSingle();
-      const companyId = cd?.id||null;
-      const {data:proj,error:pe} = await supabase.from("projects").insert([{
-        lead_id:Number(selectedLeadId), name:projectName||"New Project", address:projectAddress||"",
-        status:"Active", source:"field", company_id:companyId,
-      }]).select().single();
-      if(pe) throw pe;
-      const {data:floorRows} = await supabase.from("floors").insert(floors.map((name,i)=>({
-        project_id:proj.id, name, order_index:i+1, company_id:companyId,
-      }))).select();
-      const floorMap = {};
-      (floorRows||[]).forEach(f=>{ floorMap[f.name]=f.id; });
-      const allAreas = floors.flatMap(floor=>(areas[floor]||[]).filter(a=>a.area_type&&a.sqft).flatMap((a,i)=>{
-        const mls = (a.mat_lines&&a.mat_lines.length>0)?a.mat_lines:[{material:a.material||"",thickness_in:a.thickness_in||"",r_value:a.r_value||"",oc:a.oc||""}];
-        return mls.map((ml,mi)=>{
-          const mat=materialMap[ml.material];
-          const {qty,unit,unit_price,line_total}=calcArea(a.sqft,ml.thickness_in,mat);
-          return {project_id:proj.id,floor_id:floorMap[floor],area_type:a.area_type,material:ml.material,thickness_in:ml.thickness_in||null,r_value:ml.r_value,sqft:a.sqft,qty,unit,unit_price,line_total,order_index:i*10+mi,company_id:companyId,options:mi===0?(a.options||[]):[]};
-        });
+    try{
+      const {data:{user}}=await supabase.auth.getUser();
+      const {data:cd}=await supabase.from("companies").select("id").eq("user_id",user.id).maybeSingle();
+      const companyId=cd?.id||null;
+      const {data:proj,error:pe}=await supabase.from("projects").insert([{lead_id:Number(selectedLeadId),name:projectName||"New Project",address:projectAddress||"",status:"Active",source:"field",company_id:companyId}]).select().single();
+      if(pe)throw pe;
+      const {data:floorRows}=await supabase.from("floors").insert(floors.map((name,i)=>({project_id:proj.id,name,order_index:i+1,company_id:companyId}))).select();
+      const floorMap={};(floorRows||[]).forEach(f=>{floorMap[f.name]=f.id;});
+      const allAreas=floors.flatMap(floor=>(areas[floor]||[]).filter(a=>a.area_type&&a.sqft).flatMap((a,i)=>{
+        const mls=(a.mat_lines&&a.mat_lines.length>0)?a.mat_lines:[{material:a.material||"",thickness_in:a.thickness_in||"",r_value:a.r_value||"",oc:a.oc||""}];
+        return mls.map((ml,mi)=>{const mat=materialMap[ml.material];const {qty,unit,unit_price,line_total}=calcArea(a.sqft,ml.thickness_in,mat);return {project_id:proj.id,floor_id:floorMap[floor],area_type:a.area_type,material:ml.material,thickness_in:ml.thickness_in||null,r_value:ml.r_value,sqft:a.sqft,qty,unit,unit_price,line_total,order_index:i*10+mi,company_id:companyId,options:mi===0?(a.options||[]):[]}; });
       }));
       if(allAreas.length>0){
-        const {data:areaRows,error:ae} = await supabase.from("areas").insert(allAreas).select();
-        if(ae) throw ae;
-        const segs=[];
-        let ai=0;
-        floors.forEach(floor=>{
-          (areas[floor]||[]).filter(a=>a.area_type&&a.sqft).forEach(a=>{
-            const sv=areaRows?.[ai++]; if(!sv) return;
-            (a.measurements||[]).forEach(m=>segs.push({area_id:sv.id,height:m.h,length:m.l,sqft:m.sqft,source:"field",company_id:companyId}));
-          });
-        });
-        if(segs.length>0) await supabase.from("segments").insert(segs);
+        const {data:areaRows,error:ae}=await supabase.from("areas").insert(allAreas).select();
+        if(ae)throw ae;
+        const segs=[];let ai=0;
+        floors.forEach(floor=>{(areas[floor]||[]).filter(a=>a.area_type&&a.sqft).forEach(a=>{const sv=areaRows?.[ai++];if(!sv)return;(a.measurements||[]).forEach(m=>segs.push({area_id:sv.id,height:m.h,length:m.l,sqft:m.sqft,source:"field",company_id:companyId}));});});
+        if(segs.length>0)await supabase.from("segments").insert(segs);
       }
-      const allAreasList = floors.flatMap(floor=>(areas[floor]||[]).filter(a=>a.area_type&&a.sqft).flatMap(a=>{
-        const mls = (a.mat_lines&&a.mat_lines.length>0)?a.mat_lines:[{material:a.material||"",thickness_in:a.thickness_in||""}];
-        return mls.map(ml=>({...a,material:ml.material,thickness_in:ml.thickness_in}));
-      }));
-      const finalLaborCost = laborRoles.reduce((s,r)=>s+Number(r.hours||0)*Number(r.days||1)*Number(r.people||1)*Number(r.rate||0),0);
-      const pricing = await calculateJobPrice(companyId,allAreasList,projectTotal>0?projectTotal:0);
-      const fuelCostCalc = Number(jobMiles||0)*2*fuelRate;
-      const {data:assetList} = await supabase.from("assets").select("*").eq("company_id",companyId);
-      const depreciationCost = ((assetList||[]).reduce((s,a)=>(s+(Number(a.purchase_price||0)-Number(a.salvage_value||0))/Number(a.useful_life_years||5)/12),0))/20;
-      const repData = selectedRep?salesReps.find(r=>r.id===selectedRep):null;
-      const commissionPct = repData?Number(repData.commission_pct||0):0;
-      const totalCostWithLabor = pricing.material_cost+pricing.overhead_cost+finalLaborCost+fuelCostCalc+depreciationCost;
-      const basePriceWithMargin = totalCostWithLabor*(1+(pricing.profit_margin_pct||30)/100);
-      const commissionCost = basePriceWithMargin*commissionPct/100;
-      const finalPriceWithLabor = basePriceWithMargin+commissionCost;
+      const allAreasList=floors.flatMap(floor=>(areas[floor]||[]).filter(a=>a.area_type&&a.sqft).flatMap(a=>{const mls=(a.mat_lines&&a.mat_lines.length>0)?a.mat_lines:[{material:a.material||"",thickness_in:a.thickness_in||""}];return mls.map(ml=>({...a,material:ml.material,thickness_in:ml.thickness_in}));}));
+      const finalLaborCost=laborRoles.reduce((s,r)=>s+Number(r.hours||0)*Number(r.days||1)*Number(r.people||1)*Number(r.rate||0),0);
+      const pricing=await calculateJobPrice(companyId,allAreasList,projectTotal>0?projectTotal:0);
+      const fuelCostCalc=Number(jobMiles||0)*2*fuelRate;
+      const {data:assetList}=await supabase.from("assets").select("*").eq("company_id",companyId);
+      const depreciationCost=((assetList||[]).reduce((s,a)=>(s+(Number(a.purchase_price||0)-Number(a.salvage_value||0))/Number(a.useful_life_years||5)/12),0))/20;
+      const repData=selectedRep?salesReps.find(r=>r.id===selectedRep):null;
+      const commissionPct=repData?Number(repData.commission_pct||0):0;
+      const totalCostWithLabor=pricing.material_cost+pricing.overhead_cost+finalLaborCost+fuelCostCalc+depreciationCost;
+      const basePriceWithMargin=totalCostWithLabor*(1+(pricing.profit_margin_pct||30)/100);
+      const commissionCost=basePriceWithMargin*commissionPct/100;
+      const finalPriceWithLabor=basePriceWithMargin+commissionCost;
       await supabase.from("customers").update({estimate_amount:Math.round(finalPriceWithLabor*100)/100}).eq("id",selectedLeadId);
-      const allOptions = floors.flatMap(floor=>(areas[floor]||[]).filter(a=>a.area_type&&a.sqft&&(a.options||[]).length>0).map(a=>({area_type:a.area_type,floor,sqft:a.sqft,options:a.options,mat_lines:a.mat_lines})));
-      await supabase.from("quotes").insert([{
-        project_id:proj.id, subtotal:pricing.material_cost, tax_rate:0, tax_total:0,
-        grand_total:Math.round(finalPriceWithLabor*100)/100, final_price:Math.round(finalPriceWithLabor*100)/100,
-        material_cost:pricing.material_cost, overhead_cost:pricing.overhead_cost,
-        labor_cost:Math.round(finalLaborCost*100)/100,
-        labor_hours:laborRoles.reduce((s,r)=>s+Number(r.hours||0)*Number(r.days||1)*Number(r.people||1),0),
-        crew_size:laborRoles.filter(r=>Number(r.hours||0)>0).length,
-        labor_rate:laborRoles.find(r=>Number(r.hours||0)>0)?.rate||45,
-        profit_margin_pct:pricing.profit_margin_pct,
-        fuel_cost:Math.round(fuelCostCalc*100)/100, commission_cost:Math.round(commissionCost*100)/100,
-        commission_pct:commissionPct, job_miles:Number(jobMiles||0), sales_rep_id:selectedRep||null,
-        notes:allOptions.length>0?JSON.stringify(allOptions):null, status:"Draft", company_id:companyId,
-      }]);
-      setSaved(true); setSavedProjectId(proj.id); clearDraft();
-    } catch(err){ console.error(err); alert("Error: "+(err.message||JSON.stringify(err))); }
-    finally { setSaving(false); }
+      const allOptions=floors.flatMap(floor=>(areas[floor]||[]).filter(a=>a.area_type&&a.sqft&&(a.options||[]).length>0).map(a=>({area_type:a.area_type,floor,sqft:a.sqft,options:a.options,mat_lines:a.mat_lines})));
+      await supabase.from("quotes").insert([{project_id:proj.id,subtotal:pricing.material_cost,tax_rate:0,tax_total:0,grand_total:Math.round(finalPriceWithLabor*100)/100,final_price:Math.round(finalPriceWithLabor*100)/100,material_cost:pricing.material_cost,overhead_cost:pricing.overhead_cost,labor_cost:Math.round(finalLaborCost*100)/100,labor_hours:laborRoles.reduce((s,r)=>s+Number(r.hours||0)*Number(r.days||1)*Number(r.people||1),0),crew_size:laborRoles.filter(r=>Number(r.hours||0)>0).length,labor_rate:laborRoles.find(r=>Number(r.hours||0)>0)?.rate||45,profit_margin_pct:pricing.profit_margin_pct,fuel_cost:Math.round(fuelCostCalc*100)/100,commission_cost:Math.round(commissionCost*100)/100,commission_pct:commissionPct,job_miles:Number(jobMiles||0),sales_rep_id:selectedRep||null,notes:allOptions.length>0?JSON.stringify(allOptions):null,status:"Draft",company_id:companyId}]);
+      setSaved(true);setSavedProjectId(proj.id);clearDraft();
+    }catch(err){console.error(err);alert("Error: "+(err.message||JSON.stringify(err)));}
+    finally{setSaving(false);}
   }
 
-  useEffect(()=>{ if(saved){ const t=setTimeout(()=>setSaved(false),3000); return ()=>clearTimeout(t); } },[saved]);
+  useEffect(()=>{if(saved){const t=setTimeout(()=>setSaved(false),3000);return()=>clearTimeout(t);}},[saved]);
 
-  const currentAreas = areas[activeFloor]||[];
-  const panelProps = { floors, areas, materialMap, crewNotes, projectName, projectAddress, customer:selectedLead };
+  const currentAreas=areas[activeFloor]||[];
+  const panelProps={floors,areas,materialMap,crewNotes,projectName,projectAddress,customer:selectedLead};
 
-  if(loadingProject) return (
-    <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"system-ui",color:"#64748b"}}>Loading estimate…</div>
-  );
+  if(loadingProject) return <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"system-ui",color:"#64748b"}}>Loading estimate…</div>;
 
   return (
     <div style={{fontFamily:"system-ui,sans-serif",color:C.ink,background:C.bg,minHeight:"100%",display:"flex",flexDirection:"column",WebkitOverflowScrolling:"touch"}}>
-      {saved && (
+      {saved&&(
         <div style={{position:"fixed",top:12,left:"50%",transform:"translateX(-50%)",zIndex:300,display:"flex",alignItems:"center",gap:10,background:"#059669",color:"#fff",padding:"8px 16px",borderRadius:20,fontSize:12,fontWeight:700,boxShadow:"0 4px 16px rgba(0,0,0,.15)"}}>
           <span>✅ Saved!</span>
-          {savedProjectId && (
-            <>
-              <button onClick={()=>navigate(`/field-report/${savedProjectId}`)} style={{background:"#3b82f6",color:"white",border:"none",borderRadius:12,padding:"3px 10px",fontSize:11,fontWeight:700,cursor:"pointer"}}>📋 Office Report</button>
-              <button onClick={()=>navigate(`/quote/${savedProjectId}`)} style={{background:"white",color:"#059669",border:"none",borderRadius:12,padding:"3px 10px",fontSize:11,fontWeight:700,cursor:"pointer"}}>📄 Quote</button>
-            </>
-          )}
+          {savedProjectId&&(<><button onClick={()=>navigate(`/field-report/${savedProjectId}`)} style={{background:"#3b82f6",color:"white",border:"none",borderRadius:12,padding:"3px 10px",fontSize:11,fontWeight:700,cursor:"pointer"}}>📋 Office Report</button><button onClick={()=>navigate(`/quote/${savedProjectId}`)} style={{background:"white",color:"#059669",border:"none",borderRadius:12,padding:"3px 10px",fontSize:11,fontWeight:700,cursor:"pointer"}}>📄 Quote</button></>)}
         </div>
       )}
-
-      {/* top bar */}
       <div style={{position:"sticky",top:0,zIndex:100,background:C.white,borderBottom:`1px solid ${C.border}`,padding:"8px 12px",display:"flex",justifyContent:"space-between",alignItems:"center",flexShrink:0}}>
-        <span style={{fontWeight:700,fontSize:14,flex:1,overflow:"hidden",whiteSpace:"nowrap",textOverflow:"ellipsis"}}>
-          {isEditing?"✏️ Edit Estimate":(projectName||"New Project")}
-        </span>
+        <span style={{fontWeight:700,fontSize:14,flex:1,overflow:"hidden",whiteSpace:"nowrap",textOverflow:"ellipsis"}}>{isEditing?"✏️ Edit Estimate":(projectName||"New Project")}</span>
         <div style={{display:"flex",gap:6}}>
-          {savedProjectId && (
-            <>
-              <button onClick={()=>navigate(`/field-report/${savedProjectId}`)} style={{...BtnD,background:"#3b82f6",height:32,fontSize:12,padding:"0 10px",borderRadius:8}}>📋 Office</button>
-              <button onClick={()=>navigate(`/quote-pricing/${savedProjectId}`)} style={{...BtnD,background:"#f97316",height:32,fontSize:12,padding:"0 10px",borderRadius:8}}>📄 Quote</button>
-            </>
-          )}
-          <button onClick={saveProject} disabled={saving}
-            style={{...BtnD,fontSize:13,height:32,padding:"0 14px",background:saving?"#64748b":C.ink,borderRadius:8,opacity:!selectedLeadId?0.4:1}}>
-            {saving?"…":"Save"}
-          </button>
+          {savedProjectId&&(<><button onClick={()=>navigate(`/field-report/${savedProjectId}`)} style={{...BtnD,background:"#3b82f6",height:32,fontSize:12,padding:"0 10px",borderRadius:8}}>📋 Office</button><button onClick={()=>navigate(`/quote-pricing/${savedProjectId}`)} style={{...BtnD,background:"#f97316",height:32,fontSize:12,padding:"0 10px",borderRadius:8}}>📄 Quote</button></>)}
+          <button onClick={saveProject} disabled={saving} style={{...BtnD,fontSize:13,height:32,padding:"0 14px",background:saving?"#64748b":C.ink,borderRadius:8,opacity:!selectedLeadId?0.4:1}}>{saving?"…":"Save"}</button>
         </div>
       </div>
 
       <div style={{display:"flex",flex:1,overflow:"hidden"}}>
         <div style={{flex:1,overflowY:"auto",overflowX:"hidden",padding:"8px 12px 200px 12px",minWidth:0,boxSizing:"border-box",width:"100%"}}>
-
-          <CustomerSection
-            leads={leads} selectedLead={selectedLead} selectedLeadId={selectedLeadId}
+          <CustomerSection leads={leads} selectedLead={selectedLead} selectedLeadId={selectedLeadId}
             projectAddress={projectAddress} projectName={projectName}
-            onSelect={(lead)=>{ setSelectedLeadId(String(lead.id)); setProjectName(lead.name||""); setProjectAddress(""); }}
-            onClear={()=>{ setSelectedLeadId(""); setProjectName(""); setProjectAddress(""); }}
-            onSaveNew={saveNewCustomer} onAddressChange={setProjectAddress} onNameChange={setProjectName}
-          />
+            onSelect={(lead)=>{setSelectedLeadId(String(lead.id));setProjectName(lead.name||"");setProjectAddress("");}}
+            onClear={()=>{setSelectedLeadId("");setProjectName("");setProjectAddress("");}}
+            onSaveNew={saveNewCustomer} onAddressChange={setProjectAddress} onNameChange={setProjectName} />
 
-          {/* crew notes */}
           <div style={CARD_ORANGE}>
             <div style={{display:"flex",gap:6,marginBottom:6}}>
-              <select style={{...S,flex:1,height:32,fontSize:12}} value={crewNotes.const_type} onChange={e=>setCrewNotes(p=>({...p,const_type:e.target.value}))}>
-                <option value="">Job type…</option>{CONST_TYPES.map(t=><option key={t}>{t}</option>)}
-              </select>
-              <select style={{...S,flex:1,height:32,fontSize:12}} value={crewNotes.ladder} onChange={e=>setCrewNotes(p=>({...p,ladder:e.target.value}))}>
-                <option value="">Ladder…</option>{LADDER_OPTS.map(l=><option key={l}>{l}</option>)}
-              </select>
+              <select style={{...S,flex:1,height:32,fontSize:12}} value={crewNotes.const_type} onChange={e=>setCrewNotes(p=>({...p,const_type:e.target.value}))}><option value="">Job type…</option>{CONST_TYPES.map(t=><option key={t}>{t}</option>)}</select>
+              <select style={{...S,flex:1,height:32,fontSize:12}} value={crewNotes.ladder} onChange={e=>setCrewNotes(p=>({...p,ladder:e.target.value}))}><option value="">Ladder…</option>{LADDER_OPTS.map(l=><option key={l}>{l}</option>)}</select>
             </div>
             <div style={{display:"flex",gap:6,alignItems:"center",marginBottom:6}}>
               <span style={{fontSize:11,color:C.muted,whiteSpace:"nowrap"}}>FireBlock</span>
-              {["Yes","No"].map(v=>(
-                <button key={v} onClick={()=>setCrewNotes(p=>({...p,fire_blocking:v}))}
-                  style={{...Btn,height:30,fontSize:12,padding:"0 10px",background:crewNotes.fire_blocking===v?C.ink:C.white,color:crewNotes.fire_blocking===v?"#fff":C.muted,borderColor:crewNotes.fire_blocking===v?C.ink:C.border}}>
-                  {v}
-                </button>
-              ))}
+              {["Yes","No"].map(v=>(<button key={v} onClick={()=>setCrewNotes(p=>({...p,fire_blocking:v}))} style={{...Btn,height:30,fontSize:12,padding:"0 10px",background:crewNotes.fire_blocking===v?C.ink:C.white,color:crewNotes.fire_blocking===v?"#fff":C.muted,borderColor:crewNotes.fire_blocking===v?C.ink:C.border}}>{v}</button>))}
               <span style={{fontSize:11,color:C.muted,whiteSpace:"nowrap",marginLeft:4}}>Park</span>
-              {["Yes","No"].map(v=>(
-                <button key={v} onClick={()=>setCrewNotes(p=>({...p,parking:v}))}
-                  style={{...Btn,height:30,fontSize:12,padding:"0 10px",background:crewNotes.parking===v?C.ink:C.white,color:crewNotes.parking===v?"#fff":C.muted,borderColor:crewNotes.parking===v?C.ink:C.border}}>
-                  {v}
-                </button>
-              ))}
+              {["Yes","No"].map(v=>(<button key={v} onClick={()=>setCrewNotes(p=>({...p,parking:v}))} style={{...Btn,height:30,fontSize:12,padding:"0 10px",background:crewNotes.parking===v?C.ink:C.white,color:crewNotes.parking===v?"#fff":C.muted,borderColor:crewNotes.parking===v?C.ink:C.border}}>{v}</button>))}
               <input placeholder="Units" value={crewNotes.units} onChange={e=>setCrewNotes(p=>({...p,units:e.target.value}))} style={{...I,flex:1,height:30,fontSize:12}} />
             </div>
             <input placeholder="Other info for crew…" value={crewNotes.extra_notes} onChange={e=>setCrewNotes(p=>({...p,extra_notes:e.target.value}))} style={{...I,width:"100%",height:30,fontSize:12}} />
           </div>
 
-          {/* floor tabs — wraps on mobile */}
           <div style={{display:"flex",flexWrap:"wrap",gap:4,marginBottom:5}}>
             {floors.map(floor=>{
               const act=activeFloor===floor;
-              return (
-                <button key={floor} onClick={()=>setActiveFloor(floor)} className="floor-btn"
-                  style={{padding:"8px 14px",borderRadius:8,height:"auto",border:act?"2px solid #059669":"2px solid #86efac",background:act?"#059669":C.white,color:act?"#fff":"#059669",cursor:"pointer",fontSize:14,fontWeight:700,whiteSpace:"nowrap",boxShadow:act?"0 2px 8px rgba(5,150,105,.3)":"none"}}>
-                  {floor}
-                </button>
-              );
+              return (<button key={floor} onClick={()=>setActiveFloor(floor)} className="floor-btn" style={{padding:"8px 14px",borderRadius:8,height:"auto",border:act?"2px solid #059669":"2px solid #86efac",background:act?"#059669":C.white,color:act?"#fff":"#059669",cursor:"pointer",fontSize:14,fontWeight:700,whiteSpace:"nowrap",boxShadow:act?"0 2px 8px rgba(5,150,105,.3)":"none"}}>{floor}</button>);
             })}
-            {addingFloor ? (
+            {addingFloor?(
               <div style={{display:"flex",gap:3}}>
-                <input autoFocus placeholder="Name" value={newFloorName}
-                  onChange={e=>setNewFloorName(e.target.value)}
-                  onKeyDown={e=>{if(e.key==="Enter")addFloor();if(e.key==="Escape")setAddingFloor(false);}}
-                  style={{...I,width:75}} />
+                <input autoFocus placeholder="Name" value={newFloorName} onChange={e=>setNewFloorName(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")addFloor();if(e.key==="Escape")setAddingFloor(false);}} style={{...I,width:75}} />
                 <button onClick={addFloor} style={{...BtnD,padding:"0 6px"}}>✓</button>
                 <button onClick={()=>setAddingFloor(false)} style={{...Btn,padding:"0 5px"}}>✕</button>
               </div>
-            ) : (
-              <button onClick={()=>setAddingFloor(true)} className="floor-btn"
-                style={{padding:"8px 14px",borderRadius:8,height:"auto",border:"2px dashed #86efac",background:"none",color:"#059669",cursor:"pointer",fontSize:14,fontWeight:700,whiteSpace:"nowrap"}}>
-                + Floor
-              </button>
+            ):(
+              <button onClick={()=>setAddingFloor(true)} className="floor-btn" style={{padding:"8px 14px",borderRadius:8,height:"auto",border:"2px dashed #86efac",background:"none",color:"#059669",cursor:"pointer",fontSize:14,fontWeight:700,whiteSpace:"nowrap"}}>+ Floor</button>
             )}
           </div>
 
-          <button onClick={()=>addArea(activeFloor)}
-            style={{width:"100%",padding:"7px",borderRadius:7,border:`1px dashed ${C.border}`,background:C.white,color:C.muted,cursor:"pointer",fontSize:11,fontWeight:600,marginBottom:6,height:"auto"}}>
-            + Add area to {activeFloor}
-          </button>
+          <button onClick={()=>addArea(activeFloor)} style={{width:"100%",padding:"7px",borderRadius:7,border:`1px dashed ${C.border}`,background:C.white,color:C.muted,cursor:"pointer",fontSize:11,fontWeight:600,marginBottom:6,height:"auto"}}>+ Add area to {activeFloor}</button>
 
-          {currentAreas.length===0 ? (
-            <div style={{textAlign:"center",padding:"14px",color:C.faint,fontSize:11,background:C.white,borderRadius:7,border:`1px solid ${C.border}`,marginBottom:5}}>
-              No areas for {activeFloor} — tap above to add one
-            </div>
-          ) : (
+          {currentAreas.length===0?(
+            <div style={{textAlign:"center",padding:"14px",color:C.faint,fontSize:11,background:C.white,borderRadius:7,border:`1px solid ${C.border}`,marginBottom:5}}>No areas for {activeFloor} — tap above to add one</div>
+          ):(
             <>
               {currentAreas.map((area,idx)=>({area,idx})).filter(({area})=>!isAreaComplete(area)).map(({area,idx})=>(
-                <AreaRow key={area.id||area.temp_id} area={area} materials={materials}
-                  onChange={(field,value)=>updateArea(activeFloor,idx,field,value)}
-                  onDelete={()=>deleteArea(activeFloor,idx)}
-                  saveOptionsOnly={saveOptionsOnly}
-                  onMaterialAdded={loadMaterials} />
+                <AreaRow key={area.id||area.temp_id} area={area} materials={materials} onChange={(field,value)=>updateArea(activeFloor,idx,field,value)} onDelete={()=>deleteArea(activeFloor,idx)} saveOptionsOnly={saveOptionsOnly} onMaterialAdded={loadMaterials} />
               ))}
-              {currentAreas.some(a=>isAreaComplete(a)) && (
-                <div style={{fontSize:9,fontWeight:700,color:"#059669",textTransform:"uppercase",letterSpacing:0.5,marginBottom:4,marginTop:2,paddingLeft:2}}>✓ Completed areas</div>
-              )}
+              {currentAreas.some(a=>isAreaComplete(a))&&(<div style={{fontSize:9,fontWeight:700,color:"#059669",textTransform:"uppercase",letterSpacing:0.5,marginBottom:4,marginTop:2,paddingLeft:2}}>✓ Completed areas</div>)}
               {currentAreas.map((area,idx)=>({area,idx})).filter(({area})=>isAreaComplete(area)).map(({area,idx})=>(
-                <AreaRow key={area.id||area.temp_id} area={area} materials={materials}
-                  onChange={(field,value)=>updateArea(activeFloor,idx,field,value)}
-                  onDelete={()=>deleteArea(activeFloor,idx)}
-                  saveOptionsOnly={saveOptionsOnly}
-                  onMaterialAdded={loadMaterials} />
+                <AreaRow key={area.id||area.temp_id} area={area} materials={materials} onChange={(field,value)=>updateArea(activeFloor,idx,field,value)} onDelete={()=>deleteArea(activeFloor,idx)} saveOptionsOnly={saveOptionsOnly} onMaterialAdded={loadMaterials} />
               ))}
             </>
           )}
 
-          {currentAreas.length>0 && (
+          {currentAreas.length>0&&(
             <div style={{display:"flex",justifyContent:"space-between",padding:"4px 8px",background:C.white,borderRadius:6,border:`1px solid ${C.border}`,marginBottom:5,fontSize:11}}>
               <span style={{color:C.muted,fontWeight:600}}>{activeFloor} subtotal</span>
               <span style={{fontWeight:700}}>${fmt(floorTotal(activeFloor))}</span>
@@ -1310,38 +1176,31 @@ export default function ProjectEstimate() {
           )}
         </div>
 
-        {/* side panel — desktop */}
         <div className="estimate-side-panel" style={{width:220,flexShrink:0,borderLeft:`1px solid ${C.border}`,background:C.white,overflowY:"auto",padding:"10px 10px 20px"}}>
           <div style={{fontSize:10,fontWeight:800,color:C.faint,textTransform:"uppercase",letterSpacing:0.5,marginBottom:8}}>Estimate</div>
           <EstimatePanel {...panelProps} />
         </div>
       </div>
 
-      {/* bottom panel — mobile */}
       <div className="estimate-bottom-panel" style={{position:"fixed",bottom:0,left:0,right:0,zIndex:200,background:C.white,borderTop:`2px solid ${C.border}`,boxShadow:"0 -2px 12px rgba(0,0,0,.08)"}}>
-        <div onClick={()=>setPanelOpen(p=>!p)}
-          style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"5px 12px",cursor:"pointer",borderBottom:panelOpen?`1px solid ${C.border}`:"none"}}>
+        <div onClick={()=>setPanelOpen(p=>!p)} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"5px 12px",cursor:"pointer",borderBottom:panelOpen?`1px solid ${C.border}`:"none"}}>
           <span style={{fontSize:10,fontWeight:800,color:C.faint,textTransform:"uppercase",letterSpacing:0.5}}>Estimate</span>
           <div style={{display:"flex",alignItems:"center",gap:8}}>
             <span style={{fontSize:13,fontWeight:800,color:C.green}}>${fmt(projectTotal)}</span>
             <span style={{fontSize:9,color:C.faint}}>{panelOpen?"▼":"▲"}</span>
           </div>
         </div>
-        {panelOpen && (
-          <div style={{maxHeight:"45vh",overflowY:"auto",padding:"8px 12px 24px"}}>
-            <EstimatePanel {...panelProps} />
-          </div>
-        )}
+        {panelOpen&&(<div style={{maxHeight:"45vh",overflowY:"auto",padding:"8px 12px 24px"}}><EstimatePanel {...panelProps} /></div>)}
       </div>
 
       <style>{`
         @media (min-width: 900px) { .estimate-bottom-panel { display: none !important; } }
-        @media (max-width: 899px) { .estimate-side-panel   { display: none !important; } }
+        @media (max-width: 899px) { .estimate-side-panel { display: none !important; } }
         @media (min-width: 900px) {
           .area-hl-input { height: 22px !important; font-size: 11px !important; }
           .area-mq-input { height: 22px !important; font-size: 11px !important; width: 30px !important; }
-          .area-deduct   { height: 22px !important; font-size: 11px !important; width: 52px !important; }
-          .area-select   { height: 22px !important; font-size: 11px !important; }
+          .area-deduct { height: 22px !important; font-size: 11px !important; width: 52px !important; }
+          .area-select { height: 22px !important; font-size: 11px !important; }
         }
         input[type=number]::-webkit-inner-spin-button,
         input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
