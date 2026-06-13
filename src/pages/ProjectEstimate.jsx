@@ -1009,8 +1009,8 @@ export default function ProjectEstimate() {
     loadProject();
   },[projectId]);
 
-  useEffect(()=>{
-    if(!isEditing&&selectedLeadId&&!draftRestored&&!resumeMode){
+ useEffect(()=>{
+  if(!isEditing&&selectedLeadId&&!draftRestored&&!resumeMode&&!savedProjectId){
       const key=getDraftKey(selectedLeadId);
       const draft=loadDraft(key);
       if(draft){
@@ -1175,8 +1175,16 @@ async function saveProject() {
         });
         if(segs.length>0) await supabase.from("segments").insert(segs);
       }
-      setSaved(true); setSavedProjectId(projectId);
-      try { localStorage.removeItem(getDraftKey(selectedLeadId)); } catch(e){}
+     setSaved(true); setSavedProjectId(projectId);
+      // Clear ALL possible draft keys for this lead
+      try {
+        const keysToRemove = [];
+        for(let i=0; i<localStorage.length; i++){
+          const k = localStorage.key(i);
+          if(k && k.startsWith("draft_estimate_")) keysToRemove.push(k);
+        }
+        keysToRemove.forEach(k=>localStorage.removeItem(k));
+      } catch(e){}
       return;
     }
 
