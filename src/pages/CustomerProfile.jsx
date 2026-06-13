@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
+import AddressInput from "./AddressInput";
 
 function fmt(n) {
   return Number(n||0).toLocaleString("en-US",{maximumFractionDigits:0});

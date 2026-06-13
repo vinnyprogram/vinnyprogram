@@ -86,28 +86,38 @@ function loadGoogleMaps(cb) {
 function AddressInput({ value, onChange, placeholder, style }) {
   const [suggestions, setSuggestions] = useState([]);
   const [show, setShow] = useState(false);
-  const serviceRef = useRef(null);
   const tokenRef = useRef(null);
 
   useEffect(()=>{
     if(!GOOGLE_KEY) return;
     loadGoogleMaps(()=>{
       if(!window.google?.maps?.places) return;
-      serviceRef.current = new window.google.maps.places.AutocompleteService();
       tokenRef.current = new window.google.maps.places.AutocompleteSessionToken();
     });
   },[]);
 
-  function fetch(input) {
-    if(!input||input.length<3||!serviceRef.current){ setSuggestions([]); return; }
-    serviceRef.current.getPlacePredictions({
-      input, sessionToken:tokenRef.current,
-      componentRestrictions:{ country:"us" }, types:["address"],
-    },(preds,status)=>{
-      if(status===window.google.maps.places.PlacesServiceStatus.OK&&preds){
-        setSuggestions(preds.slice(0,5)); setShow(true);
-      } else { setSuggestions([]); }
-    });
+async function fetch(input) {
+    if(!input||input.length<3){ setSuggestions([]); return; }
+    if(!window.google?.maps?.places) return;
+    try {
+      const {AutocompleteSuggestion} = window.google.maps.places;
+      const request = {
+        input,
+        sessionToken: tokenRef.current,
+        includedRegionCodes: ["us"],
+        includedPrimaryTypes: ["address"],
+      };
+      const {suggestions} = await AutocompleteSuggestion.fetchAutocompleteSuggestions(request);
+      const preds = (suggestions||[]).slice(0,5).map(s=>({
+        place_id: s.placePrediction?.placeId||Math.random(),
+        description: s.placePrediction?.text?.text||"",
+        structured_formatting: {
+          main_text: s.placePrediction?.mainText?.text||"",
+          secondary_text: s.placePrediction?.secondaryText?.text||"",
+        }
+      }));
+      setSuggestions(preds); setShow(preds.length>0);
+    } catch(e){ console.error("autocomplete error:",e); setSuggestions([]); }
   }
 
   function select(pred) {
