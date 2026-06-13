@@ -74,7 +74,6 @@ function CustomerSection({ leads, selectedLead, selectedLeadId, projectAddress,
   const [newStep, setNewStep] = useState(1);
   const [newForm, setNewForm] = useState({ name:"", phone:"", company_name:"", email:"", address:"" });
 
-  // Sync mode when selectedLead changes from outside (e.g. draft restore)
   useEffect(()=>{
     if(selectedLead && mode === "search") setMode("selected");
   }, [selectedLead]);
@@ -90,20 +89,19 @@ function CustomerSection({ leads, selectedLead, selectedLeadId, projectAddress,
     setNewForm({ name:"", phone:"", company_name:"", email:"", address:"" });
     setMode("search");
   }
- const results = query.trim().length >= 1
-  ? leads.filter(l =>
-      (l.name||"").toLowerCase().includes(query.toLowerCase()) ||
-      (l.phone||"").includes(query)
-    ).sort((a,b)=>{
-      // Prioritize names that START with the query
-      const q = query.toLowerCase();
-      const aStarts = (a.name||"").toLowerCase().startsWith(q);
-      const bStarts = (b.name||"").toLowerCase().startsWith(q);
-      if(aStarts && !bStarts) return -1;
-      if(!aStarts && bStarts) return 1;
-      return (a.name||"").localeCompare(b.name||"");
-    }).slice(0, 8)
-  : [];
+  const results = query.trim().length >= 1
+    ? leads.filter(l =>
+        (l.name||"").toLowerCase().includes(query.toLowerCase()) ||
+        (l.phone||"").includes(query)
+      ).sort((a,b)=>{
+        const q = query.toLowerCase();
+        const aStarts = (a.name||"").toLowerCase().startsWith(q);
+        const bStarts = (b.name||"").toLowerCase().startsWith(q);
+        if(aStarts && !bStarts) return -1;
+        if(!aStarts && bStarts) return 1;
+        return (a.name||"").localeCompare(b.name||"");
+      }).slice(0, 8)
+    : [];
 
   function selectLead(lead) {
     onSelect(lead);
@@ -125,42 +123,27 @@ function CustomerSection({ leads, selectedLead, selectedLeadId, projectAddress,
 
   return (
     <div style={{...CARD_BLUE, marginBottom:5}}>
-      {/* ── SELECTED ── */}
       {mode==="selected" && selectedLead && (
         <div>
           <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:4 }}>
             <div style={{ fontSize:11, lineHeight:1.5, flex:1, minWidth:0 }}>
               <span style={{ fontWeight:700 }}>{selectedLead.name}</span>
-              {selectedLead.phone && (
-                <span style={{ color:C.muted, fontSize:10, marginLeft:6 }}>{selectedLead.phone}</span>
-              )}
-              {selectedLead.company_name && (
-                <span style={{ color:C.muted, fontSize:10, marginLeft:6 }}>· {selectedLead.company_name}</span>
-              )}
+              {selectedLead.phone && <span style={{ color:C.muted, fontSize:10, marginLeft:6 }}>{selectedLead.phone}</span>}
+              {selectedLead.company_name && <span style={{ color:C.muted, fontSize:10, marginLeft:6 }}>· {selectedLead.company_name}</span>}
             </div>
-            <button onClick={clear}
-              style={{ border:"none", background:"none", color:C.faint,
-                fontSize:13, cursor:"pointer", padding:"0 4px", flexShrink:0 }}>✕</button>
+            <button onClick={clear} style={{ border:"none", background:"none", color:C.faint, fontSize:13, cursor:"pointer", padding:"0 4px", flexShrink:0 }}>✕</button>
           </div>
-          <input style={{...TI, width:"100%"}}
-            placeholder="Job address for this project…"
-            value={projectAddress}
-            onChange={e=>onAddressChange(e.target.value)} />
+          <input style={{...TI, width:"100%"}} placeholder="Job address for this project…"
+            value={projectAddress} onChange={e=>onAddressChange(e.target.value)} />
         </div>
       )}
 
-      {/* ── SEARCH ── */}
       {mode==="search" && (
         <div>
           <div style={{ display:"flex", gap:4, marginBottom: results.length||query ? 4 : 0 }}>
-            <input style={{ ...TI, flex:1 }}
-              placeholder="Search customer by name or phone…"
-              value={query}
-              onChange={e=>setQuery(e.target.value)} />
-            <button onClick={openNew}
-              style={{ ...BtnD, fontSize:11, height:26, padding:"0 10px", flexShrink:0 }}>
-              + New
-            </button>
+            <input style={{ ...TI, flex:1 }} placeholder="Search customer by name or phone…"
+              value={query} onChange={e=>setQuery(e.target.value)} />
+            <button onClick={openNew} style={{ ...BtnD, fontSize:11, height:26, padding:"0 10px", flexShrink:0 }}>+ New</button>
           </div>
           {results.length > 0 && (
             <div style={{ border:`1px solid ${C.border}`, borderRadius:6, overflow:"hidden", marginBottom:4 }}>
@@ -181,66 +164,42 @@ function CustomerSection({ leads, selectedLead, selectedLeadId, projectAddress,
           )}
           {query.trim().length >= 2 && results.length === 0 && (
             <div style={{ fontSize:11, color:C.faint, marginBottom:4, padding:"6px 0", textAlign:"center" }}>
-              No match —{" "}
-              <button onClick={openNew}
-                style={{ border:"none", background:"none", color:C.green,
-                  cursor:"pointer", fontSize:11, padding:0, fontWeight:700 }}>
-                Register new
-              </button>
+              No match — <button onClick={openNew} style={{ border:"none", background:"none", color:C.green, cursor:"pointer", fontSize:11, padding:0, fontWeight:700 }}>Register new</button>
             </div>
           )}
           {!query && (
             <div style={{ display:"flex", gap:4, marginTop:2 }}>
-              <input style={{...TI, flex:1}} placeholder="Customer"
-                value={projectName} onChange={e=>onNameChange(e.target.value)} />
-              <input style={{...TI, flex:2}} placeholder="Job address"
-                value={projectAddress} onChange={e=>onAddressChange(e.target.value)} />
+              <input style={{...TI, flex:1}} placeholder="Customer" value={projectName} onChange={e=>onNameChange(e.target.value)} />
+              <input style={{...TI, flex:2}} placeholder="Job address" value={projectAddress} onChange={e=>onAddressChange(e.target.value)} />
             </div>
           )}
         </div>
       )}
 
-      {/* ── NEW CUSTOMER ── */}
       {mode==="new" && (
         <div>
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:6 }}>
-            <span style={{ fontSize:10, fontWeight:700, color:C.muted, textTransform:"uppercase", letterSpacing:0.4 }}>
-              New customer {newStep}/2
-            </span>
-            <button onClick={()=>setMode("search")}
-              style={{ border:"none", background:"none", color:C.faint, fontSize:16, cursor:"pointer", padding:0, lineHeight:1 }}>✕</button>
+            <span style={{ fontSize:10, fontWeight:700, color:C.muted, textTransform:"uppercase", letterSpacing:0.4 }}>New customer {newStep}/2</span>
+            <button onClick={()=>setMode("search")} style={{ border:"none", background:"none", color:C.faint, fontSize:16, cursor:"pointer", padding:0, lineHeight:1 }}>✕</button>
           </div>
           {newStep===1 && (
             <>
-              <input style={{...TI, width:"100%", marginBottom:6}}
-                placeholder="Full name" value={newForm.name}
-                onChange={e=>nf("name",e.target.value)} />
-              <input style={{...TI, width:"100%", marginBottom:8}}
-                placeholder="Phone number" value={newForm.phone}
-                onChange={e=>nf("phone",e.target.value)} />
+              <input style={{...TI, width:"100%", marginBottom:6}} placeholder="Full name" value={newForm.name} onChange={e=>nf("name",e.target.value)} />
+              <input style={{...TI, width:"100%", marginBottom:8}} placeholder="Phone number" value={newForm.phone} onChange={e=>nf("phone",e.target.value)} />
               <button onClick={()=>setNewStep(2)} disabled={!newForm.name&&!newForm.phone}
-                style={{ ...BtnD, width:"100%", justifyContent:"center", height:32, fontSize:12,
-                  opacity:(!newForm.name&&!newForm.phone)?0.4:1 }}>
+                style={{ ...BtnD, width:"100%", justifyContent:"center", height:32, fontSize:12, opacity:(!newForm.name&&!newForm.phone)?0.4:1 }}>
                 Next →
               </button>
             </>
           )}
           {newStep===2 && (
             <>
-              <input style={{...TI, width:"100%", marginBottom:6}}
-                placeholder="Company name" value={newForm.company_name}
-                onChange={e=>nf("company_name",e.target.value)} />
-              <input style={{...TI, width:"100%", marginBottom:6}}
-                placeholder="Email" value={newForm.email}
-                onChange={e=>nf("email",e.target.value)} />
-              <input style={{...TI, width:"100%", marginBottom:8}}
-                placeholder="Company address" value={newForm.address}
-                onChange={e=>nf("address",e.target.value)} />
+              <input style={{...TI, width:"100%", marginBottom:6}} placeholder="Company name" value={newForm.company_name} onChange={e=>nf("company_name",e.target.value)} />
+              <input style={{...TI, width:"100%", marginBottom:6}} placeholder="Email" value={newForm.email} onChange={e=>nf("email",e.target.value)} />
+              <input style={{...TI, width:"100%", marginBottom:8}} placeholder="Company address" value={newForm.address} onChange={e=>nf("address",e.target.value)} />
               <div style={{ display:"flex", gap:6 }}>
-                <button onClick={()=>setNewStep(1)}
-                  style={{ ...Btn, flex:1, justifyContent:"center", height:32 }}>← Back</button>
-                <button onClick={saveNew} disabled={saving}
-                  style={{ ...BtnD, flex:2, justifyContent:"center", height:32, fontSize:12, opacity:saving?0.5:1 }}>
+                <button onClick={()=>setNewStep(1)} style={{ ...Btn, flex:1, justifyContent:"center", height:32 }}>← Back</button>
+                <button onClick={saveNew} disabled={saving} style={{ ...BtnD, flex:2, justifyContent:"center", height:32, fontSize:12, opacity:saving?0.5:1 }}>
                   {saving?"Saving…":"Save customer"}
                 </button>
               </div>
@@ -307,7 +266,9 @@ function AreaRow({ area, materials, onChange, onDelete, saveOptionsOnly, onMater
     return sum + calcArea(area.sqft, ml.thickness_in, mat).line_total;
   }, 0);
 
-  const isComplete = !!(area.area_type && matLines[0].material && area.sqft > 0);
+  // isComplete also accepts custom material names (not just ones in materials list)
+  const firstMat = matLines[0].material;
+  const isComplete = !!(area.area_type && firstMat && firstMat !== "__custom_mat__" && area.sqft > 0);
 
   function commitMeasurement() {
     const h = parseFloat(area.mh) || 0;
@@ -330,6 +291,31 @@ function AreaRow({ area, materials, onChange, onDelete, saveOptionsOnly, onMater
     onChange("sqft", Math.max(0, Math.round(meas.reduce((s,m)=>s+m.sqft,0)-d)));
   }
 
+  async function saveCustomMaterial(val) {
+    if(!val) return;
+    // Update area state with the real name
+    onChange("mat_lines",[{id:1,material:val,
+      thickness_in:matLines[0].thickness_in||"",
+      r_value:matLines[0].r_value||"",oc:matLines[0].oc||""}]);
+    onChange("material",val);
+    // Save to DB
+    try {
+      const {data:{user}} = await supabase.auth.getUser();
+      if(!user) return;
+      const {data:cd} = await supabase.from("companies").select("id").eq("user_id",user.id).maybeSingle();
+      if(!cd) return;
+      const {data:existing} = await supabase.from("materials").select("id").eq("company_id",cd.id).eq("name",val).maybeSingle();
+      if(!existing){
+        const {data:newMat} = await supabase.from("materials").insert([{
+          company_id:cd.id, name:val, unit:"board_ft", price_per_unit:0
+        }]).select().single();
+        onMaterialAdded?.(newMat);
+      } else {
+        onMaterialAdded?.();
+      }
+    } catch(e){ console.error("saveCustomMaterial error:",e); }
+  }
+
   const liveH = parseFloat(area.mh)||0;
   const liveL = parseFloat(area.ml)||0;
   const liveQ = parseFloat(area.mq)||1;
@@ -344,8 +330,7 @@ function AreaRow({ area, materials, onChange, onDelete, saveOptionsOnly, onMater
         <span style={{ fontSize:11, fontWeight:700, color:C.ink }}>{area.area_type||"—"}</span>
         <div style={{ display:"flex", alignItems:"center", gap:6 }}>
           <span style={{ fontSize:11, fontWeight:700, color:"#059669" }}>${fmt(totalCost)}</span>
-          <button onClick={()=>setExpanded(true)}
-            style={{ border:"none", background:"none", color:"#059669", cursor:"pointer", fontSize:14, padding:"0 2px", lineHeight:1 }}>✏️</button>
+          <button onClick={()=>setExpanded(true)} style={{ border:"none", background:"none", color:"#059669", cursor:"pointer", fontSize:14, padding:"0 2px", lineHeight:1 }}>✏️</button>
         </div>
       </div>
       {matLines.map((ml,i)=>(
@@ -354,9 +339,7 @@ function AreaRow({ area, materials, onChange, onDelete, saveOptionsOnly, onMater
           {i===0 && (
             <span style={{ marginLeft:6, color:C.faint }}>
               {fmt(area.sqft)} ft²
-              {(area.measurements||[]).length>0 && (
-                <span style={{ marginLeft:4 }}>({area.measurements.map(m=>`${m.h}×${m.l}${m.q>1?`×${m.q}`:""}`).join("  ")})</span>
-              )}
+              {(area.measurements||[]).length>0 && <span style={{ marginLeft:4 }}>({area.measurements.map(m=>`${m.h}×${m.l}${m.q>1?`×${m.q}`:""}`).join("  ")})</span>}
               {area.deduct_sqft>0 && <span style={{color:"#ef4444"}}> −{area.deduct_sqft}</span>}
             </span>
           )}
@@ -380,8 +363,7 @@ function AreaRow({ area, materials, onChange, onDelete, saveOptionsOnly, onMater
       {isComplete && (
         <div onClick={()=>setExpanded(false)}
           style={{ margin:"-6px -8px 8px -8px", padding:"10px 12px", background:"#059669",
-            borderRadius:"7px 7px 0 0", display:"flex", justifyContent:"space-between",
-            alignItems:"center", cursor:"pointer" }}>
+            borderRadius:"7px 7px 0 0", display:"flex", justifyContent:"space-between", alignItems:"center", cursor:"pointer" }}>
           <span style={{fontSize:13, fontWeight:700, color:"#fff"}}>✓ Done editing</span>
           <span style={{fontSize:15, color:"#fff"}}>▼</span>
         </div>
@@ -399,19 +381,21 @@ function AreaRow({ area, materials, onChange, onDelete, saveOptionsOnly, onMater
           {AREA_TYPES.map(a=><option key={a}>{a}</option>)}
           <option value="__other__">✏️ Other</option>
         </select>
-        <button onClick={onDelete}
-          style={{ border:"none", background:"none", color:C.faint, cursor:"pointer", fontSize:16, padding:"0 2px", lineHeight:1, flexShrink:0 }}>✕</button>
+        <button onClick={onDelete} style={{ border:"none", background:"none", color:C.faint, cursor:"pointer", fontSize:16, padding:"0 2px", lineHeight:1, flexShrink:0 }}>✕</button>
       </div>
       {(area._show_custom_area || (area.area_type && !AREA_TYPES.includes(area.area_type))) && (
         <input placeholder="Type area type…" style={{...XS, width:"100%", marginBottom:3}}
-          value={area.area_type||""} onChange={e=>onChange("area_type",e.target.value)} />
+          value={area.area_type||""}
+          onChange={e=>onChange("area_type",e.target.value)} />
       )}
 
       {/* MATERIAL — single mode */}
       {!isComboMode && (
         <div style={{marginBottom:4}}>
           <div style={{ display:"flex", gap:4, marginBottom:2, borderBottom:`1px solid ${C.border}`, paddingBottom:3 }}>
-            <select className="area-select" style={{...GS, flex:1.7}} value={matLines[0].material||""}
+            <select className="area-select" style={{...GS, flex:1.7}} value={
+                matLines[0].material==="__custom_mat__" ? "__custom_mat__" : (matLines[0].material||"")
+              }
               onChange={e=>{
                 const val = e.target.value;
                 if(val==="__combo__"){
@@ -420,6 +404,7 @@ function AreaRow({ area, materials, onChange, onDelete, saveOptionsOnly, onMater
                 } else if(val==="__custom_mat__"){
                   onChange("mat_lines",[{id:1,material:"__custom_mat__",thickness_in:matLines[0].thickness_in||"",r_value:matLines[0].r_value||"",oc:matLines[0].oc||""}]);
                   onChange("material","__custom_mat__");
+                  onChange("custom_material","");
                 } else {
                   onChange("mat_lines",[{id:1,material:val,thickness_in:matLines[0].thickness_in||"",r_value:matLines[0].r_value||"",oc:matLines[0].oc||""}]);
                   onChange("material",val);
@@ -441,58 +426,27 @@ function AreaRow({ area, materials, onChange, onDelete, saveOptionsOnly, onMater
               <option value="__other__">✏️</option>
             </select>
           </div>
+
+          {/* Custom material input */}
           {matLines[0].material==="__custom_mat__" && (
-            <input autoFocus placeholder="Type material name…" style={{...XS, width:"100%", marginBottom:3}}
+            <input autoFocus placeholder="Type material name, press Enter…"
+              style={{...XS, width:"100%", marginBottom:3,
+                border:"2px solid #059669", borderRadius:6, padding:"0 8px", height:34, fontSize:13}}
               value={area.custom_material||""}
               onChange={e=>onChange("custom_material",e.target.value)}
               onBlur={()=>{
                 const val=(area.custom_material||"").trim();
-                if(val){
-                  onChange("mat_lines",[{id:1,material:val,
-                    thickness_in:matLines[0].thickness_in||"",
-                    r_value:matLines[0].r_value||"",oc:matLines[0].oc||""}]);
-                  onChange("material",val);
-                  // Save permanently to materials table
-                  supabase.auth.getUser().then(async({data:{user}})=>{
-                    if(!user) return;
-                    const {data:cd} = await supabase.from("companies").select("id").eq("user_id",user.id).maybeSingle();
-                    if(!cd) return;
-                    const {data:existing} = await supabase.from("materials").select("id").eq("company_id",cd.id).eq("name",val).maybeSingle();
-                    if(!existing){
-                      const {data:newMat} = await supabase.from("materials").insert([{
-                        company_id:cd.id, name:val, unit:"board_ft", price_per_unit:0
-                      }]).select().single();
-                      onMaterialAdded?.(newMat);
-                    }
-                  });
-                }
+                if(val) saveCustomMaterial(val);
               }}
               onKeyDown={e=>{
                 if(e.key==="Enter"){
                   const val=(area.custom_material||"").trim();
-                  if(val){
-                    onChange("mat_lines",[{id:1,material:val,
-                      thickness_in:matLines[0].thickness_in||"",
-                      r_value:matLines[0].r_value||"",oc:matLines[0].oc||""}]);
-                    onChange("material",val);
-                    // Save permanently to materials table
-                    supabase.auth.getUser().then(async({data:{user}})=>{
-                      if(!user) return;
-                      const {data:cd} = await supabase.from("companies").select("id").eq("user_id",user.id).maybeSingle();
-                      if(!cd) return;
-                      const {data:existing} = await supabase.from("materials").select("id").eq("company_id",cd.id).eq("name",val).maybeSingle();
-                      if(!existing){
-                        await supabase.from("materials").insert([{
-                          company_id:cd.id, name:val, unit:"board_ft", price_per_unit:0
-                        }]);
-                        onMaterialAdded?.();
-                      }
-                    });
-                  }
+                  if(val) saveCustomMaterial(val);
                   e.target.blur();
                 }
               }} />
           )}
+
           {area._custom_thick && (
             <input placeholder="Thickness e.g. 3in" style={{...XS, width:"100%", marginBottom:3}}
               value={matLines[0].thickness_in||""} onChange={e=>updateMatLine(0,"thickness_in",e.target.value)} />
@@ -529,25 +483,18 @@ function AreaRow({ area, materials, onChange, onDelete, saveOptionsOnly, onMater
                   {materials.map(m=><option key={m.id}>{m.name}</option>)}
                 </select>
                 {matLines.length>2 && (
-                  <button onClick={()=>removeMatLine(idx)}
-                    style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:14,padding:"0 2px",lineHeight:1,flexShrink:0}}>✕</button>
+                  <button onClick={()=>removeMatLine(idx)} style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:14,padding:"0 2px",lineHeight:1,flexShrink:0}}>✕</button>
                 )}
               </div>
               <div style={{display:"flex",gap:4,marginBottom:2}}>
-                <select style={{...XS,flex:1}} value={ml.thickness_in||""}
-                  onChange={e=>updateMatLine(idx,"thickness_in",e.target.value)}>
-                  <option value="">Thick</option>
-                  {THICK_OPTS.map(t=><option key={t}>{t}</option>)}
+                <select style={{...XS,flex:1}} value={ml.thickness_in||""} onChange={e=>updateMatLine(idx,"thickness_in",e.target.value)}>
+                  <option value="">Thick</option>{THICK_OPTS.map(t=><option key={t}>{t}</option>)}
                 </select>
-                <select style={{...XS,flex:1}} value={ml.r_value||""}
-                  onChange={e=>updateMatLine(idx,"r_value",e.target.value)}>
-                  <option value="">R-Val</option>
-                  {R_VALS.map(r=><option key={r}>{r}</option>)}
+                <select style={{...XS,flex:1}} value={ml.r_value||""} onChange={e=>updateMatLine(idx,"r_value",e.target.value)}>
+                  <option value="">R-Val</option>{R_VALS.map(r=><option key={r}>{r}</option>)}
                 </select>
-                <select style={{...XS,flex:1}} value={ml.oc||""}
-                  onChange={e=>updateMatLine(idx,"oc",e.target.value)}>
-                  <option value="">Spacing</option>
-                  {OC_OPTS.map(o=><option key={o}>{o}</option>)}
+                <select style={{...XS,flex:1}} value={ml.oc||""} onChange={e=>updateMatLine(idx,"oc",e.target.value)}>
+                  <option value="">Spacing</option>{OC_OPTS.map(o=><option key={o}>{o}</option>)}
                 </select>
               </div>
               {(()=>{
@@ -562,9 +509,7 @@ function AreaRow({ area, materials, onChange, onDelete, saveOptionsOnly, onMater
               })()}
             </div>
           ))}
-          <button onClick={addMatLine}
-            style={{width:"100%",padding:"7px",borderRadius:6,border:"1px dashed #7dd3fc",
-              background:"none",color:"#0369a1",cursor:"pointer",fontSize:11,fontWeight:600,height:"auto"}}>
+          <button onClick={addMatLine} style={{width:"100%",padding:"7px",borderRadius:6,border:"1px dashed #7dd3fc",background:"none",color:"#0369a1",cursor:"pointer",fontSize:11,fontWeight:600,height:"auto"}}>
             + Add material to combo
           </button>
         </div>
@@ -576,87 +521,54 @@ function AreaRow({ area, materials, onChange, onDelete, saveOptionsOnly, onMater
           const isOptCombo = opt.material==="__combo__" || (opt.mat_lines||[]).length>1;
           const optLines = (opt.mat_lines||[]).length>0 ? opt.mat_lines
             : [{id:1,material:opt.material||"",thickness_in:opt.thickness_in||matLines[0].thickness_in||"",r_value:opt.r_value||matLines[0].r_value||"",oc:""}];
-          function updateOpt(field,val){
-            const opts=[...areaOptions]; opts[oi]={...opts[oi],[field]:val}; onChange("options",opts);
-          }
-          function updateOptLine(li,field,val){
-            const opts=[...areaOptions]; const lines=[...optLines]; lines[li]={...lines[li],[field]:val};
-            opts[oi]={...opts[oi],mat_lines:lines,material:lines[0].material||"__combo__"}; onChange("options",opts);
-          }
+          function updateOpt(field,val){ const opts=[...areaOptions]; opts[oi]={...opts[oi],[field]:val}; onChange("options",opts); }
+          function updateOptLine(li,field,val){ const opts=[...areaOptions]; const lines=[...optLines]; lines[li]={...lines[li],[field]:val}; opts[oi]={...opts[oi],mat_lines:lines,material:lines[0].material||"__combo__"}; onChange("options",opts); }
           return (
             <div key={oi} style={{background:"#fff7ed",border:"1px solid #fed7aa",borderRadius:6,padding:"6px 8px",marginBottom:4}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
                 <span style={{fontSize:10,fontWeight:700,color:"#92400e"}}>⚡ Option {oi+1}</span>
                 <div style={{display:"flex",gap:4,alignItems:"center"}}>
-                  <button onClick={()=>saveOptionsOnly()}
-                    style={{border:"1px solid #f97316",background:"#fff7ed",color:"#f97316",cursor:"pointer",fontSize:9,padding:"2px 5px",borderRadius:4,fontWeight:700}}>
-                    💾 Save
-                  </button>
-                  <button onClick={()=>onChange("options",areaOptions.filter((_,j)=>j!==oi))}
-                    style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:12,padding:0}}>✕</button>
+                  <button onClick={()=>saveOptionsOnly()} style={{border:"1px solid #f97316",background:"#fff7ed",color:"#f97316",cursor:"pointer",fontSize:9,padding:"2px 5px",borderRadius:4,fontWeight:700}}>💾 Save</button>
+                  <button onClick={()=>onChange("options",areaOptions.filter((_,j)=>j!==oi))} style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:12,padding:0}}>✕</button>
                 </div>
               </div>
               {!isOptCombo ? (
                 <div style={{display:"flex",gap:4,marginBottom:4}}>
                   <select style={{...XS,flex:3}} value={opt.material||""}
-                    onChange={e=>{
-                      if(e.target.value==="__combo__"){
-                        updateOpt("mat_lines",[{id:1,material:"",thickness_in:matLines[0].thickness_in||"",r_value:matLines[0].r_value||"",oc:""},{id:2,material:"",thickness_in:matLines[0].thickness_in||"",r_value:matLines[0].r_value||"",oc:""}]);
-                        updateOpt("material","__combo__");
-                      } else { updateOpt("material",e.target.value); }
-                    }}>
+                    onChange={e=>{ if(e.target.value==="__combo__"){ updateOpt("mat_lines",[{id:1,material:"",thickness_in:matLines[0].thickness_in||"",r_value:matLines[0].r_value||"",oc:""},{id:2,material:"",thickness_in:matLines[0].thickness_in||"",r_value:matLines[0].r_value||"",oc:""}]); updateOpt("material","__combo__"); } else { updateOpt("material",e.target.value); } }}>
                     <option value="">Material</option>
                     {materials.map(m=><option key={m.id}>{m.name}</option>)}
                     <option value="__combo__">⚡ Combo</option>
                   </select>
-                  <select style={{...XS,flex:1}} value={opt.thickness_in||matLines[0].thickness_in||""}
-                    onChange={e=>updateOpt("thickness_in",e.target.value)}>
-                    <option value="">Thick</option>
-                    {THICK_OPTS.map(t=><option key={t}>{t}</option>)}
+                  <select style={{...XS,flex:1}} value={opt.thickness_in||matLines[0].thickness_in||""} onChange={e=>updateOpt("thickness_in",e.target.value)}>
+                    <option value="">Thick</option>{THICK_OPTS.map(t=><option key={t}>{t}</option>)}
                   </select>
-                  <select style={{...XS,flex:1}} value={opt.r_value||matLines[0].r_value||""}
-                    onChange={e=>updateOpt("r_value",e.target.value)}>
-                    <option value="">R-Val</option>
-                    {R_VALS.map(r=><option key={r}>{r}</option>)}
+                  <select style={{...XS,flex:1}} value={opt.r_value||matLines[0].r_value||""} onChange={e=>updateOpt("r_value",e.target.value)}>
+                    <option value="">R-Val</option>{R_VALS.map(r=><option key={r}>{r}</option>)}
                   </select>
                 </div>
               ) : (
                 <div style={{background:"#fff7ed",borderRadius:6,padding:"6px 8px",marginBottom:4}}>
                   <div style={{fontSize:9,fontWeight:700,color:"#92400e",marginBottom:6,display:"flex",justifyContent:"space-between"}}>
                     ⚡ Combo
-                    <button onClick={()=>{ updateOpt("mat_lines",[{id:1,material:"",thickness_in:matLines[0].thickness_in||"",r_value:matLines[0].r_value||"",oc:""}]); updateOpt("material",""); }}
-                      style={{border:"none",background:"none",color:"#94a3b8",cursor:"pointer",fontSize:10,padding:0}}>× remove combo</button>
+                    <button onClick={()=>{ updateOpt("mat_lines",[{id:1,material:"",thickness_in:matLines[0].thickness_in||"",r_value:matLines[0].r_value||"",oc:""}]); updateOpt("material",""); }} style={{border:"none",background:"none",color:"#94a3b8",cursor:"pointer",fontSize:10,padding:0}}>× remove combo</button>
                   </div>
                   {optLines.map((ol,li)=>(
                     <div key={li} style={{marginBottom:6,paddingBottom:6,borderBottom:li<optLines.length-1?"1px dashed #fde68a":"none"}}>
                       <div style={{display:"flex",gap:4,marginBottom:3,alignItems:"center"}}>
-                        <select style={{...XS,flex:1}} value={ol.material||""}
-                          onChange={e=>updateOptLine(li,"material",e.target.value)}>
-                          <option value="">Material {li+1}</option>
-                          {materials.map(m=><option key={m.id}>{m.name}</option>)}
+                        <select style={{...XS,flex:1}} value={ol.material||""} onChange={e=>updateOptLine(li,"material",e.target.value)}>
+                          <option value="">Material {li+1}</option>{materials.map(m=><option key={m.id}>{m.name}</option>)}
                         </select>
-                        {optLines.length>2 && (
-                          <button onClick={()=>{ const lines=optLines.filter((_,j)=>j!==li); const opts=[...areaOptions]; opts[oi]={...opts[oi],mat_lines:lines}; onChange("options",opts); }}
-                            style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:13,padding:0}}>✕</button>
-                        )}
+                        {optLines.length>2 && <button onClick={()=>{ const lines=optLines.filter((_,j)=>j!==li); const opts=[...areaOptions]; opts[oi]={...opts[oi],mat_lines:lines}; onChange("options",opts); }} style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:13,padding:0}}>✕</button>}
                       </div>
                       <div style={{display:"flex",gap:4}}>
-                        <select style={{...XS,flex:1}} value={ol.thickness_in||""} onChange={e=>updateOptLine(li,"thickness_in",e.target.value)}>
-                          <option value="">Thick</option>{THICK_OPTS.map(t=><option key={t}>{t}</option>)}
-                        </select>
-                        <select style={{...XS,flex:1}} value={ol.r_value||""} onChange={e=>updateOptLine(li,"r_value",e.target.value)}>
-                          <option value="">R-Val</option>{R_VALS.map(r=><option key={r}>{r}</option>)}
-                        </select>
-                        <select style={{...XS,flex:1}} value={ol.oc||""} onChange={e=>updateOptLine(li,"oc",e.target.value)}>
-                          <option value="">OC</option>{OC_OPTS.map(o=><option key={o}>{o}</option>)}
-                        </select>
+                        <select style={{...XS,flex:1}} value={ol.thickness_in||""} onChange={e=>updateOptLine(li,"thickness_in",e.target.value)}><option value="">Thick</option>{THICK_OPTS.map(t=><option key={t}>{t}</option>)}</select>
+                        <select style={{...XS,flex:1}} value={ol.r_value||""} onChange={e=>updateOptLine(li,"r_value",e.target.value)}><option value="">R-Val</option>{R_VALS.map(r=><option key={r}>{r}</option>)}</select>
+                        <select style={{...XS,flex:1}} value={ol.oc||""} onChange={e=>updateOptLine(li,"oc",e.target.value)}><option value="">OC</option>{OC_OPTS.map(o=><option key={o}>{o}</option>)}</select>
                       </div>
                     </div>
                   ))}
-                  <button onClick={()=>{ const lines=[...optLines,{id:Date.now(),material:"",thickness_in:matLines[0].thickness_in||"",r_value:matLines[0].r_value||"",oc:""}]; const opts=[...areaOptions]; opts[oi]={...opts[oi],mat_lines:lines}; onChange("options",opts); }}
-                    style={{width:"100%",padding:"5px",borderRadius:5,border:"1px dashed #fde68a",background:"none",color:"#92400e",cursor:"pointer",fontSize:10,fontWeight:600,height:"auto"}}>
-                    + Add material to combo
-                  </button>
+                  <button onClick={()=>{ const lines=[...optLines,{id:Date.now(),material:"",thickness_in:matLines[0].thickness_in||"",r_value:matLines[0].r_value||"",oc:""}]; const opts=[...areaOptions]; opts[oi]={...opts[oi],mat_lines:lines}; onChange("options",opts); }} style={{width:"100%",padding:"5px",borderRadius:5,border:"1px dashed #fde68a",background:"none",color:"#92400e",cursor:"pointer",fontSize:10,fontWeight:600,height:"auto"}}>+ Add material to combo</button>
                 </div>
               )}
             </div>
@@ -664,8 +576,7 @@ function AreaRow({ area, materials, onChange, onDelete, saveOptionsOnly, onMater
         })}
         {areaOptions.length < 3 && (
           <button onClick={()=>{ const opts=[...areaOptions]; opts.push({material:"",thickness_in:matLines[0].thickness_in||"",r_value:matLines[0].r_value||"",mat_lines:[]}); onChange("options",opts); }}
-            style={{width:"100%",padding:"5px",borderRadius:6,border:"1px dashed #fed7aa",background:"#fff7ed",
-              color:"#92400e",cursor:"pointer",fontSize:11,fontWeight:600,marginBottom:4,height:"auto"}}>
+            style={{width:"100%",padding:"5px",borderRadius:6,border:"1px dashed #fed7aa",background:"#fff7ed",color:"#92400e",cursor:"pointer",fontSize:11,fontWeight:600,marginBottom:4,height:"auto"}}>
             + Add Option
           </button>
         )}
@@ -727,11 +638,7 @@ function AreaRow({ area, materials, onChange, onDelete, saveOptionsOnly, onMater
               onChange("sqft",Math.max(0,Math.round(raw-d)));
             }}
             className="area-deduct" style={{...I,...noArrow, width:70, padding:"0 6px", height:30, fontSize:12}} />
-          {totalCost>0 && (
-            <div style={{ marginLeft:"auto", fontWeight:700, color:C.green, fontSize:13 }}>
-              Total ${fmt(totalCost)}
-            </div>
-          )}
+          {totalCost>0 && <div style={{ marginLeft:"auto", fontWeight:700, color:C.green, fontSize:13 }}>Total ${fmt(totalCost)}</div>}
         </div>
       </div>
     </div>
@@ -772,12 +679,12 @@ function EstimatePanel({ floors, areas, materialMap, crewNotes, projectName, pro
         </div>
       )}
       {(()=>{
-        const allAreas = floors.flatMap(floor=>(areas[floor]||[]).filter(a=>a.area_type&&a.sqft).map(a=>({...a,floor})));
+        const allAreas = floors.flatMap(floor=>(areas[floor]||[]).filter(a=>a.area_type&&a.sqft&&a.material!=="__custom_mat__").map(a=>({...a,floor})));
         if(!allAreas.length) return <div style={{color:C.faint,fontSize:10,textAlign:"center",padding:"10px 0"}}>No areas yet</div>;
         const groupMap = {};
         allAreas.forEach(a=>{
           const mls = (a.mat_lines&&a.mat_lines.length>0) ? a.mat_lines : [{material:a.material||"",thickness_in:a.thickness_in||"",r_value:a.r_value||"",oc:a.oc||""}];
-          const matKey = mls.map(ml=>[ml.material,ml.thickness_in].join(":")).join("+");
+          const matKey = mls.map(ml=>ml.material).join("+");
           const key = a.area_type + "||||" + matKey;
           if(!groupMap[key]) groupMap[key]={ area_type:a.area_type, floors:[], mat_lines:mls, totalSqft:0, totalCost:0, floorOrder:floors.indexOf(a.floor) };
           const g = groupMap[key];
@@ -798,7 +705,7 @@ function EstimatePanel({ floors, areas, materialMap, crewNotes, projectName, pro
             <div key={i} style={{paddingBottom:5,marginBottom:5,borderBottom:`1px solid ${C.chip}`}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
                 <div style={{flex:1,paddingRight:4,lineHeight:1.5}}>
-                  <div style={{fontWeight:700,fontSize:12,color:C.ink,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{floorLabel} — {g.area_type}</div>
+                  <div style={{fontWeight:700,fontSize:12,color:C.ink}}>{floorLabel} — {g.area_type}</div>
                   <div style={{fontSize:10,color:C.muted,lineHeight:1.5}}>
                     {thick && <span>{thick} </span>}{matLabel}{" · "}{fmt(g.totalSqft)} ft²
                     {qty>0&&` → ${fmt(qty)} ${unit?.replace("_"," ")}`}
@@ -821,7 +728,8 @@ function EstimatePanel({ floors, areas, materialMap, crewNotes, projectName, pro
 // ── helpers ───────────────────────────────────────────────────────────────────
 function isAreaComplete(area) {
   const lines = area.mat_lines && area.mat_lines.length > 0 ? area.mat_lines : [{ material:area.material||"" }];
-  return !!(area.area_type && lines[0].material && area.sqft > 0);
+  const mat = lines[0].material;
+  return !!(area.area_type && mat && mat !== "__custom_mat__" && area.sqft > 0);
 }
 
 function getAreaTotalCost(area, materialMap) {
@@ -874,7 +782,6 @@ export default function ProjectEstimate() {
   const [panelOpen, setPanelOpen]       = useState(false);
   const [loadingProject, setLoadingProject] = useState(isEditing);
 
-  // ── Draft helpers ─────────────────────────────────────────────────────────
   function getDraftKey(id) { return `draft_estimate_${id||"new"}`; }
   function clearDraft() { if(draftKey) { try { localStorage.removeItem(draftKey); } catch(e){} } }
   function loadDraft(key) { try { const r=localStorage.getItem(key); return r?JSON.parse(r):null; } catch(e){return null;} }
@@ -893,18 +800,16 @@ export default function ProjectEstimate() {
     } catch(e){}
   }
 
-  // Auto-save every 30s
   useEffect(()=>{
     const interval = setInterval(()=>{ if(selectedLeadId) saveDraftNow(); }, 30000);
     return ()=>clearInterval(interval);
   },[selectedLeadId, projectName, projectAddress, crewNotes, floors, areas]);
 
-  // Set draft key when lead selected
   useEffect(()=>{
     if(selectedLeadId) setDraftKey(getDraftKey(selectedLeadId));
   },[selectedLeadId]);
 
-  // ── DRAFT RESTORE (resume mode) ───────────────────────────────────────────
+  // Draft restore (resume mode)
   useEffect(()=>{
     if(resumeMode && leadId && leads.length>0 && !draftRestored){
       const key = getDraftKey(leadId);
@@ -927,25 +832,20 @@ export default function ProjectEstimate() {
     }
   },[leads, resumeMode, leadId]);
 
-  // Switch floor once pendingFloor is set
   useEffect(()=>{
-    if(pendingFloor){
-      setActiveFloor(pendingFloor);
-      setPendingFloor(null);
-    }
+    if(pendingFloor){ setActiveFloor(pendingFloor); setPendingFloor(null); }
   },[pendingFloor]);
 
   // Initial data load
-useEffect(()=>{
-  // Wait for auth to restore from localStorage before loading anything
-  supabase.auth.onAuthStateChange((event, session)=>{
-    if(session){
-      loadMaterials();
-      supabase.from("customers").select("id,name,phone,address,email,company_name")
-        .order("name").then(({data})=>{ if(data) setLeads(data); });
-    }
-  });
-  supabase.auth.getUser().then(async({data:{user}})=>{
+  useEffect(()=>{
+    supabase.auth.onAuthStateChange((event, session)=>{
+      if(session){
+        loadMaterials();
+        supabase.from("customers").select("id,name,phone,address,email,company_name")
+          .order("name").limit(1000).then(({data})=>{ if(data) setLeads(data); });
+      }
+    });
+    supabase.auth.getUser().then(async({data:{user}})=>{
       if(!user) return;
       const {data:cd} = await supabase.from("companies").select("id").eq("user_id",user.id).maybeSingle();
       if(!cd) return;
@@ -962,28 +862,18 @@ useEffect(()=>{
     });
   },[]);
 
-function loadMaterials(newMaterial) {
-  if(newMaterial){
-    // instantly add to local state, then sync from DB
-    setMaterials(prev=>[...prev, newMaterial]);
+  function loadMaterials(newMaterial) {
+    if(newMaterial) setMaterials(prev=>[...prev, newMaterial]);
+    supabase.from("materials").select("*").then(({data})=>{ if(data) setMaterials(data); });
   }
-  supabase.from("materials").select("*")
-    .then(({data})=>{ if(data) setMaterials(data); });
-}
 
-function loadLeads(retries = 3) {
-  supabase.auth.getSession().then(({data:{session}})=>{
-    if(!session){
-      if(retries > 0) setTimeout(()=>loadLeads(retries-1), 800);
-      return;
-    }
+  function loadLeads() {
     supabase.from("customers").select("id,name,phone,address,email,company_name")
       .order("name").limit(1000).then(({data,error})=>{
-        if(error){ console.error("leads error:", JSON.stringify(error)); return; }
+        if(error){ console.error("leads error:",JSON.stringify(error)); return; }
         if(data) setLeads(data);
       });
-  });
-}
+  }
 
   // Load existing project for editing
   useEffect(()=>{
@@ -1032,7 +922,7 @@ function loadLeads(retries = 3) {
     loadProject();
   },[projectId, leads]);
 
-  // Draft restore when lead selected manually (not resume mode)
+  // Draft restore when lead selected manually
   useEffect(()=>{
     if(!isEditing && selectedLeadId && !draftRestored && !resumeMode){
       const key = getDraftKey(selectedLeadId);
@@ -1054,7 +944,6 @@ function loadLeads(retries = 3) {
     }
   },[selectedLeadId]);
 
-  // Debounced draft save on address/name change
   useEffect(()=>{
     if(!isEditing && selectedLeadId){
       const t = setTimeout(()=>saveDraftNow(), 1500);
@@ -1062,17 +951,13 @@ function loadLeads(retries = 3) {
     }
   },[selectedLeadId, projectAddress, projectName]);
 
-  // Set lead from URL param
   useEffect(()=>{
     if(!isEditing && leadId && leads.length>0){
       const l = leads.find(l=>String(l.id)===String(leadId));
       if(l){
         setSelectedLeadId(String(l.id));
         setProjectName(l.name||"");
-        // only set address if not resuming and no address already set
-        if(!resumeMode && !addressParam && !draftRestored){
-          setProjectAddress(l.address||"");
-        }
+        if(!resumeMode && !addressParam && !draftRestored) setProjectAddress(l.address||"");
       }
     }
   },[leadId, leads]);
@@ -1112,7 +997,7 @@ function loadLeads(retries = 3) {
       if(field!=="options") upd[idx].options = existing.options||[];
       if(selectedLeadId) saveDraftNow({...prev,[floor]:upd});
       if(field==="area_type"){
-        const match=Object.values(prev).flat().reverse().find(a=>a.area_type===value&&a.material);
+        const match=Object.values(prev).flat().reverse().find(a=>a.area_type===value&&a.material&&a.material!=="__custom_mat__");
         if(match){
           upd[idx]={...upd[idx], material:match.material, thickness_in:match.thickness_in,
             r_value:match.r_value, oc:match.oc,
@@ -1170,8 +1055,7 @@ function loadLeads(retries = 3) {
     const totalCost = materialCost+overheadCost+consumableCost;
     const margin = 30;
     return {
-      material_cost:Math.round(materialCost*100)/100,
-      overhead_cost:Math.round(overheadCost*100)/100,
+      material_cost:Math.round(materialCost*100)/100, overhead_cost:Math.round(overheadCost*100)/100,
       labor_cost:0, final_price:Math.round(totalCost*(1+margin/100)*100)/100,
       profit_margin_pct:margin, grand_total:Math.round(totalCost*(1+margin/100)*100)/100,
     };
@@ -1278,9 +1162,7 @@ function loadLeads(retries = 3) {
   const panelProps = { floors, areas, materialMap, crewNotes, projectName, projectAddress, customer:selectedLead };
 
   if(loadingProject) return (
-    <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"system-ui",color:"#64748b"}}>
-      Loading estimate…
-    </div>
+    <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"system-ui",color:"#64748b"}}>Loading estimate…</div>
   );
 
   return (
@@ -1320,30 +1202,21 @@ function loadLeads(retries = 3) {
         <div style={{flex:1,overflowY:"auto",overflowX:"hidden",padding:"8px 12px 200px 12px",minWidth:0,boxSizing:"border-box",width:"100%"}}>
 
           <CustomerSection
-            leads={leads}
-            selectedLead={selectedLead}
-            selectedLeadId={selectedLeadId}
-            projectAddress={projectAddress}
-            projectName={projectName}
+            leads={leads} selectedLead={selectedLead} selectedLeadId={selectedLeadId}
+            projectAddress={projectAddress} projectName={projectName}
             onSelect={(lead)=>{ setSelectedLeadId(String(lead.id)); setProjectName(lead.name||""); setProjectAddress(""); }}
             onClear={()=>{ setSelectedLeadId(""); setProjectName(""); setProjectAddress(""); }}
-            onSaveNew={saveNewCustomer}
-            onAddressChange={setProjectAddress}
-            onNameChange={setProjectName}
+            onSaveNew={saveNewCustomer} onAddressChange={setProjectAddress} onNameChange={setProjectName}
           />
 
           {/* crew notes */}
           <div style={CARD_ORANGE}>
             <div style={{display:"flex",gap:6,marginBottom:6}}>
-              <select style={{...S,flex:1,height:32,fontSize:12}} value={crewNotes.const_type}
-                onChange={e=>setCrewNotes(p=>({...p,const_type:e.target.value}))}>
-                <option value="">Job type…</option>
-                {CONST_TYPES.map(t=><option key={t}>{t}</option>)}
+              <select style={{...S,flex:1,height:32,fontSize:12}} value={crewNotes.const_type} onChange={e=>setCrewNotes(p=>({...p,const_type:e.target.value}))}>
+                <option value="">Job type…</option>{CONST_TYPES.map(t=><option key={t}>{t}</option>)}
               </select>
-              <select style={{...S,flex:1,height:32,fontSize:12}} value={crewNotes.ladder}
-                onChange={e=>setCrewNotes(p=>({...p,ladder:e.target.value}))}>
-                <option value="">Ladder…</option>
-                {LADDER_OPTS.map(l=><option key={l}>{l}</option>)}
+              <select style={{...S,flex:1,height:32,fontSize:12}} value={crewNotes.ladder} onChange={e=>setCrewNotes(p=>({...p,ladder:e.target.value}))}>
+                <option value="">Ladder…</option>{LADDER_OPTS.map(l=><option key={l}>{l}</option>)}
               </select>
             </div>
             <div style={{display:"flex",gap:6,alignItems:"center",marginBottom:6}}>
@@ -1361,28 +1234,24 @@ function loadLeads(retries = 3) {
                   {v}
                 </button>
               ))}
-              <input placeholder="Units" value={crewNotes.units}
-                onChange={e=>setCrewNotes(p=>({...p,units:e.target.value}))}
-                style={{...I,flex:1,height:30,fontSize:12}} />
+              <input placeholder="Units" value={crewNotes.units} onChange={e=>setCrewNotes(p=>({...p,units:e.target.value}))} style={{...I,flex:1,height:30,fontSize:12}} />
             </div>
-            <input placeholder="Other info for crew…" value={crewNotes.extra_notes}
-              onChange={e=>setCrewNotes(p=>({...p,extra_notes:e.target.value}))}
-              style={{...I,width:"100%",height:30,fontSize:12}} />
+            <input placeholder="Other info for crew…" value={crewNotes.extra_notes} onChange={e=>setCrewNotes(p=>({...p,extra_notes:e.target.value}))} style={{...I,width:"100%",height:30,fontSize:12}} />
           </div>
 
-          {/* floor tabs */}
-          <div style={{display:"flex",gap:3,overflowX:"auto",paddingBottom:3,marginBottom:5,WebkitOverflowScrolling:"touch",alignItems:"center",maxWidth:"100%"}}>
+          {/* floor tabs — wraps on mobile */}
+          <div style={{display:"flex",flexWrap:"wrap",gap:4,marginBottom:5}}>
             {floors.map(floor=>{
               const act=activeFloor===floor;
               return (
                 <button key={floor} onClick={()=>setActiveFloor(floor)} className="floor-btn"
-                  style={{flexShrink:0,padding:"8px 14px",borderRadius:8,height:"auto",border:act?"2px solid #059669":"2px solid #86efac",background:act?"#059669":C.white,color:act?"#fff":"#059669",cursor:"pointer",fontSize:14,fontWeight:700,whiteSpace:"nowrap",boxShadow:act?"0 2px 8px rgba(5,150,105,.3)":"none"}}>
+                  style={{padding:"8px 14px",borderRadius:8,height:"auto",border:act?"2px solid #059669":"2px solid #86efac",background:act?"#059669":C.white,color:act?"#fff":"#059669",cursor:"pointer",fontSize:14,fontWeight:700,whiteSpace:"nowrap",boxShadow:act?"0 2px 8px rgba(5,150,105,.3)":"none"}}>
                   {floor}
                 </button>
               );
             })}
             {addingFloor ? (
-              <div style={{display:"flex",gap:3,flexShrink:0}}>
+              <div style={{display:"flex",gap:3}}>
                 <input autoFocus placeholder="Name" value={newFloorName}
                   onChange={e=>setNewFloorName(e.target.value)}
                   onKeyDown={e=>{if(e.key==="Enter")addFloor();if(e.key==="Escape")setAddingFloor(false);}}
@@ -1392,7 +1261,7 @@ function loadLeads(retries = 3) {
               </div>
             ) : (
               <button onClick={()=>setAddingFloor(true)} className="floor-btn"
-                style={{flexShrink:0,padding:"8px 14px",borderRadius:8,height:"auto",border:"2px dashed #86efac",background:"none",color:"#059669",cursor:"pointer",fontSize:14,fontWeight:700,whiteSpace:"nowrap"}}>
+                style={{padding:"8px 14px",borderRadius:8,height:"auto",border:"2px dashed #86efac",background:"none",color:"#059669",cursor:"pointer",fontSize:14,fontWeight:700,whiteSpace:"nowrap"}}>
                 + Floor
               </button>
             )}
@@ -1417,15 +1286,14 @@ function loadLeads(retries = 3) {
                   onMaterialAdded={loadMaterials} />
               ))}
               {currentAreas.some(a=>isAreaComplete(a)) && (
-                <div style={{fontSize:9,fontWeight:700,color:"#059669",textTransform:"uppercase",letterSpacing:0.5,marginBottom:4,marginTop:2,paddingLeft:2}}>
-                  ✓ Completed areas
-                </div>
+                <div style={{fontSize:9,fontWeight:700,color:"#059669",textTransform:"uppercase",letterSpacing:0.5,marginBottom:4,marginTop:2,paddingLeft:2}}>✓ Completed areas</div>
               )}
               {currentAreas.map((area,idx)=>({area,idx})).filter(({area})=>isAreaComplete(area)).map(({area,idx})=>(
                 <AreaRow key={area.id||area.temp_id} area={area} materials={materials}
                   onChange={(field,value)=>updateArea(activeFloor,idx,field,value)}
                   onDelete={()=>deleteArea(activeFloor,idx)}
-                  saveOptionsOnly={saveOptionsOnly} />
+                  saveOptionsOnly={saveOptionsOnly}
+                  onMaterialAdded={loadMaterials} />
               ))}
             </>
           )}
@@ -1465,7 +1333,6 @@ function loadLeads(retries = 3) {
       <style>{`
         @media (min-width: 900px) { .estimate-bottom-panel { display: none !important; } }
         @media (max-width: 899px) { .estimate-side-panel   { display: none !important; } }
-        @media (max-width: 899px) { .floor-btn { padding: 5px 10px !important; font-size: 12px !important; } }
         @media (min-width: 900px) {
           .area-hl-input { height: 22px !important; font-size: 11px !important; }
           .area-mq-input { height: 22px !important; font-size: 11px !important; width: 30px !important; }
