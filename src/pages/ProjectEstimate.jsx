@@ -969,9 +969,9 @@ export default function ProjectEstimate() {
     });
   }
 
-  useEffect(()=>{
-    if(!projectId||!leads.length) return;
-    async function loadProject(){
+    useEffect(()=>{
+      if(!projectId) return;
+      async function loadProject(){
       setLoadingProject(true);
       const {data:proj}=await supabase.from("projects").select("*").eq("id",projectId).single();
       if(!proj){setLoadingProject(false);return;}
@@ -1007,7 +1007,7 @@ export default function ProjectEstimate() {
         setLoadingProject(false);
     }
     loadProject();
-  },[projectId,leads]);
+  },[projectId]);
 
   useEffect(()=>{
     if(!isEditing&&selectedLeadId&&!draftRestored&&!resumeMode){
