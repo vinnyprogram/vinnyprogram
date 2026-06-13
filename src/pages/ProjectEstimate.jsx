@@ -1119,17 +1119,65 @@ export default function ProjectEstimate() {
     setSaving(false);
   }
 
-  async function saveProject(){
-    if(saving)return;
-    if(!selectedLeadId){alert("Please select or register a customer before saving.");return;}
-    const hasAreas=floors.some(f=>(areas[f]||[]).some(a=>isAreaComplete(a)));
-    if(!hasAreas){alert("Add at least one area before saving.");return;}
-    setSaving(true);
-    try{
-      const {data:{user}}=await supabase.auth.getUser();
-      const {data:cd}=await supabase.from("companies").select("id").eq("user_id",user.id).maybeSingle();
-      const companyId=cd?.id||null;
-      const {data:proj,error:pe} = await supabase.from("projects").insert([{
+async function saveProject() {
+  if(saving) return;
+  if(!selectedLeadId){ alert("Please select or register a customer before saving."); return; }
+  const hasAreas = floors.some(f=>(areas[f]||[]).some(a=>isAreaComplete(a)));
+  if(!hasAreas){ alert("Add at least one area before saving."); return; }
+  setSaving(true);
+  try {
+    const {data:{user}} = await supabase.auth.getUser();
+    const {data:cd} = await supabase.from("companies").select("id").eq("user_id",user.id).maybeSingle();
+    const companyId = cd?.id||null;
+
+    // ── EDIT MODE: update existing project ──
+    if(isEditing && projectId){
+      await supabase.from("projects").update({
+        name:projectName||"New Project",
+        address:projectAddress||"",
+        crew_notes:JSON.stringify(crewNotes),
+      }).eq("id", projectId);
+
+      // delete old areas and re-insert
+      await supabase.from("segments").delete().in("area_id",
+        (await supabase.from("areas").select("id").eq("project_id",projectId)).data?.map(a=>a.id)||[]
+      );
+      await supabase.from("areas").delete().eq("project_id", projectId);
+      await supabase.from("floors").delete().eq("project_id", projectId);
+
+      // re-insert floors
+      const {data:floorRows} = await supabase.from("floors").insert(
+        floors.map((name,i)=>({project_id:projectId,name,order_index:i+1,company_id:companyId}))
+      ).select();
+      const floorMap={};
+      (floorRows||[]).forEach(f=>{floorMap[f.name]=f.id;});
+
+      // re-insert areas
+      const allAreas=floors.flatMap(floor=>(areas[floor]||[]).filter(a=>a.area_type&&a.sqft).flatMap((a,i)=>{
+        const mls=(a.mat_lines&&a.mat_lines.length>0)?a.mat_lines:[{material:a.material||"",thickness_in:a.thickness_in||"",r_value:a.r_value||"",oc:a.oc||""}];
+        return mls.map((ml,mi)=>{
+          const mat=materialMap[ml.material];
+          const {qty,unit,unit_price,line_total}=calcArea(a.sqft,ml.thickness_in,mat);
+          return {project_id:projectId,floor_id:floorMap[floor],area_type:a.area_type,material:ml.material,thickness_in:ml.thickness_in||null,r_value:ml.r_value,sqft:a.sqft,qty,unit,unit_price,line_total,order_index:i*10+mi,company_id:companyId,options:mi===0?(a.options||[]):[]};
+        });
+      }));
+      if(allAreas.length>0){
+        const {data:areaRows}=await supabase.from("areas").insert(allAreas).select();
+        const segs=[];let ai=0;
+        floors.forEach(floor=>{
+          (areas[floor]||[]).filter(a=>a.area_type&&a.sqft).forEach(a=>{
+            const sv=areaRows?.[ai++];if(!sv)return;
+            (a.measurements||[]).forEach(m=>segs.push({area_id:sv.id,height:m.h,length:m.l,sqft:m.sqft,source:"field",company_id:companyId}));
+          });
+        });
+        if(segs.length>0) await supabase.from("segments").insert(segs);
+      }
+      setSaved(true); setSavedProjectId(projectId);
+      return;
+    }
+
+    // ── NEW PROJECT: insert ──
+       const {data:proj,error:pe} = await supabase.from("projects").insert([{
         lead_id:Number(selectedLeadId), name:projectName||"New Project", address:projectAddress||"",
         status:"Active", source:"field", company_id:companyId,
         crew_notes: JSON.stringify(crewNotes),
