@@ -222,17 +222,17 @@ async function saveNew() {
   );
 
   if(phoneMatch){
-    alert(`⚠️ "${phoneMatch.name}" already exists with this phone.`);
+    alert(`⚠️ "${phoneMatch.name}" already exists with this phone. Loading their profile.`);
     setNewForm({ name:"", phone:"", company_name:"", email:"", address:"" });
-    setQuery(phoneMatch.name);
-    setMode("search");
+    setMode("selected");
+    onSelect(phoneMatch);
     return;
   }
   if(emailMatch){
-    alert(`⚠️ "${emailMatch.name}" already exists with this email.`);
+    alert(`⚠️ "${emailMatch.name}" already exists with this email. Loading their profile.`);
     setNewForm({ name:"", phone:"", company_name:"", email:"", address:"" });
-    setQuery(emailMatch.name);
-    setMode("search");
+    setMode("selected");
+    onSelect(emailMatch);
     return;
   }
   if(nameMatch){
