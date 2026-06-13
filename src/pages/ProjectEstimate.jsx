@@ -79,10 +79,10 @@ function CustomerSection({ leads, selectedLead, selectedLeadId, projectAddress,
   }, [selectedLead]);
 
   function openNew() {
-    setNewForm({ name:"", phone:"", company_name:"", email:"", address:"" });
-    setNewStep(1);
-    setMode("new");
-  }
+  setNewForm({ name:query||"", phone:"", company_name:"", email:"", address:"" });
+  setNewStep(1);
+  setMode("new");
+}
   function clear() {
     onClear();
     setQuery("");
