@@ -283,40 +283,31 @@ function CustomerSection({ leads, selectedLead, selectedLeadId, projectAddress,
 
           {/* Paste & Parse */}
           <textarea
-            placeholder="📋 Paste customer info here to auto-fill (name, phone, email, company, address)…"
-            rows={2}
-            style={{...TI, width:"100%", marginBottom:6, height:"auto", padding:"6px 8px", resize:"none", fontFamily:"inherit"}}
-            onPaste={e=>{
-              setTimeout(()=>{
+              placeholder="📋 Paste customer info here to auto-fill (name, phone, email, company, address)…"
+              rows={2}
+              style={{...TI, width:"100%", marginBottom:6, height:"auto", padding:"6px 8px", resize:"none", fontFamily:"inherit"}}
+              onChange={e=>{
                 const text = e.target.value;
-                const lines = text.split(/[\n\-,;|]+/).map(s=>s.trim()).filter(Boolean);
+                if(!text.trim()) return;
+                const parts = text.split(/[\n\-,;|]+/).map(s=>s.trim()).filter(Boolean);
                 const emailMatch = text.match(/[\w.+-]+@[\w-]+\.[a-z]{2,}/i);
-                const phoneMatch = text.match(/(\+?1?\s*[-.]?\s*\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4})/);
-                const addrMatch = text.match(/\d+\s+[\w\s]+(?:st|ave|rd|blvd|dr|ln|ct|way|pl|street|avenue|road|drive|lane|court|boulevard|circle|terrace)[.,\s]*[\w\s]*,?\s*\w{2}\s*\d{5}/i);
-                // Assign remaining lines by position if not already found
-                const remaining = lines.filter(l=>
-                  l !== (emailMatch?.[0]||"") &&
-                  !l.match(/(\+?1?\s*[-.]?\s*\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4})/) &&
-                  l !== (addrMatch?.[0]||"")
-                );
-                if(!extracted.name && remaining[0]) extracted.name = remaining[0];
-                if(!extracted.company_name && remaining[1]) extracted.company_name = remaining[1];
-                const extracted = { ...newForm };
+                const phoneMatch = text.match(/\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}/);
+                const addrMatch = text.match(/\d+\s+\w[\w\s]+(?:st|ave|rd|blvd|dr|ln|ct|way|pl|street|avenue|road|drive|lane|court|boulevard)\b[^]*/i);
+                const extracted = {};
                 if(emailMatch) extracted.email = emailMatch[0];
-                if(phoneMatch) extracted.phone = phoneMatch[0].replace(/\s+/g," ").trim();
-                if(addrMatch) extracted.address = addrMatch[0].trim();
-                // name = first line that's not email/phone/address
-                const nameLine = lines.find(l=>!l.match(/[@\d]/)||l.split(" ").length>1&&!l.match(/@/));
-                if(nameLine&&!extracted.name) extracted.name = nameLine.replace(/[^a-zA-Z\s'-]/g,"").trim();
-                // company = line with LLC, Inc, Corp, or second non-address line
-                const companyLine = lines.find(l=>l.match(/LLC|Inc|Corp|Co\.|Company|Construction|Services|Group/i));
-                if(companyLine) extracted.company_name = companyLine;
-                setNewForm(extracted);
+                if(phoneMatch) extracted.phone = phoneMatch[0];
+                if(addrMatch) extracted.address = addrMatch[0].split(/[\n\-]/)[0].trim();
+                const remaining = parts.filter(l=>
+                  !l.match(/[\w.+-]+@[\w-]+\.[a-z]{2,}/i) &&
+                  !l.match(/\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}/) &&
+                  !(addrMatch && l.includes(addrMatch[0].split(" ")[0]))
+                );
+                if(remaining[0]) extracted.name = remaining[0];
+                if(remaining[1]) extracted.company_name = remaining[1];
+                setNewForm(p=>({...p,...extracted}));
                 e.target.value="";
-              }, 10);
-            }}
-            onChange={()=>{}}
-          />
+              }}
+            />
 
           {/* All fields */}
           <input style={{...TI, width:"100%", marginBottom:5}} placeholder="Full name *" value={newForm.name} onChange={e=>nf("name",e.target.value)} />
