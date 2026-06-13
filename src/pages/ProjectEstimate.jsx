@@ -977,17 +977,21 @@ export default function ProjectEstimate() {
     setActiveFloor(name); setNewFloorName(""); setAddingFloor(false);
   }
 
-  function addArea(floor) {
-    setAreas(prev=>{
-      const ex = prev[floor]||[];
-      const collapsed = ex.map(a=>isAreaComplete(a)?{...a,_collapsed:true}:a);
-      const last = collapsed[collapsed.length-1];
-      const n = last
-        ? {...last, temp_id:Date.now(), sqft:0, measurements:[], mh:"", ml:"", mq:"1", deduct_sqft:"", _collapsed:false, options:[]}
-        : { temp_id:Date.now(), floor, area_type:"", material:"", thickness_in:"", r_value:"", oc:"", sqft:0, measurements:[], mh:"", ml:"", mq:"1", deduct_sqft:"", _collapsed:false, options:[] };
-      return {...prev, [floor]:[...collapsed, n]};
-    });
-  }
+ function addArea(floor) {
+  setAreas(prev=>{
+    const ex = prev[floor]||[];
+    // If there's already an incomplete area open, don't add another
+    const hasIncomplete = ex.some(a=>!isAreaComplete(a));
+    if(hasIncomplete) return prev;
+    // Collapse all complete areas
+    const collapsed = ex.map(a=>isAreaComplete(a)?{...a,_collapsed:true}:a);
+    const last = collapsed[collapsed.length-1];
+    const n = last
+      ? {...last, temp_id:Date.now(), sqft:0, measurements:[], mh:"", ml:"", mq:"1", deduct_sqft:"", _collapsed:false, options:[]}
+      : { temp_id:Date.now(), floor, area_type:"", material:"", thickness_in:"", r_value:"", oc:"", sqft:0, measurements:[], mh:"", ml:"", mq:"1", deduct_sqft:"", _collapsed:false, options:[] };
+    return {...prev, [floor]:[...collapsed, n]};
+  });
+}
 
   function updateArea(floor,idx,field,value) {
     setAreas(prev=>{
