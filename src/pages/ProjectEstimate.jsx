@@ -1001,7 +1001,10 @@ export default function ProjectEstimate() {
         }
       });
       Object.values(comboMap).forEach(area=>{if(newAreas[area.floor]) newAreas[area.floor].push(area);});
-      setAreas(newAreas); setLoadingProject(false);
+      setAreas(newAreas);
+        // Force leads reload if empty
+        if(!leads.length) loadLeads();
+        setLoadingProject(false);
     }
     loadProject();
   },[projectId,leads]);
@@ -1173,6 +1176,7 @@ async function saveProject() {
         if(segs.length>0) await supabase.from("segments").insert(segs);
       }
       setSaved(true); setSavedProjectId(projectId);
+      try { localStorage.removeItem(getDraftKey(selectedLeadId)); } catch(e){}
       return;
     }
 
