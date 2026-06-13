@@ -105,7 +105,7 @@ async function fetch(input) {
         input,
         sessionToken: tokenRef.current,
         includedRegionCodes: ["us"],
-        includedPrimaryTypes: ["address"],
+        includedPrimaryTypes: ["street_address"],
       };
       const {suggestions} = await AutocompleteSuggestion.fetchAutocompleteSuggestions(request);
       const preds = (suggestions||[]).slice(0,5).map(s=>({
