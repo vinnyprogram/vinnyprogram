@@ -202,13 +202,44 @@ function CustomerSection({ leads, selectedLead, selectedLeadId, projectAddress,
 
   function selectLead(lead) { onSelect(lead); setQuery(""); setMode("selected"); }
 
-  async function saveNew() {
-    if(!newForm.name&&!newForm.phone) return;
-    setSaving(true);
-    await onSaveNew(newForm);
-    setNewForm({ name:"", phone:"", company_name:"", email:"", address:"" });
-    setMode("selected"); setSaving(false);
+async function saveNew() {
+  if (!newForm.name && !newForm.phone) return;
+
+  // Duplicate check
+  const phone = (newForm.phone||"").replace(/\D/g,"");
+  const email = (newForm.email||"").toLowerCase().trim();
+  const name = (newForm.name||"").toLowerCase().trim();
+
+  const phoneMatch = phone.length >= 7 && leads.find(l=>
+    (l.phone||"").replace(/\D/g,"").includes(phone) ||
+    phone.includes((l.phone||"").replace(/\D/g,"").slice(-7))
+  );
+  const emailMatch = email && leads.find(l=>
+    (l.email||"").toLowerCase().trim() === email
+  );
+  const nameMatch = name && leads.find(l=>
+    (l.name||"").toLowerCase().trim() === name
+  );
+
+  if(phoneMatch){
+    alert(`⚠️ A customer with this phone already exists:\n"${phoneMatch.name}"\n\nSearch for them instead of creating a duplicate.`);
+    return;
   }
+  if(emailMatch){
+    alert(`⚠️ A customer with this email already exists:\n"${emailMatch.name}"\n\nSearch for them instead of creating a duplicate.`);
+    return;
+  }
+  if(nameMatch){
+    const proceed = window.confirm(`⚠️ A customer named "${nameMatch.name}" already exists.\n\nAre you sure this is a different person?`);
+    if(!proceed) return;
+  }
+
+  setSaving(true);
+  await onSaveNew(newForm);
+  setNewForm({ name:"", phone:"", company_name:"", email:"", address:"" });
+  setMode("selected");
+  setSaving(false);
+}
 
   const nf = (k,v) => setNewForm(p=>({...p,[k]:v}));
   const TI = { ...I, fontSize:12, height:26 };
