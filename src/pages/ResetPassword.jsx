@@ -9,12 +9,35 @@ export default function ResetPassword() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [ready, setReady] = useState(false);
+  const [checking, setChecking] = useState(true);
 
   useEffect(()=>{
-    // Supabase puts the token in the URL hash — we need to let it process
-    supabase.auth.onAuthStateChange((event, session)=>{
-      if(event === "PASSWORD_RECOVERY") setReady(true);
-    });
+    // Supabase sends token in URL hash: #access_token=...&type=recovery
+    // We need to manually parse and set the session
+    const hash = window.location.hash;
+    const params = new URLSearchParams(hash.replace("#",""));
+    const accessToken = params.get("access_token");
+    const refreshToken = params.get("refresh_token");
+    const type = params.get("type");
+
+    if(accessToken && type === "recovery"){
+      supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken||"" })
+        .then(({error})=>{
+          if(error){ setError("Invalid or expired reset link. Please request a new one."); }
+          else { setReady(true); }
+          setChecking(false);
+        });
+    } else {
+      // Also listen for auth state change as fallback
+      const { data: { subscription } } = supabase.auth.onAuthStateChange((event)=>{
+        if(event === "PASSWORD_RECOVERY"){ setReady(true); setChecking(false); }
+      });
+      // If no token in hash, show error after short delay
+      setTimeout(()=>{
+        setChecking(false);
+        subscription.unsubscribe();
+      }, 2000);
+    }
   },[]);
 
   async function handleReset(e) {
@@ -25,7 +48,8 @@ export default function ResetPassword() {
     setLoading(true);
     const { error } = await supabase.auth.updateUser({ password });
     if(error){ setError(error.message); setLoading(false); return; }
-    alert("Password updated! Please sign in.");
+    await supabase.auth.signOut();
+    alert("Password updated! Please sign in with your new password.");
     navigate("/login");
   }
 
@@ -50,18 +74,22 @@ export default function ResetPassword() {
         <div style={{ background:"white", borderRadius:16, padding:"28px 24px",
             boxShadow:"0 4px 24px rgba(0,0,0,.08)", border:"1px solid #e2e8f0" }}>
 
-          {!ready ? (
+          {checking ? (
+            <div style={{ textAlign:"center", padding:"20px 0", color:"#64748b", fontSize:13 }}>
+              Verifying reset link…
+            </div>
+          ) : !ready ? (
             <div style={{ textAlign:"center", padding:"20px 0" }}>
-              <div style={{ fontSize:13, color:"#64748b", marginBottom:16 }}>
-                Verifying your reset link…
+              <div style={{ fontSize:13, color:"#ef4444", marginBottom:16 }}>
+                {error || "This reset link is invalid or has expired."}
               </div>
-              <div style={{ fontSize:11, color:"#94a3b8" }}>
-                If this takes too long, go back and request a new reset email.
+              <div style={{ fontSize:12, color:"#64748b", marginBottom:16 }}>
+                Please go back and request a new password reset email.
               </div>
               <button onClick={()=>navigate("/login")}
-                style={{ marginTop:16, border:"none", background:"#0f172a",
-                  color:"white", padding:"10px 20px", borderRadius:8,
-                  cursor:"pointer", fontSize:13, fontWeight:700 }}>
+                style={{ border:"none", background:"#0f172a", color:"white",
+                  padding:"10px 24px", borderRadius:8, cursor:"pointer",
+                  fontSize:13, fontWeight:700 }}>
                 Back to Sign In
               </button>
             </div>
@@ -72,7 +100,8 @@ export default function ResetPassword() {
                     display:"block", marginBottom:5 }}>New Password</label>
                 <input type="password" value={password}
                   onChange={e=>setPassword(e.target.value)}
-                  placeholder="••••••••" required minLength={6} style={IS} />
+                  placeholder="••••••••" required minLength={6} style={IS}
+                  autoFocus />
               </div>
               <div style={{ marginBottom:20 }}>
                 <label style={{ fontSize:12, fontWeight:600, color:"#374151",
