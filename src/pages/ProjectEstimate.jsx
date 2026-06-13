@@ -888,6 +888,7 @@ export default function ProjectEstimate() {
   const [addingFloor,setAddingFloor]=useState(false);
   const [panelOpen,setPanelOpen]=useState(false);
   const [loadingProject,setLoadingProject]=useState(isEditing);
+  const wasSaved = useRef(false);
 
   function getDraftKey(id){return `draft_estimate_${id||"new"}`;}
   function clearDraft(){if(draftKey){try{localStorage.removeItem(draftKey);}catch(e){}}}
@@ -903,7 +904,7 @@ export default function ProjectEstimate() {
   }
 
   useEffect(()=>{
-    const interval=setInterval(()=>{if(selectedLeadId)saveDraftNow();},30000);
+    const interval=setInterval(()=>{if(selectedLeadId&&!wasSaved.current)saveDraftNow();},30000);
     return ()=>clearInterval(interval);
   },[selectedLeadId,projectName,projectAddress,crewNotes,floors,areas]);
 
@@ -1175,7 +1176,7 @@ async function saveProject() {
         });
         if(segs.length>0) await supabase.from("segments").insert(segs);
       }
-     setSaved(true); setSavedProjectId(projectId);
+     wasSaved.current = true; setSaved(true); setSavedProjectId(projectId);
       // Clear ALL possible draft keys for this lead
       try {
         const keysToRemove = [];
@@ -1223,6 +1224,7 @@ async function saveProject() {
       await supabase.from("customers").update({estimate_amount:Math.round(finalPriceWithLabor*100)/100}).eq("id",selectedLeadId);
       const allOptions=floors.flatMap(floor=>(areas[floor]||[]).filter(a=>a.area_type&&a.sqft&&(a.options||[]).length>0).map(a=>({area_type:a.area_type,floor,sqft:a.sqft,options:a.options,mat_lines:a.mat_lines})));
       await supabase.from("quotes").insert([{project_id:proj.id,subtotal:pricing.material_cost,tax_rate:0,tax_total:0,grand_total:Math.round(finalPriceWithLabor*100)/100,final_price:Math.round(finalPriceWithLabor*100)/100,material_cost:pricing.material_cost,overhead_cost:pricing.overhead_cost,labor_cost:Math.round(finalLaborCost*100)/100,labor_hours:laborRoles.reduce((s,r)=>s+Number(r.hours||0)*Number(r.days||1)*Number(r.people||1),0),crew_size:laborRoles.filter(r=>Number(r.hours||0)>0).length,labor_rate:laborRoles.find(r=>Number(r.hours||0)>0)?.rate||45,profit_margin_pct:pricing.profit_margin_pct,fuel_cost:Math.round(fuelCostCalc*100)/100,commission_cost:Math.round(commissionCost*100)/100,commission_pct:commissionPct,job_miles:Number(jobMiles||0),sales_rep_id:selectedRep||null,notes:allOptions.length>0?JSON.stringify(allOptions):null,status:"Draft",company_id:companyId}]);
+      wasSaved.current = true;
       setSaved(true);setSavedProjectId(proj.id);clearDraft();
     }catch(err){console.error(err);alert("Error: "+(err.message||JSON.stringify(err)));}
     finally{setSaving(false);}
