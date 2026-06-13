@@ -277,33 +277,60 @@ function CustomerSection({ leads, selectedLead, selectedLeadId, projectAddress,
       {mode==="new" && (
         <div>
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:6 }}>
-            <span style={{ fontSize:10, fontWeight:700, color:C.muted, textTransform:"uppercase", letterSpacing:0.4 }}>New customer {newStep}/2</span>
+            <span style={{ fontSize:10, fontWeight:700, color:C.muted, textTransform:"uppercase", letterSpacing:0.4 }}>New customer</span>
             <button onClick={()=>setMode("search")} style={{ border:"none", background:"none", color:C.faint, fontSize:16, cursor:"pointer", padding:0, lineHeight:1 }}>✕</button>
           </div>
-          {newStep===1 && (
-            <>
-              <input style={{...TI, width:"100%", marginBottom:6}} placeholder="Full name" value={newForm.name} onChange={e=>nf("name",e.target.value)} />
-              <input style={{...TI, width:"100%", marginBottom:8}} placeholder="Phone number" value={newForm.phone} onChange={e=>nf("phone",e.target.value)} />
-              <button onClick={()=>setNewStep(2)} disabled={!newForm.name&&!newForm.phone}
-                style={{ ...BtnD, width:"100%", justifyContent:"center", height:32, fontSize:12, opacity:(!newForm.name&&!newForm.phone)?0.4:1 }}>
-                Next →
-              </button>
-            </>
-          )}
-          {newStep===2 && (
-            <>
-              <input style={{...TI, width:"100%", marginBottom:6}} placeholder="Company name" value={newForm.company_name} onChange={e=>nf("company_name",e.target.value)} />
-              <input style={{...TI, width:"100%", marginBottom:6}} placeholder="Email" value={newForm.email} onChange={e=>nf("email",e.target.value)} />
-              <AddressInput style={{...TI, width:"100%", marginBottom:8}}
-                placeholder="Company address" value={newForm.address} onChange={v=>nf("address",v)} />
-              <div style={{ display:"flex", gap:6 }}>
-                <button onClick={()=>setNewStep(1)} style={{ ...Btn, flex:1, justifyContent:"center", height:32 }}>← Back</button>
-                <button onClick={saveNew} disabled={saving} style={{ ...BtnD, flex:2, justifyContent:"center", height:32, fontSize:12, opacity:saving?0.5:1 }}>
-                  {saving?"Saving…":"Save customer"}
-                </button>
-              </div>
-            </>
-          )}
+
+          {/* Paste & Parse */}
+          <textarea
+            placeholder="📋 Paste customer info here to auto-fill (name, phone, email, company, address)…"
+            rows={2}
+            style={{...TI, width:"100%", marginBottom:6, height:"auto", padding:"6px 8px", resize:"none", fontFamily:"inherit"}}
+            onPaste={e=>{
+              setTimeout(()=>{
+                const text = e.target.value;
+                const lines = text.split(/[\n\-,;|]+/).map(s=>s.trim()).filter(Boolean);
+                const emailMatch = text.match(/[\w.+-]+@[\w-]+\.[a-z]{2,}/i);
+                const phoneMatch = text.match(/(\+?1?\s*[-.]?\s*\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4})/);
+                const addrMatch = text.match(/\d+\s+[\w\s]+(?:st|ave|rd|blvd|dr|ln|ct|way|pl|street|avenue|road|drive|lane|court|boulevard|circle|terrace)[.,\s]*[\w\s]*,?\s*\w{2}\s*\d{5}/i);
+                // Assign remaining lines by position if not already found
+                const remaining = lines.filter(l=>
+                  l !== (emailMatch?.[0]||"") &&
+                  !l.match(/(\+?1?\s*[-.]?\s*\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4})/) &&
+                  l !== (addrMatch?.[0]||"")
+                );
+                if(!extracted.name && remaining[0]) extracted.name = remaining[0];
+                if(!extracted.company_name && remaining[1]) extracted.company_name = remaining[1];
+                const extracted = { ...newForm };
+                if(emailMatch) extracted.email = emailMatch[0];
+                if(phoneMatch) extracted.phone = phoneMatch[0].replace(/\s+/g," ").trim();
+                if(addrMatch) extracted.address = addrMatch[0].trim();
+                // name = first line that's not email/phone/address
+                const nameLine = lines.find(l=>!l.match(/[@\d]/)||l.split(" ").length>1&&!l.match(/@/));
+                if(nameLine&&!extracted.name) extracted.name = nameLine.replace(/[^a-zA-Z\s'-]/g,"").trim();
+                // company = line with LLC, Inc, Corp, or second non-address line
+                const companyLine = lines.find(l=>l.match(/LLC|Inc|Corp|Co\.|Company|Construction|Services|Group/i));
+                if(companyLine) extracted.company_name = companyLine;
+                setNewForm(extracted);
+                e.target.value="";
+              }, 10);
+            }}
+            onChange={()=>{}}
+          />
+
+          {/* All fields */}
+          <input style={{...TI, width:"100%", marginBottom:5}} placeholder="Full name *" value={newForm.name} onChange={e=>nf("name",e.target.value)} />
+          <input style={{...TI, width:"100%", marginBottom:5}} placeholder="Phone number" value={newForm.phone} onChange={e=>nf("phone",e.target.value)} />
+          <input style={{...TI, width:"100%", marginBottom:5}} placeholder="Email" value={newForm.email} onChange={e=>nf("email",e.target.value)} />
+          <input style={{...TI, width:"100%", marginBottom:5}} placeholder="Company name" value={newForm.company_name} onChange={e=>nf("company_name",e.target.value)} />
+          <AddressInput style={{...TI, width:"100%", marginBottom:8}}
+            placeholder="Address" value={newForm.address} onChange={v=>nf("address",v)} />
+
+          <button onClick={saveNew} disabled={saving||(!newForm.name&&!newForm.phone)}
+            style={{ ...BtnD, width:"100%", justifyContent:"center", height:34, fontSize:13,
+              opacity:(saving||(!newForm.name&&!newForm.phone))?0.4:1 }}>
+            {saving?"Saving…":"Save customer"}
+          </button>
         </div>
       )}
     </div>
