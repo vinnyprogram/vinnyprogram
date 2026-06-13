@@ -1043,7 +1043,7 @@ export default function ProjectEstimate() {
     try{const {data:{user}}=await supabase.auth.getUser();const {data:cd}=await supabase.from("companies").select("id").eq("user_id",user.id).maybeSingle();companyId=cd?.id||null;}catch(e){}
     const {data,error}=await supabase.from("customers").insert([{name:form.name||"",phone:form.phone||"",company_name:form.company_name||"",email:form.email||"",address:form.address||"",status:"New",estimate_amount:0,company_id:companyId}]).select().single();
     if(error){alert("Could not save customer: "+(error.message||JSON.stringify(error)));return;}
-    if(data){loadLeads();setSelectedLeadId(String(data.id));setProjectName(data.name||"");setProjectAddress(data.address||"");}
+    if(data){loadLeads();setSelectedLeadId(String(data.id));setProjectName(data.name||"");setProjectAddress("");} // leave job address blank — user enters it separately
   }
 
   async function calculateJobPrice(companyId,allAreas,totalSqft){
