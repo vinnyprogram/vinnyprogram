@@ -396,7 +396,7 @@ function AreaRow({ area, materials, onChange, onDelete, saveOptionsOnly, onMater
   function updateMatLine(idx, field, value) {
     const lines = matLines.map((l,i)=> i===idx ? {...l,[field]:value} : l);
     onChange("mat_lines", lines);
-    if(idx===0) onChange(field, value);
+    if(idx===0 && !isComboMode) onChange(field, value);
   }
 
   function addMatLine() {
