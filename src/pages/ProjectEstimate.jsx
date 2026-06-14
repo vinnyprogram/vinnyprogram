@@ -638,7 +638,7 @@ function AreaRow({ area, materials, onChange, onDelete, saveOptionsOnly, onMater
               </div>
               <div style={{display:"flex",gap:4,marginBottom:2,flexWrap:"wrap"}}>
                 <select style={{...XS,flex:1}}
-                  value={ml._custom_thick?"__other__":(ml.thickness_in||"")}
+                  value={(ml._custom_thick || (ml.thickness_in && !THICK_OPTS.includes(ml.thickness_in)))?"__other__":(ml.thickness_in||"")}
                   onChange={e=>{
                     if(e.target.value==="__other__") updateMatLine(idx,"_custom_thick",true);
                     else { updateMatLine(idx,"thickness_in",e.target.value); updateMatLine(idx,"_custom_thick",false); }
@@ -647,7 +647,7 @@ function AreaRow({ area, materials, onChange, onDelete, saveOptionsOnly, onMater
                   <option value="__other__">✏️ Other</option>
                 </select>
                 <select style={{...XS,flex:1}}
-                  value={ml._custom_rval?"__other__":(ml.r_value||"")}
+                  value={(ml._custom_rval || (ml.r_value && !R_VALS.includes(ml.r_value)))?"__other__":(ml.r_value||"")}
                   onChange={e=>{
                     if(e.target.value==="__other__") updateMatLine(idx,"_custom_rval",true);
                     else { updateMatLine(idx,"r_value",e.target.value); updateMatLine(idx,"_custom_rval",false); }
@@ -659,11 +659,11 @@ function AreaRow({ area, materials, onChange, onDelete, saveOptionsOnly, onMater
                   <option value="">Spacing</option>{OC_OPTS.map(o=><option key={o}>{o}</option>)}
                 </select>
               </div>
-              {ml._custom_thick && (
-                <input placeholder="Custom thickness e.g. 3in" style={{...XS,width:"100%",marginBottom:2}}
-                  value={ml.thickness_in||""} onChange={e=>updateMatLine(idx,"thickness_in",e.target.value)} />
-              )}
-              {ml._custom_rval && (
+              {(ml._custom_thick || (ml.thickness_in && !THICK_OPTS.includes(ml.thickness_in))) && (
+              <input placeholder="Custom thickness e.g. 3in" style={{...XS,width:"100%",marginBottom:2}}
+                value={ml.thickness_in||""} onChange={e=>updateMatLine(idx,"thickness_in",e.target.value)} />
+            )}
+             {(ml._custom_rval || (ml.r_value && !R_VALS.includes(ml.r_value))) && (
                 <input placeholder="Custom R-Val e.g. R-22" style={{...XS,width:"100%",marginBottom:2}}
                   value={ml.r_value||""} onChange={e=>updateMatLine(idx,"r_value",e.target.value)} />
               )}
