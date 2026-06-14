@@ -7,7 +7,7 @@ const COMPANY = {
   address:      "69 Watson Street | Brockton, Massachusetts 02301",
   phone:        "(781) 507-3199",
   email:        "info@brightchoiceinsulation.com",
-  office_email: "estimates@brightchoiceinsulation.com",
+  office_email: "gvvini.carvalho@gmail.com",
   website:      "https://brightchoiceinsulation.com/",
 };
 
