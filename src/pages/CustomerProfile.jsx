@@ -385,33 +385,62 @@ export default function CustomerProfile() {
                     </div>
 
                     {/* actions */}
-                    <div style={{display:"flex",gap:6,padding:"10px 14px",flexWrap:"wrap"}}>
-                      <button onClick={()=>navigate(`/field-report/${job.id}`)}
-                        style={{flex:1,minWidth:70,border:"none",background:"#3b82f6",
-                          color:"white",padding:"8px 0",borderRadius:8,
-                          cursor:"pointer",fontSize:12,fontWeight:700}}>
-                        📋 Office
-                      </button>
-                      <button onClick={()=>navigate(`/quote-pricing/${job.id}`)}
-                        style={{flex:1,minWidth:70,border:"none",background:"#f97316",
-                          color:"white",padding:"8px 0",borderRadius:8,
-                          cursor:"pointer",fontSize:12,fontWeight:700}}>
-                        📄 Quote
-                      </button>
-                      <button onClick={()=>navigate(`/project/${job.id}`)}
-                        style={{flex:1,minWidth:70,border:"1px solid #e2e8f0",
-                          background:"white",color:"#0f172a",padding:"8px 0",
-                          borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:700}}>
-                        ✏️ Edit
-                      </button>
-                      <button onClick={()=>setOpenCost(openCost===job.id?null:job.id)}
-                        style={{flex:1,minWidth:70,border:"1px solid #e2e8f0",
-                          background:openCost===job.id?"#f0fdf4":"white",
-                          color:"#059669",padding:"8px 0",borderRadius:8,
-                          cursor:"pointer",fontSize:12,fontWeight:700}}>
-                        💰 Cost
-                      </button>
+                  <div style={{display:"flex",gap:6,padding:"10px 14px",flexWrap:"wrap"}}>
+                    <button onClick={()=>navigate(`/field-report/${job.id}`)}
+                      style={{flex:1,minWidth:70,border:"none",background:"#3b82f6",
+                        color:"white",padding:"8px 0",borderRadius:8,
+                        cursor:"pointer",fontSize:12,fontWeight:700}}>
+                      📋 Office
+                    </button>
+                    <button onClick={()=>navigate(`/quote-pricing/${job.id}`)}
+                      style={{flex:1,minWidth:70,border:"none",background:"#f97316",
+                        color:"white",padding:"8px 0",borderRadius:8,
+                        cursor:"pointer",fontSize:12,fontWeight:700}}>
+                      📄 Quote
+                    </button>
+                    <button onClick={()=>navigate(`/project/${job.id}`)}
+                      style={{flex:1,minWidth:70,border:"1px solid #e2e8f0",
+                        background:"white",color:"#0f172a",padding:"8px 0",
+                        borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:700}}>
+                      ✏️ Edit
+                    </button>
+                    <button onClick={()=>setOpenCost(openCost===job.id?null:job.id)}
+                      style={{flex:1,minWidth:70,border:"1px solid #e2e8f0",
+                        background:openCost===job.id?"#f0fdf4":"white",
+                        color:"#059669",padding:"8px 0",borderRadius:8,
+                        cursor:"pointer",fontSize:12,fontWeight:700}}>
+                      💰 Cost
+                    </button>
+                    <label style={{flex:1,minWidth:70,border:"1px solid #e2e8f0",
+                        background:"white",color:"#7c3aed",padding:"8px 0",
+                        borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:700,
+                        textAlign:"center",display:"inline-block"}}>
+                      📎 PDF
+                      <input type="file" accept="application/pdf" style={{display:"none"}}
+                        onChange={e=>uploadDocs(e.target.files, job.id)} />
+                    </label>
+                  </div>
+
+                  {/* attached PDFs for this job */}
+                  {docs.filter(d=>d.project_id===job.id).length>0 && (
+                    <div style={{padding:"0 14px 10px",display:"flex",flexDirection:"column",gap:4}}>
+                      {docs.filter(d=>d.project_id===job.id).map(d=>(
+                        <div key={d.id} style={{display:"flex",alignItems:"center",gap:8,
+                            padding:"6px 10px",background:"#faf5ff",borderRadius:6,
+                            border:"1px solid #e9d5ff",fontSize:11}}>
+                          <span>📄</span>
+                          <span style={{flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",color:"#374151"}}>
+                            {d.caption||"Proposal.pdf"}
+                          </span>
+                          <button onClick={()=>window.open(d.url,"_blank")}
+                            style={{border:"none",background:"#7c3aed",color:"white",
+                              padding:"3px 10px",borderRadius:5,cursor:"pointer",fontSize:10,fontWeight:700}}>
+                            Open
+                          </button>
+                        </div>
+                      ))}
                     </div>
+                  )}
 
                     {/* cost breakdown */}
                     {openCost===job.id && job.quotes[0] && (
