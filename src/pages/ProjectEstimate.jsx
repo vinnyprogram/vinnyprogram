@@ -604,18 +604,36 @@ function AreaRow({ area, materials, onChange, onDelete, saveOptionsOnly, onMater
       {/* MATERIAL — combo */}
       {isComboMode && (
         <div style={{background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:8,padding:"8px 10px",marginBottom:4,marginTop:2}}>
-          <div style={{fontSize:10,fontWeight:700,color:"#0369a1",marginBottom:6,textTransform:"uppercase",letterSpacing:0.4}}>
-            ⚡ Combo
+          <div style={{fontSize:10,fontWeight:700,color:"#0369a1",marginBottom:6,textTransform:"uppercase",letterSpacing:0.4,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <span>⚡ Combo</span>
+            {(()=>{
+              const totalR = matLines.reduce((sum,ml)=>{
+                const r = parseInt((ml.r_value||"").replace(/\D/g,""))||0;
+                return sum+r;
+              },0);
+              return totalR>0 ? <span style={{color:"#059669",fontWeight:800}}>Total R-{totalR}</span> : null;
+            })()}
             <button onClick={()=>{ onChange("mat_lines",[{id:1,material:"",thickness_in:"",r_value:"",oc:""}]); onChange("material",""); }}
               style={{border:"none",background:"none",color:"#94a3b8",cursor:"pointer",fontSize:11,marginLeft:8,padding:0}}>× remove combo</button>
           </div>
           {matLines.map((ml,idx)=>(
             <div key={ml.id||idx} style={{marginBottom:8,paddingBottom:8,borderBottom:idx<matLines.length-1?`1px solid #e0f2fe`:"none"}}>
               <div style={{display:"flex",gap:4,marginBottom:4,alignItems:"center"}}>
-                <select style={{...XS,flex:1}} value={ml.material||""} onChange={e=>updateMatLine(idx,"material",e.target.value)}>
+                <select style={{...XS,flex:1}} value={ml.material==="__custom__"?"__custom__":(ml.material||"")}
+                  onChange={e=>{
+                    if(e.target.value==="__custom__") updateMatLine(idx,"material","__custom__");
+                    else updateMatLine(idx,"material",e.target.value);
+                  }}>
                   <option value="">Material {idx+1}</option>
                   {materials.map(m=><option key={m.id}>{m.name}</option>)}
+                  <option value="__custom__">✏️ Other</option>
                 </select>
+                {ml.material==="__custom__" && (
+                  <input placeholder="Type material…" style={{...XS,flex:1}}
+                    value={ml.custom_material||""}
+                    onChange={e=>updateMatLine(idx,"custom_material",e.target.value)}
+                    onBlur={()=>{ if(ml.custom_material) updateMatLine(idx,"material",ml.custom_material); }} />
+                )}
                 {matLines.length>2 && <button onClick={()=>removeMatLine(idx)} style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:14,padding:"0 2px",lineHeight:1,flexShrink:0}}>✕</button>}
               </div>
               <div style={{display:"flex",gap:4,marginBottom:2}}>
@@ -697,20 +715,37 @@ function AreaRow({ area, materials, onChange, onDelete, saveOptionsOnly, onMater
       {/* measurements */}
       <div style={{ borderTop:`1px solid ${C.border}`, paddingTop:4, marginTop:2 }}>
         <div style={{ display:"flex", gap:3, alignItems:"center", marginBottom:4 }}>
-          <select className="area-select" style={{...GS, flex:"0 0 60px"}}
-            value={area._custom_rval?"__other__":(matLines[0].r_value||"")}
-            onChange={e=>{
-              if(e.target.value==="__other__"){ updateMatLine(0,"r_value",""); onChange("_custom_rval",true); }
-              else { updateMatLine(0,"r_value",e.target.value); onChange("_custom_rval",false); }
-            }}>
-            <option value="">R-Val</option>
-            {R_VALS.map(r=><option key={r}>{r}</option>)}
-            <option value="__other__">✏️</option>
-          </select>
-          {area._custom_rval && (
-            <input placeholder="e.g. R-22" style={{...XS,width:70}}
-              value={matLines[0].r_value||""} onChange={e=>updateMatLine(0,"r_value",e.target.value)} />
-          )}
+         {isComboMode ? (
+              (()=>{
+                const totalR = matLines.reduce((sum,ml)=>{
+                  const r = parseInt((ml.r_value||"").replace(/\D/g,""))||0;
+                  return sum+r;
+                },0);
+                return (
+                  <div style={{...GS, flex:"0 0 60px", display:"flex",alignItems:"center",justifyContent:"center",
+                      background:"#f0fdf4",borderRadius:5,fontWeight:800,color:"#059669",fontSize:12,cursor:"default"}}>
+                    {totalR>0?`R-${totalR}`:"R-Val"}
+                  </div>
+                );
+              })()
+            ) : (
+              <>
+                <select className="area-select" style={{...GS, flex:"0 0 60px"}}
+                  value={area._custom_rval?"__other__":(matLines[0].r_value||"")}
+                  onChange={e=>{
+                    if(e.target.value==="__other__"){ updateMatLine(0,"r_value",""); onChange("_custom_rval",true); }
+                    else { updateMatLine(0,"r_value",e.target.value); onChange("_custom_rval",false); }
+                  }}>
+                  <option value="">R-Val</option>
+                  {R_VALS.map(r=><option key={r}>{r}</option>)}
+                  <option value="__other__">✏️</option>
+                </select>
+                {area._custom_rval && (
+                  <input placeholder="e.g. R-22" style={{...XS,width:70}}
+                    value={matLines[0].r_value||""} onChange={e=>updateMatLine(0,"r_value",e.target.value)} />
+                )}
+              </>
+            )}
           <input placeholder="H" inputMode="decimal" value={area.mh||""}
             onChange={e=>onChange("mh",e.target.value)}
             onBlur={commitMeasurement} onKeyDown={e=>e.key==="Enter"&&commitMeasurement()}
