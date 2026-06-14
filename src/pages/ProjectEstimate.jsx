@@ -891,7 +891,16 @@ export default function ProjectEstimate() {
   const wasSaved = useRef(false);
 
   function getDraftKey(id){return `draft_estimate_${id||"new"}`;}
-  function clearDraft(){if(draftKey){try{localStorage.removeItem(draftKey);}catch(e){}}}
+  function clearDraft(){
+    try {
+      const keysToRemove = [];
+      for(let i=0; i<localStorage.length; i++){
+        const k = localStorage.key(i);
+        if(k && k.startsWith("draft_estimate_")) keysToRemove.push(k);
+      }
+      keysToRemove.forEach(k=>localStorage.removeItem(k));
+    } catch(e){}
+  }
   function loadDraft(key){try{const r=localStorage.getItem(key);return r?JSON.parse(r):null;}catch(e){return null;}}
 
   function saveDraftNow(overrideAreas,overrideFloors){
@@ -1176,7 +1185,7 @@ async function saveProject() {
         });
         if(segs.length>0) await supabase.from("segments").insert(segs);
       }
-     wasSaved.current = true; setSaved(true); setSavedProjectId(projectId);
+     wasSaved.current = true; setSaved(true); setSavedProjectId(projectId); clearDraft();
       // Clear ALL possible draft keys for this lead
       try {
         const keysToRemove = [];
