@@ -636,17 +636,37 @@ function AreaRow({ area, materials, onChange, onDelete, saveOptionsOnly, onMater
                 )}
                 {matLines.length>2 && <button onClick={()=>removeMatLine(idx)} style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:14,padding:"0 2px",lineHeight:1,flexShrink:0}}>✕</button>}
               </div>
-              <div style={{display:"flex",gap:4,marginBottom:2}}>
-                <select style={{...XS,flex:1}} value={ml.thickness_in||""} onChange={e=>updateMatLine(idx,"thickness_in",e.target.value)}>
+              <div style={{display:"flex",gap:4,marginBottom:2,flexWrap:"wrap"}}>
+                <select style={{...XS,flex:1}}
+                  value={ml._custom_thick?"__other__":(ml.thickness_in||"")}
+                  onChange={e=>{
+                    if(e.target.value==="__other__") updateMatLine(idx,"_custom_thick",true);
+                    else { updateMatLine(idx,"thickness_in",e.target.value); updateMatLine(idx,"_custom_thick",false); }
+                  }}>
                   <option value="">Thick</option>{THICK_OPTS.map(t=><option key={t}>{t}</option>)}
+                  <option value="__other__">✏️ Other</option>
                 </select>
-                <select style={{...XS,flex:1}} value={ml.r_value||""} onChange={e=>updateMatLine(idx,"r_value",e.target.value)}>
+                <select style={{...XS,flex:1}}
+                  value={ml._custom_rval?"__other__":(ml.r_value||"")}
+                  onChange={e=>{
+                    if(e.target.value==="__other__") updateMatLine(idx,"_custom_rval",true);
+                    else { updateMatLine(idx,"r_value",e.target.value); updateMatLine(idx,"_custom_rval",false); }
+                  }}>
                   <option value="">R-Val</option>{R_VALS.map(r=><option key={r}>{r}</option>)}
+                  <option value="__other__">✏️ Other</option>
                 </select>
                 <select style={{...XS,flex:1}} value={ml.oc||""} onChange={e=>updateMatLine(idx,"oc",e.target.value)}>
                   <option value="">Spacing</option>{OC_OPTS.map(o=><option key={o}>{o}</option>)}
                 </select>
               </div>
+              {ml._custom_thick && (
+                <input placeholder="Custom thickness e.g. 3in" style={{...XS,width:"100%",marginBottom:2}}
+                  value={ml.thickness_in||""} onChange={e=>updateMatLine(idx,"thickness_in",e.target.value)} />
+              )}
+              {ml._custom_rval && (
+                <input placeholder="Custom R-Val e.g. R-22" style={{...XS,width:"100%",marginBottom:2}}
+                  value={ml.r_value||""} onChange={e=>updateMatLine(idx,"r_value",e.target.value)} />
+              )}
               {(()=>{
                 const mat=materials.find(m=>m.name===ml.material);
                 const {qty,unit,unit_price,line_total}=calcArea(area.sqft,ml.thickness_in,mat);
