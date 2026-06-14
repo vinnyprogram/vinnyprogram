@@ -194,19 +194,35 @@ export default function CustomerProfile() {
       .select("id").eq("user_id", user.id).maybeSingle();
     const companyId = cd?.id||null;
 
+    let successCount = 0;
+    let errorMsgs = [];
+
     for(const file of Array.from(files)) {
       const ext = file.name.split('.').pop();
       const path = `${companyId}/${projectId}/${Date.now()}.${ext}`;
       const { error:upErr } = await supabase.storage
         .from("job-photos").upload(path, file);
-      if(upErr){ console.error(upErr); continue; }
+      if(upErr){
+        console.error("Upload error:", upErr);
+        errorMsgs.push(upErr.message||JSON.stringify(upErr));
+        continue;
+      }
       const { data:urlData } = supabase.storage
         .from("job-photos").getPublicUrl(path);
-      await supabase.from("job_photos").insert([{
+      const { error:insErr } = await supabase.from("job_photos").insert([{
         project_id: projectId,
         url: urlData.publicUrl,
         company_id: companyId,
       }]);
+      if(insErr){
+        console.error("Insert error:", insErr);
+        errorMsgs.push(insErr.message||JSON.stringify(insErr));
+        continue;
+      }
+      successCount++;
+    }
+    if(errorMsgs.length>0){
+      alert(`Upload failed:\n${errorMsgs.join("\n")}`);
     }
     await load();
     setUploading(false);
