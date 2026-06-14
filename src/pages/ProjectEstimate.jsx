@@ -392,6 +392,7 @@ function AreaRow({ area, materials, onChange, onDelete, saveOptionsOnly, onMater
   const matLines = (area.mat_lines && area.mat_lines.length > 0)
     ? area.mat_lines
     : [{ id:1, material:area.material||"", thickness_in:area.thickness_in||"", r_value:area.r_value||"", oc:area.oc||"" }];
+  console.log("RENDER matLines:", JSON.stringify(matLines));
 
   function updateMatLine(idx, field, value) {
     const lines = matLines.map((l,i)=> i===idx ? {...l,[field]:value} : l);
