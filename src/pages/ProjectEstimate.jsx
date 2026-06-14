@@ -1145,11 +1145,17 @@ async function saveProject() {
 
     // ── EDIT MODE: update existing project ──
     if(isEditing && projectId){
-      await supabase.from("projects").update({
+     const allComplete = floors.every(f=>(areas[f]||[]).every(a=>!a.area_type||isAreaComplete(a)));
+     const {data:currentProj} = await supabase.from("projects").select("pipeline_status").eq("id",projectId).single();
+     const updateFields = {
         name:projectName||"New Project",
         address:projectAddress||"",
         crew_notes:JSON.stringify(crewNotes),
-      }).eq("id", projectId);
+      };
+     if(allComplete && (currentProj?.pipeline_status||"Draft")==="Draft"){
+        updateFields.pipeline_status = "Measured";
+      }
+      await supabase.from("projects").update(updateFields).eq("id", projectId);
 
       // delete old areas and re-insert
       await supabase.from("segments").delete().in("area_id",
@@ -1199,10 +1205,12 @@ async function saveProject() {
     }
 
     // ── NEW PROJECT: insert ──
-       const {data:proj,error:pe} = await supabase.from("projects").insert([{
+      const allComplete = floors.every(f=>(areas[f]||[]).every(a=>!a.area_type||isAreaComplete(a)));
+      const {data:proj,error:pe} = await supabase.from("projects").insert([{
         lead_id:Number(selectedLeadId), name:projectName||"New Project", address:projectAddress||"",
         status:"Active", source:"field", company_id:companyId,
         crew_notes: JSON.stringify(crewNotes),
+        pipeline_status: allComplete ? "Measured" : "Draft",
       }]).select().single();
       if(pe)throw pe;
       const {data:floorRows}=await supabase.from("floors").insert(floors.map((name,i)=>({project_id:proj.id,name,order_index:i+1,company_id:companyId}))).select();

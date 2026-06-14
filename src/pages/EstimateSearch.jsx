@@ -2,15 +2,17 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 
-const PIPELINE_STAGES = ["Lead","Site Visit","Estimate Sent","Negotiation","Accepted","Job Scheduled","Completed"];
+const PIPELINE_STAGES = ["Draft","Measured","Sent to Office","Quote Ready","Proposal","Negotiation","Accepted","Job Scheduled","Completed"];
 const PIPELINE_COLORS = {
-  "Lead":          { bg:"#f1f5f9", text:"#64748b" },
-  "Site Visit":    { bg:"#eff6ff", text:"#3b82f6" },
-  "Estimate Sent": { bg:"#fef3c7", text:"#d97706" },
-  "Negotiation":   { bg:"#fff7ed", text:"#f97316" },
-  "Accepted":      { bg:"#dcfce7", text:"#059669" },
-  "Job Scheduled": { bg:"#ede9fe", text:"#7c3aed" },
-  "Completed":     { bg:"#f0fdf4", text:"#15803d" },
+  "Draft":          { bg:"#f1f5f9", text:"#64748b" },
+  "Measured":       { bg:"#eff6ff", text:"#3b82f6" },
+  "Sent to Office": { bg:"#fff7ed", text:"#f97316" },
+  "Quote Ready":    { bg:"#f5f3ff", text:"#7c3aed" },
+  "Proposal":       { bg:"#fef3c7", text:"#d97706" },
+  "Negotiation":    { bg:"#ffedd5", text:"#ea580c" },
+  "Accepted":       { bg:"#dcfce7", text:"#059669" },
+  "Job Scheduled":  { bg:"#ccfbf1", text:"#0d9488" },
+  "Completed":      { bg:"#f0fdf4", text:"#15803d" },
 };
 const CHECKLIST_ITEMS = [
   { key:"materials_ordered", label:"Materials ordered" },
@@ -283,13 +285,19 @@ export default function EstimateSearch() {
                 )}
               </div>
               <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                <button onClick={()=>navigate(`/field-report/${p.id}`)}
+                <button onClick={()=>{
+                    if((p.pipeline_status||"Draft")==="Measured") updatePipelineStatus(p.id,"Sent to Office");
+                    navigate(`/field-report/${p.id}`);
+                  }}
                   style={{flex:1,border:"none",background:"#3b82f6",color:"white",
                     padding:"7px 0",borderRadius:7,cursor:"pointer",
                     fontSize:12,fontWeight:700}}>
                   📋 Office
                 </button>
-                <button onClick={()=>navigate(`/quote-pricing/${p.id}`)}
+                <button onClick={()=>{
+                    if(["Measured","Sent to Office"].includes(p.pipeline_status||"Draft")) updatePipelineStatus(p.id,"Quote Ready");
+                    navigate(`/quote-pricing/${p.id}`);
+                  }}
                   style={{flex:1,border:"none",background:"#f97316",color:"white",
                     padding:"7px 0",borderRadius:7,cursor:"pointer",
                     fontSize:12,fontWeight:700}}>

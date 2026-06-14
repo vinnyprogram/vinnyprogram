@@ -165,6 +165,63 @@ export default function CustomerProfile() {
     setLoading(false);
   }
 
+  async function duplicateProject(projectId) {
+  // Fetch original project + floors + areas + segments
+  const { data:proj } = await supabase.from("projects").select("*").eq("id",projectId).single();
+  if(!proj) return;
+  const { data:floors } = await supabase.from("floors").select("*").eq("project_id",projectId).order("order_index");
+  const { data:areas } = await supabase.from("areas").select("*").eq("project_id",projectId).order("order_index");
+  const areaIds = (areas||[]).map(a=>a.id);
+  let segs = [];
+  if(areaIds.length){
+    const { data:s } = await supabase.from("segments").select("*").in("area_id",areaIds);
+    segs = s||[];
+  }
+
+  // Create new project (copy, reset pipeline status)
+  const { data:newProj, error:pe } = await supabase.from("projects").insert([{
+    lead_id: proj.lead_id, name: proj.name, address: proj.address,
+    status:"Active", source: proj.source, company_id: proj.company_id,
+    crew_notes: proj.crew_notes, pipeline_status: "Negotiation",
+  }]).select().single();
+  if(pe||!newProj){ alert("Error creating new version: "+(pe?.message||"")); return; }
+
+  // Copy floors
+  const floorMap = {};
+  if(floors?.length){
+    const { data:newFloors } = await supabase.from("floors").insert(
+      floors.map(f=>({project_id:newProj.id,name:f.name,order_index:f.order_index,company_id:f.company_id}))
+    ).select();
+    floors.forEach((f,i)=>{ floorMap[f.id]=newFloors[i].id; });
+  }
+
+  // Copy areas
+  const areaMap = {};
+  if(areas?.length){
+    const { data:newAreas } = await supabase.from("areas").insert(
+      areas.map(a=>({
+        project_id:newProj.id, floor_id:floorMap[a.floor_id], area_type:a.area_type,
+        material:a.material, thickness_in:a.thickness_in, r_value:a.r_value,
+        sqft:a.sqft, qty:a.qty, unit:a.unit, unit_price:a.unit_price, line_total:a.line_total,
+        order_index:a.order_index, company_id:a.company_id, options:a.options,
+      }))
+    ).select();
+    areas.forEach((a,i)=>{ areaMap[a.id]=newAreas[i].id; });
+  }
+
+  // Copy segments
+  if(segs.length){
+    await supabase.from("segments").insert(
+      segs.map(s=>({
+        area_id:areaMap[s.area_id], height:s.height, length:s.length,
+        sqft:s.sqft, source:s.source, company_id:s.company_id,
+      }))
+    );
+  }
+
+  navigate(`/project/${newProj.id}`);
+}
+
   async function updateActualHours(projectId, roles) {
     const laborCost = roles.reduce((s,r)=>
       s+Number(r.hours||0)*Number(r.days||1)*Number(r.people||1)*Number(r.rate||0),0);
@@ -398,7 +455,15 @@ export default function CustomerProfile() {
                         cursor:"pointer",fontSize:12,fontWeight:700}}>
                       📄 Quote
                     </button>
-                    <button onClick={()=>navigate(`/project/${job.id}`)}
+                    <button onClick={()=>{
+                        if((job.pipeline_status||"Lead")!=="Lead" && (job.pipeline_status||"Lead")!=="Site Visit"){
+                          if(window.confirm("This proposal has already been sent. Create a new version with updated scope?")){
+                            duplicateProject(job.id);
+                          }
+                        } else {
+                          navigate(`/project/${job.id}`);
+                        }
+                      }}
                       style={{flex:1,minWidth:70,border:"1px solid #e2e8f0",
                         background:"white",color:"#0f172a",padding:"8px 0",
                         borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:700}}>
@@ -417,7 +482,13 @@ export default function CustomerProfile() {
                         textAlign:"center",display:"inline-block"}}>
                       📎 PDF
                       <input type="file" accept="application/pdf" style={{display:"none"}}
-                        onChange={e=>uploadDocs(e.target.files, job.id)} />
+                        onChange={async e=>{
+                          await uploadDocs(e.target.files, job.id);
+                          if(["Sent to Office","Quote Ready"].includes(job.pipeline_status||"Draft")){
+                            await supabase.from("projects").update({pipeline_status:"Proposal"}).eq("id",job.id);
+                            await load();
+                          }
+                        }} />
                     </label>
                   </div>
 
