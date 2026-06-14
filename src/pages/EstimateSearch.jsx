@@ -2,6 +2,24 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 
+const PIPELINE_STAGES = ["Lead","Site Visit","Estimate Sent","Negotiation","Accepted","Job Scheduled","Completed"];
+const PIPELINE_COLORS = {
+  "Lead":          { bg:"#f1f5f9", text:"#64748b" },
+  "Site Visit":    { bg:"#eff6ff", text:"#3b82f6" },
+  "Estimate Sent": { bg:"#fef3c7", text:"#d97706" },
+  "Negotiation":   { bg:"#fff7ed", text:"#f97316" },
+  "Accepted":      { bg:"#dcfce7", text:"#059669" },
+  "Job Scheduled": { bg:"#ede9fe", text:"#7c3aed" },
+  "Completed":     { bg:"#f0fdf4", text:"#15803d" },
+};
+const CHECKLIST_ITEMS = [
+  { key:"materials_ordered", label:"Materials ordered" },
+  { key:"rough_in_complete", label:"Rough-in complete" },
+  { key:"inspection_passed", label:"Inspection passed" },
+  { key:"finish_complete",   label:"Final/finish complete" },
+  { key:"walkthrough_done",  label:"Customer walkthrough done" },
+];
+
 export default function EstimateSearch() {
   const navigate = useNavigate();
   const [search, setSearch]     = useState("");
@@ -35,6 +53,14 @@ export default function EstimateSearch() {
     setDrafts(deduped);
   },[]);
 
+  async function updatePipelineStatus(projectId, status) {
+    await supabase.from("projects").update({pipeline_status:status}).eq("id",projectId);
+    setGroups(prev=>prev.map(g=>({
+      ...g,
+      projects: g.projects.map(p=>p.id===projectId?{...p,pipeline_status:status}:p)
+    })));
+  }
+
   function discardDraft(key) {
     localStorage.removeItem(key);
     setDrafts(p=>p.filter(d=>d.key!==key));
@@ -54,7 +80,7 @@ export default function EstimateSearch() {
     async function load() {
       const { data:projs } = await supabase
         .from("projects")
-        .select("id, name, address, created_at, lead_id, status, source")
+        .select("id, name, address, created_at, lead_id, status, source, pipeline_status, job_checklist")
         .order("created_at", { ascending:false });
 
       if(!projs){ setLoading(false); return; }
@@ -217,6 +243,14 @@ export default function EstimateSearch() {
                   <span style={{fontSize:12,fontWeight:600,color:"#0f172a"}}>
                     Estimate {g.projects.length-pi}
                   </span>
+                  <select value={p.pipeline_status||"Lead"}
+                    onChange={e=>updatePipelineStatus(p.id, e.target.value)}
+                    style={{marginLeft:6,fontSize:10,fontWeight:700,padding:"2px 6px",
+                      borderRadius:5,border:"1px solid #e2e8f0",cursor:"pointer",
+                      background: PIPELINE_COLORS[p.pipeline_status||"Lead"]?.bg,
+                      color: PIPELINE_COLORS[p.pipeline_status||"Lead"]?.text}}>
+                    {PIPELINE_STAGES.map(s=><option key={s}>{s}</option>)}
+                  </select>
                   {p.address && (
                     <div style={{fontSize:11,color:"#64748b",marginTop:1}}>
                       📍 {p.address}
