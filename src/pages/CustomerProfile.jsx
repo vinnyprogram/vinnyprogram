@@ -191,10 +191,10 @@ export default function CustomerProfile() {
   }
 
   // Create new project (copy, reset pipeline status)
-  const { data:newProj, error:pe } = await supabase.from("projects").insert([{
+ const { data:newProj, error:pe } = await supabase.from("projects").insert([{
     lead_id: proj.lead_id, name: proj.name, address: proj.address,
     status:"Active", source: proj.source, company_id: proj.company_id,
-    crew_notes: proj.crew_notes, pipeline_status: "Negotiation",
+    crew_notes: proj.crew_notes, pipeline_status: "Measured",
   }]).select().single();
   if(pe||!newProj){ alert("Error creating new version: "+(pe?.message||"")); return; }
 
