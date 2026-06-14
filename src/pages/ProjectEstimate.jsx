@@ -641,6 +641,7 @@ function AreaRow({ area, materials, onChange, onDelete, saveOptionsOnly, onMater
                 <select style={{...XS,flex:1}}
                   value={(ml._custom_thick || (ml.thickness_in && !THICK_OPTS.includes(ml.thickness_in)))?"__other__":(ml.thickness_in||"")}
                   onChange={e=>{
+                    console.log("Thick onChange fired, idx:",idx,"value:",e.target.value, "ml:", JSON.stringify(ml));
                     if(e.target.value==="__other__") updateMatLine(idx,"_custom_thick",true);
                     else { updateMatLine(idx,"thickness_in",e.target.value); updateMatLine(idx,"_custom_thick",false); }
                   }}>
