@@ -6,6 +6,18 @@ import AddressInput from "./AddressInput";
 function fmt(n) {
   return Number(n||0).toLocaleString("en-US",{maximumFractionDigits:0});
 }
+
+const PIPELINE_COLORS = {
+  "Draft":          { bg:"#f1f5f9", text:"#64748b" },
+  "Measured":       { bg:"#eff6ff", text:"#3b82f6" },
+  "Sent to Office": { bg:"#fff7ed", text:"#f97316" },
+  "Quote Ready":    { bg:"#f5f3ff", text:"#7c3aed" },
+  "Proposal":       { bg:"#fef3c7", text:"#d97706" },
+  "Negotiation":    { bg:"#ffedd5", text:"#ea580c" },
+  "Accepted":       { bg:"#dcfce7", text:"#059669" },
+  "Job Scheduled":  { bg:"#ccfbf1", text:"#0d9488" },
+  "Completed":      { bg:"#f0fdf4", text:"#15803d" },
+};
 function fmtDate(d) {
   return new Date(d||Date.now()).toLocaleDateString("en-US",
     {month:"short",day:"numeric",year:"numeric"});
@@ -408,15 +420,20 @@ export default function CustomerProfile() {
                       border:"1px solid #e2e8f0",marginBottom:10,
                       boxShadow:"0 2px 8px rgba(0,0,0,.04)",overflow:"hidden"}}>
 
-                    {/* job header */}
-                    <div style={{padding:"10px 14px",borderBottom:"1px solid #f1f5f9",
-                        display:"flex",justifyContent:"space-between",alignItems:"center",
-                        background: ji===0?"#f0fdf4":"white"}}>
-                      <div>
-                        <div style={{fontSize:12,fontWeight:700,color:"#0f172a"}}>
-                          {ji===0 && <span style={{color:"#059669",marginRight:6}}>★ Latest</span>}
-                          Estimate {activeGroup.jobs.length - ji}
-                        </div>
+                   {/* job header */}
+                  <div style={{padding:"10px 14px",borderBottom:"1px solid #f1f5f9",
+                      display:"flex",justifyContent:"space-between",alignItems:"center",
+                      background: ji===0?"#f0fdf4":"white"}}>
+                    <div>
+                      <div style={{fontSize:12,fontWeight:700,color:"#0f172a",display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+                        {ji===0 && <span style={{color:"#059669"}}>★ Latest</span>}
+                        {(job.pipeline_status||"Draft")==="Proposal" ? `Proposal ${activeGroup.jobs.length - ji}` : `Estimate ${activeGroup.jobs.length - ji}`}
+                        <span style={{fontSize:10,fontWeight:700,padding:"2px 8px",borderRadius:10,
+                            background: PIPELINE_COLORS[job.pipeline_status||"Draft"]?.bg,
+                            color: PIPELINE_COLORS[job.pipeline_status||"Draft"]?.text}}>
+                          {job.pipeline_status||"Draft"}
+                        </span>
+                      </div>
                         <div style={{fontSize:11,color:"#94a3b8",marginTop:1}}>
                           {fmtDate(job.created_at)}
                           {job.source==="drawings" && (
@@ -456,14 +473,17 @@ export default function CustomerProfile() {
                       📄 Quote
                     </button>
                     <button onClick={()=>{
-                        if((job.pipeline_status||"Lead")!=="Lead" && (job.pipeline_status||"Lead")!=="Site Visit"){
-                          if(window.confirm("This proposal has already been sent. Create a new version with updated scope?")){
-                            duplicateProject(job.id);
-                          }
+                      const status = job.pipeline_status||"Draft";
+                      if(["Sent to Office","Quote Ready","Proposal","Negotiation","Accepted","Job Scheduled","Completed"].includes(status)){
+                        if(window.confirm("This proposal has already been sent. Create a NEW version with updated scope?\n\nClick Cancel to edit this estimate directly instead.")){
+                          duplicateProject(job.id);
                         } else {
                           navigate(`/project/${job.id}`);
                         }
-                      }}
+                      } else {
+                        navigate(`/project/${job.id}`);
+                      }
+                    }}
                       style={{flex:1,minWidth:70,border:"1px solid #e2e8f0",
                         background:"white",color:"#0f172a",padding:"8px 0",
                         borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:700}}>
