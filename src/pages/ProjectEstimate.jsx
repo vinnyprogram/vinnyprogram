@@ -641,10 +641,14 @@ function AreaRow({ area, materials, onChange, onDelete, saveOptionsOnly, onMater
               <div style={{display:"flex",gap:4,marginBottom:2,flexWrap:"wrap"}}>
                 <select style={{...XS,flex:1}}
                   value={(ml._custom_thick || (ml.thickness_in && !THICK_OPTS.includes(ml.thickness_in)))?"__other__":(ml.thickness_in||"")}
-                  onChange={e=>{
-                    console.log("Thick onChange fired, idx:",idx,"value:",e.target.value, "ml:", JSON.stringify(ml));
-                    if(e.target.value==="__other__") updateMatLine(idx,"_custom_thick",true);
-                    else { updateMatLine(idx,"thickness_in",e.target.value); updateMatLine(idx,"_custom_thick",false); }
+                 onChange={e=>{
+                    if(e.target.value==="__other__"){
+                      const lines = matLines.map((l,i)=> i===idx ? {...l,_custom_thick:true} : l);
+                      onChange("mat_lines", lines);
+                    } else {
+                      const lines = matLines.map((l,i)=> i===idx ? {...l,thickness_in:e.target.value,_custom_thick:false} : l);
+                      onChange("mat_lines", lines);
+                    }
                   }}>
                   <option value="">Thick</option>{THICK_OPTS.map(t=><option key={t}>{t}</option>)}
                   <option value="__other__">✏️ Other</option>
@@ -652,8 +656,13 @@ function AreaRow({ area, materials, onChange, onDelete, saveOptionsOnly, onMater
                 <select style={{...XS,flex:1}}
                   value={(ml._custom_rval || (ml.r_value && !R_VALS.includes(ml.r_value)))?"__other__":(ml.r_value||"")}
                   onChange={e=>{
-                    if(e.target.value==="__other__") updateMatLine(idx,"_custom_rval",true);
-                    else { updateMatLine(idx,"r_value",e.target.value); updateMatLine(idx,"_custom_rval",false); }
+                    if(e.target.value==="__other__"){
+                      const lines = matLines.map((l,i)=> i===idx ? {...l,_custom_rval:true} : l);
+                      onChange("mat_lines", lines);
+                    } else {
+                      const lines = matLines.map((l,i)=> i===idx ? {...l,r_value:e.target.value,_custom_rval:false} : l);
+                      onChange("mat_lines", lines);
+                    }
                   }}>
                   <option value="">R-Val</option>{R_VALS.map(r=><option key={r}>{r}</option>)}
                   <option value="__other__">✏️ Other</option>
