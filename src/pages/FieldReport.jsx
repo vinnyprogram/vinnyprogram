@@ -88,14 +88,27 @@ export default function FieldReport() {
     if(lead?.email) lines.push(`${lead.email}`);
     lines.push("");
 
+   // Group by floor + area_type + material/thick/r_value, ordered by floor sequence
+    const groupMap = {};
     areas.forEach(a=>{
       const fl = floors.find(f=>f.id===a.floor_id);
-      const segs = segments.filter(s=>s.area_id===a.id);
-      const spec = [a.thickness_in, a.r_value].filter(Boolean).join(" ");
-      const measStr = segs.length>0
-        ? segs.map(s=>`${s.height}x${s.length}`).join("  ")
+      const floorIdx = floors.findIndex(f=>f.id===a.floor_id);
+      const key = (a.floor_id||"")+"||||"+(a.area_type||"")+"||||"+(a.material||"")+"||||"+(a.thickness_in||"")+"||||"+(a.r_value||"");
+      if(!groupMap[key]) groupMap[key]={
+        floor: fl, floorOrder: floorIdx, area_type:a.area_type,
+        material:a.material, thickness_in:a.thickness_in, r_value:a.r_value,
+        sqft:0, segs:[],
+      };
+      groupMap[key].sqft += a.sqft||0;
+      groupMap[key].segs.push(...segments.filter(s=>s.area_id===a.id));
+    });
+    const groups = Object.values(groupMap).sort((a,b)=>a.floorOrder-b.floorOrder);
+    groups.forEach(g=>{
+      const spec = [g.thickness_in, g.r_value].filter(Boolean).join(" ");
+      const measStr = g.segs.length>0
+        ? [...new Set(g.segs.map(s=>`${s.height}x${s.length}`))].join("  ")
         : "";
-      lines.push(`${fl?fl.name+": ":""}${a.area_type} ${a.material||""} ${spec} - ${fmt(a.sqft)}ft²`);
+      lines.push(`${g.floor?g.floor.name+": ":""}${g.area_type} ${g.material||""} ${spec} - ${fmt(g.sqft)}ft²`);
       if(measStr) lines.push(`  ${measStr}`);
     });
 

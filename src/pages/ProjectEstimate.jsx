@@ -976,22 +976,21 @@ export default function ProjectEstimate() {
   const [loadingProject,setLoadingProject]=useState(isEditing);
   const wasSaved = useRef(false);
 
-  function getDraftKey(id){return `draft_estimate_${id||"new"}`;}
+  function getDraftKey(id, address){
+    const addrSlug = (address||"").trim().toLowerCase().replace(/[^a-z0-9]/g,"_").slice(0,40);
+    return `draft_estimate_${id||"new"}${addrSlug?"_"+addrSlug:""}`;
+  }
   function clearDraft(){
     try {
-      const keysToRemove = [];
-      for(let i=0; i<localStorage.length; i++){
-        const k = localStorage.key(i);
-        if(k && k.startsWith("draft_estimate_")) keysToRemove.push(k);
-      }
-      keysToRemove.forEach(k=>localStorage.removeItem(k));
+      const key = getDraftKey(selectedLeadId, projectAddress);
+      localStorage.removeItem(key);
     } catch(e){}
   }
   function loadDraft(key){try{const r=localStorage.getItem(key);return r?JSON.parse(r):null;}catch(e){return null;}}
 
   function saveDraftNow(overrideAreas,overrideFloors){
-    if(!selectedLeadId) return;
-    const key=getDraftKey(selectedLeadId);
+  if(!selectedLeadId) return;
+  const key=getDraftKey(selectedLeadId, projectAddress);
     try{
       localStorage.setItem(key,JSON.stringify({savedAt:new Date().toISOString(),selectedLeadId,projectName,projectAddress,crewNotes,floors:overrideFloors||floors,areas:overrideAreas||areas}));
       if(!draftKey) setDraftKey(key);
@@ -1003,11 +1002,11 @@ export default function ProjectEstimate() {
     return ()=>clearInterval(interval);
   },[selectedLeadId,projectName,projectAddress,crewNotes,floors,areas]);
 
-  useEffect(()=>{ if(selectedLeadId) setDraftKey(getDraftKey(selectedLeadId)); },[selectedLeadId]);
+  useEffect(()=>{ if(selectedLeadId) setDraftKey(getDraftKey(selectedLeadId, projectAddress)); },[selectedLeadId, projectAddress]);
 
   useEffect(()=>{
     if(resumeMode&&leadId&&leads.length>0&&!draftRestored){
-      const key=getDraftKey(leadId);
+      const key=getDraftKey(leadId, addressParam);
       const draft=loadDraft(key);
       if(draft){
         if(draft.crewNotes) setCrewNotes(draft.crewNotes);
@@ -1105,9 +1104,9 @@ export default function ProjectEstimate() {
     loadProject();
   },[projectId]);
 
- useEffect(()=>{
-  if(!isEditing&&selectedLeadId&&!draftRestored&&!resumeMode&&!savedProjectId){
-      const key=getDraftKey(selectedLeadId);
+  useEffect(()=>{
+    if(!isEditing&&selectedLeadId&&!draftRestored&&!resumeMode&&!savedProjectId){
+      const key=getDraftKey(selectedLeadId, projectAddress);
       const draft=loadDraft(key);
       if(draft){
         const age=Math.round((Date.now()-new Date(draft.savedAt).getTime())/60000);
