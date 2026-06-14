@@ -621,6 +621,7 @@ function AreaRow({ area, materials, onChange, onDelete, saveOptionsOnly, onMater
               <div style={{display:"flex",gap:4,marginBottom:4,alignItems:"center"}}>
                 <select style={{...XS,flex:1}} value={ml.material==="__custom__"?"__custom__":(ml.material||"")}
                   onChange={e=>{
+                    console.log("Material onChange fired, idx:",idx,"value:",e.target.value);
                     if(e.target.value==="__custom__") updateMatLine(idx,"material","__custom__");
                     else updateMatLine(idx,"material",e.target.value);
                   }}>
