@@ -49,12 +49,27 @@ const AREA_TYPES = [
   "Exterior Wall","Demising Wall","Rim Joist","Concrete Wall",
   "Ceiling","Interior Walls","Fire Blocking","Other",
 ];
-const THICK_OPTS = ["2x3","2x4","2x6","2x8","2x10","2x12","I-joist","14in","16in"];
+const THICK_OPTS = ["2x3","2x4","2x6","2x8","2x10","2x12","I-joist 14in","I-joist 16in","I-joist 18in"];
 const THICK_MAP  = { "2x4":3.5,"2x6":5.5,"2x8":7.25,"2x10":9.25,"2x12":11.25,"I-joist":11.875 };
-const R_VALS     = ["R-11","R-13","R-14","R-15","R-19","R-21","R-25","R-30","R-38","R-49","R-60"];
+const R_VALS     = ["R-11","R-13","R-15","R-19","R-21","R-28","R-30","R-38","R-49","R-60"];
+function loadCustomList(key, defaults) {
+  try {
+    const stored = JSON.parse(localStorage.getItem(key)||"[]");
+    return [...new Set([...defaults, ...stored])];
+  } catch(e){ return defaults; }
+}
+function saveCustomListItem(key, value) {
+  try {
+    const stored = JSON.parse(localStorage.getItem(key)||"[]");
+    if(!stored.includes(value)){
+      stored.push(value);
+      localStorage.setItem(key, JSON.stringify(stored));
+    }
+  } catch(e){}
+}
 const OC_OPTS    = ['3"cc','7"oc','8"oc','12"oc','16"oc','24"oc','open cell'];
 const CONST_TYPES = ["New Construction","Remodeling","Addition","Existing Construction","Renovation","Commercial","Other"];
-const LADDER_OPTS = ["5ft","6ft","7ft","10ft","12ft","16ft","20ft","Lift","No ladder needed"];
+const LADDER_OPTS = ["5ft","7ft","10ft","12ft","16ft","20ft","Lift","No ladder needed"];
 
 function calcArea(sqft, thick, mat) {
   if (!sqft || !mat) return { qty:0, unit:"-", line_total:0, unit_price:0 };
@@ -368,6 +383,9 @@ async function saveNew() {
 // ── AreaRow ───────────────────────────────────────────────────────────────────
 function AreaRow({ area, materials, onChange, onDelete, saveOptionsOnly, onMaterialAdded }) {
   const [expanded, setExpanded] = useState(!area._collapsed);
+
+  const [thickOpts, setThickOpts] = useState(()=>loadCustomList("custom_thick_opts", THICK_OPTS));
+  const [rValOpts, setRValOpts] = useState(()=>loadCustomList("custom_rval_opts", R_VALS));
 
   useEffect(()=>{
     if(area._collapsed) setExpanded(false);
@@ -772,10 +790,11 @@ function AreaRow({ area, materials, onChange, onDelete, saveOptionsOnly, onMater
                   {R_VALS.map(r=><option key={r}>{r}</option>)}
                   <option value="__other__">✏️</option>
                 </select>
-                {area._custom_rval && (
-                  <input placeholder="e.g. R-22" style={{...XS,width:70}}
-                    value={matLines[0].r_value||""} onChange={e=>updateMatLine(0,"r_value",e.target.value)} />
-                )}
+               {area._custom_rval && (
+                <input placeholder="e.g. R-22" style={{...XS, width:70}}
+                  value={matLines[0].r_value||""} onChange={e=>updateMatLine(0,"r_value",e.target.value)}
+                  onBlur={e=>{ if(e.target.value){ saveCustomListItem("custom_rval_opts",e.target.value); setRValOpts(loadCustomList("custom_rval_opts",R_VALS)); }}} />
+              )}
               </>
             )}
           <input placeholder="H" inputMode="decimal" value={area.mh||""}
