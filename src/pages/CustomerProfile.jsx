@@ -365,8 +365,11 @@ export default function CustomerProfile() {
           {customer.company_name && (
             <span style={{color:"white",fontWeight:700,fontSize:13}}>{customer.company_name}</span>
           )}
-          {customer.email && (
-            <span style={{color:"#94a3b8",fontSize:12}}>{customer.email}</span>
+         {customer.email && (
+            <a href={`mailto:${customer.email}`}
+              style={{color:"#94a3b8",fontSize:12,textDecoration:"none"}}>
+              ✉️ {customer.email}
+            </a>
           )}
         </div>
       </div>
