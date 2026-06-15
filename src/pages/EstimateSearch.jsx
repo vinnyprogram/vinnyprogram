@@ -216,10 +216,13 @@ export default function EstimateSearch() {
                 {g.customer?.name||"Unknown"}
               </div>
               {g.customer?.company_name && (
-                <div style={{fontSize:11,color:"#64748b"}}>{g.customer.company_name}</div>
+                <div style={{fontWeight:700,fontSize:14,color:"#0f172a"}}>{g.customer.company_name}</div>
               )}
               {g.customer?.phone && (
-                <div style={{fontSize:11,color:"#94a3b8"}}>{g.customer.phone}</div>
+                <a href={`tel:${g.customer.phone.replace(/\D/g,"")}`}
+                  style={{fontWeight:700,fontSize:14,color:"#3b82f6",textDecoration:"none"}}>
+                  📞 {g.customer.phone}
+                </a>
               )}
             </div>
             <button onClick={()=>navigate(`/customer/${g.customer?.id}`)}
