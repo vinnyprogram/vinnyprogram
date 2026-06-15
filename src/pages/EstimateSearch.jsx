@@ -285,15 +285,12 @@ export default function EstimateSearch() {
                 )}
               </div>
               <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                <button onClick={()=>{
-                    if((p.pipeline_status||"Draft")==="Measured") updatePipelineStatus(p.id,"Sent to Office");
-                    navigate(`/field-report/${p.id}`);
-                  }}
+                <button onClick={()=>navigate(`/field-report/${p.id}`)}
                   style={{flex:1,border:"none",background:"#3b82f6",color:"white",
                     padding:"7px 0",borderRadius:7,cursor:"pointer",
                     fontSize:12,fontWeight:700}}>
                   📋 Office
-                </button>
+              </button>
                 <button onClick={()=>{
                     if(["Measured","Sent to Office"].includes(p.pipeline_status||"Draft")) updatePipelineStatus(p.id,"Quote Ready");
                     navigate(`/quote-pricing/${p.id}`);
