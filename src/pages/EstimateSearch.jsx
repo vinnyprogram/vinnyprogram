@@ -211,15 +211,17 @@ export default function EstimateSearch() {
           <div style={{padding:"12px 14px",background:"#f8fafc",
               borderBottom:"1px solid #f1f5f9",
               display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-            <div>
-              <div style={{fontWeight:700,fontSize:14,color:"#0f172a"}}>
-                {g.customer?.name||"Unknown"}
-              </div>
-              {g.customer?.company_name && (
-                <div style={{fontSize:11,color:"#64748b"}}>{g.customer.company_name}</div>
-              )}
-              {g.customer?.phone && (
-                <div style={{fontSize:11,color:"#94a3b8"}}>{g.customer.phone}</div>
+            <div style={{fontWeight:700,fontSize:14,color:"#0f172a"}}>
+               {g.customer?.name||"Unknown"}
+           </div>
+                {g.customer?.company_name && (
+                  <div style={{fontWeight:700,fontSize:14,color:"#0f172a"}}>{g.customer.company_name}</div>
+                )}
+                {g.customer?.phone && (
+                  <a href={`tel:${g.customer.phone.replace(/\D/g,"")}`}
+                    style={{fontWeight:700,fontSize:14,color:"#3b82f6",textDecoration:"none"}}>
+                    📞 {g.customer.phone}
+                  </a>
               )}
             </div>
             <button onClick={()=>navigate(`/customer/${g.customer?.id}`)}
@@ -242,8 +244,8 @@ export default function EstimateSearch() {
                     <span style={{fontSize:10,fontWeight:700,color:"#059669",
                         marginRight:6}}>★ Latest</span>
                   )}
-                  <span style={{fontSize:12,fontWeight:600,color:"#0f172a"}}>
-                    Estimate {g.projects.length-pi}
+                  <span style={{fontSize:11,fontWeight:600,color:"#94a3b8",fontFamily:"monospace"}}>
+                    #{p.id.toString().slice(-6).toUpperCase()}
                   </span>
                   <select value={p.pipeline_status||"Lead"}
                     onChange={e=>updatePipelineStatus(p.id, e.target.value)}
