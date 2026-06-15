@@ -93,29 +93,35 @@ export default function FieldReport() {
     lines.push("");
 
    // Group by floor + area_type + material/thick/r_value, ordered by floor sequence
+   // Group by area_type + material + thickness + R-value ONLY (merge across floors)
     const groupMap = {};
     areas.forEach(a=>{
       const fl = floors.find(f=>f.id===a.floor_id);
       const floorIdx = floors.findIndex(f=>f.id===a.floor_id);
-      const key = (a.floor_id||"")+"||||"+(a.area_type||"")+"||||"+(a.material||"")+"||||"+(a.thickness_in||"")+"||||"+(a.r_value||"");
+      const key = (a.area_type||"")+"||||"+(a.material||"")+"||||"+(a.thickness_in||"")+"||||"+(a.r_value||"");
       if(!groupMap[key]) groupMap[key]={
-        floor: fl, floorOrder: floorIdx, area_type:a.area_type,
+        floors: [], floorOrder: floorIdx, area_type:a.area_type,
         material:a.material, thickness_in:a.thickness_in, r_value:a.r_value,
         sqft:0, segs:[],
       };
-      groupMap[key].sqft += a.sqft||0;
-      groupMap[key].segs.push(...segments.filter(s=>s.area_id===a.id));
+      const g = groupMap[key];
+      if(fl && !g.floors.find(f=>f.id===fl.id)) g.floors.push(fl);
+      if(floorIdx < g.floorOrder) g.floorOrder = floorIdx;
+      g.sqft += a.sqft||0;
+      g.segs.push(...segments.filter(s=>s.area_id===a.id));
     });
     const groups = Object.values(groupMap).sort((a,b)=>a.floorOrder-b.floorOrder);
     groups.forEach(g=>{
       const spec = [g.thickness_in, g.r_value].filter(Boolean).join(" ");
+      const floorLabel = g.floors
+        .sort((a,b)=>floors.findIndex(f=>f.id===a.id)-floors.findIndex(f=>f.id===b.id))
+        .map(f=>f.name).join(", ");
       const measStr = g.segs.length>0
         ? [...new Set(g.segs.map(s=>`${s.height}x${s.length}`))].join("  ")
         : "";
-      lines.push(`${g.floor?g.floor.name+": ":""}${g.area_type} ${g.material||""} ${spec} - ${fmt(g.sqft)}ft²`);
+      lines.push(`${floorLabel?floorLabel+": ":""}${g.area_type} ${g.material||""} ${spec} - ${fmt(g.sqft)}ft²`);
       if(measStr) lines.push(`  ${measStr}`);
     });
-
     if(options.length){
       lines.push("");
       lines.push("Optional:");
