@@ -254,7 +254,7 @@ export default function EstimateSearch() {
                     {PIPELINE_STAGES.map(s=><option key={s}>{s}</option>)}
                   </select>
                  {p.address && (
-                  <div style={{fontSize:13,fontWeight:700,color:"#0f172a",marginTop:2}}>
+                  <div style={{fontSize:15,fontWeight:700,color:"#0f172a",marginTop:2}}>
                     📍 {p.address}
                   </div>
 )}
