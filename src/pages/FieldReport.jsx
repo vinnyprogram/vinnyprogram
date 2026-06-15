@@ -449,8 +449,10 @@ export default function FieldReport() {
                         Option {oi+1}: {fl?.name} {a.area_type}
                       </span>
                       <span style={{fontSize:11,color:"#374151"}}>
-                        {[opt.material,opt.thickness_in||a.thickness_in,opt.r_value||a.r_value]
-                          .filter(Boolean).join(" · ")}
+                        {(()=>{
+                          const optLines=(opt.mat_lines||[]).length>0?opt.mat_lines:[{material:opt.material||"",thickness_in:opt.thickness_in||a.thickness_in||"",r_value:opt.r_value||a.r_value||"",oc:opt.oc||""}];
+                          return optLines.map(ol=>[ol.thickness_in,ol.material,ol.r_value,ol.oc].filter(Boolean).join(" ")).join(" + ");
+                        })()}
                         {" · "}{fmt(a.sqft)} ft²
                       </span>
                     </div>
