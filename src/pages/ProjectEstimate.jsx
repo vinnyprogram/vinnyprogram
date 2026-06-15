@@ -508,11 +508,14 @@ function AreaRow({ area, materials, onChange, onDelete, saveOptionsOnly, onMater
           )}
         </div>
       ))}
-      {areaOptions.map((opt,i)=>(
-        <div key={i} style={{fontSize:10,color:"#f97316",marginTop:2}}>
-          ⚡ Option {i+1}: {[opt.material,opt.thickness_in||area.thickness_in,opt.r_value].filter(Boolean).join(" · ")}
-        </div>
-      ))}
+      {areaOptions.map((opt,i)=>{
+        const optLines=(opt.mat_lines||[]).length>0?opt.mat_lines:[{material:opt.material||"",thickness_in:opt.thickness_in||area.thickness_in||"",r_value:opt.r_value||"",oc:opt.oc||""}];
+        return (
+          <div key={i} style={{fontSize:10,color:"#f97316",marginTop:2}}>
+            ⚡ Option {i+1}: {optLines.map(ol=>[ol.material,ol.thickness_in,ol.r_value,ol.oc].filter(Boolean).join(" ")).join(" + ")}
+          </div>
+        );
+      })}
     </div>
   );
 
