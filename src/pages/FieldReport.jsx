@@ -76,10 +76,14 @@ export default function FieldReport() {
     load();
   },[projectId]);
 
-  function sendEmail() {
-    const subject = encodeURIComponent(
-      `Field Estimate - ${project?.address||project?.name||"New Project"}`
-    );
+    async function sendEmail() {
+      if((project?.pipeline_status||"Draft")==="Measured"){
+        await supabase.from("projects").update({pipeline_status:"Sent to Office"}).eq("id",projectId);
+        setProject(p=>({...p, pipeline_status:"Sent to Office"}));
+      }
+      const subject = encodeURIComponent(
+        `Field Estimate - ${project?.address||project?.name||"New Project"}`
+      );
     const lines = [];
     lines.push(`${project?.address||""}`);
     lines.push(`${lead?.name||""}`);
