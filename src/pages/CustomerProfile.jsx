@@ -354,25 +354,27 @@ export default function CustomerProfile() {
           ← CRM
         </button>
         <div style={{flex:1}}>
-        <div style={{color:"white",fontWeight:800,fontSize:16}}>{customer.name}</div>
-        <div style={{display:"flex",alignItems:"center",gap:8,marginTop:2,flexWrap:"wrap"}}>
-          {customer.phone && (
-            <a href={`tel:${customer.phone.replace(/\D/g,"")}`}
-              style={{color:"#60a5fa",fontWeight:700,fontSize:13,textDecoration:"none"}}>
-              📞 {customer.phone}
-            </a>
-          )}
-          {customer.company_name && (
-            <span style={{color:"white",fontWeight:700,fontSize:13}}>{customer.company_name}</span>
-          )}
-         {customer.email && (
-            <a href={`mailto:${customer.email}`}
-              style={{color:"#94a3b8",fontSize:12,textDecoration:"none"}}>
-              ✉️ {customer.email}
-            </a>
-          )}
+          <div style={{color:"white",fontWeight:800,fontSize:16,marginBottom:2}}>{customer.name}</div>
+          <div style={{display:"flex",flexDirection:"column",gap:2}}>
+            {customer.phone && (
+              <a href={`tel:${customer.phone.replace(/\D/g,"")}`}
+                style={{color:"#60a5fa",fontWeight:700,fontSize:13,textDecoration:"none"}}>
+                📞 {customer.phone}
+              </a>
+            )}
+            <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+              {customer.company_name && (
+                <span style={{color:"white",fontWeight:700,fontSize:13}}>{customer.company_name}</span>
+              )}
+              {customer.email && (
+                <a href={`mailto:${customer.email}`}
+                  style={{color:"#94a3b8",fontSize:13,textDecoration:"none"}}>
+                  ✉️ {customer.email}
+                </a>
+              )}
+            </div>
+          </div>
         </div>
-      </div>
         <button onClick={()=>navigate(`/project/new?leadId=${customerId}`)}
           style={{border:"none",background:"#059669",color:"white",
             padding:"8px 14px",borderRadius:8,cursor:"pointer",
