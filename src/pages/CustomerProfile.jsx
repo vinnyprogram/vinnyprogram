@@ -354,13 +354,22 @@ export default function CustomerProfile() {
           ← CRM
         </button>
         <div style={{flex:1}}>
-          <div style={{color:"white",fontWeight:800,fontSize:16}}>{customer.name}</div>
-          <div style={{color:"#94a3b8",fontSize:11,marginTop:1}}>
-            {customer.phone}
-            {customer.company_name && ` · ${customer.company_name}`}
-            {customer.email && ` · ${customer.email}`}
-          </div>
+        <div style={{color:"white",fontWeight:800,fontSize:16}}>{customer.name}</div>
+        <div style={{display:"flex",alignItems:"center",gap:8,marginTop:2,flexWrap:"wrap"}}>
+          {customer.phone && (
+            <a href={`tel:${customer.phone.replace(/\D/g,"")}`}
+              style={{color:"#60a5fa",fontWeight:700,fontSize:13,textDecoration:"none"}}>
+              📞 {customer.phone}
+            </a>
+          )}
+          {customer.company_name && (
+            <span style={{color:"white",fontWeight:700,fontSize:13}}>{customer.company_name}</span>
+          )}
+          {customer.email && (
+            <span style={{color:"#94a3b8",fontSize:12}}>{customer.email}</span>
+          )}
         </div>
+      </div>
         <button onClick={()=>navigate(`/project/new?leadId=${customerId}`)}
           style={{border:"none",background:"#059669",color:"white",
             padding:"8px 14px",borderRadius:8,cursor:"pointer",
