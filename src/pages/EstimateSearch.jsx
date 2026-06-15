@@ -253,11 +253,11 @@ export default function EstimateSearch() {
                       color: PIPELINE_COLORS[p.pipeline_status||"Lead"]?.text}}>
                     {PIPELINE_STAGES.map(s=><option key={s}>{s}</option>)}
                   </select>
-                  {p.address && (
-                    <div style={{fontSize:11,color:"#64748b",marginTop:1}}>
-                      📍 {p.address}
-                    </div>
-                  )}
+                 {p.address && (
+                  <div style={{fontSize:13,fontWeight:700,color:"#0f172a",marginTop:2}}>
+                    📍 {p.address}
+                  </div>
+)}
                   <div style={{fontSize:11,color:"#94a3b8",marginTop:1,display:"flex",gap:6}}>
                     {new Date(p.created_at).toLocaleDateString("en-US",
                       {month:"short",day:"numeric",year:"numeric"})}
@@ -287,23 +287,23 @@ export default function EstimateSearch() {
               <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
                 <button onClick={()=>navigate(`/field-report/${p.id}`)}
                   style={{flex:1,border:"none",background:"#3b82f6",color:"white",
-                    padding:"7px 0",borderRadius:7,cursor:"pointer",
-                    fontSize:12,fontWeight:700}}>
+                    padding:"5px 0",borderRadius:6,cursor:"pointer",
+                    fontSize:11,fontWeight:700}}>
                   📋 Office
-              </button>
+                </button>
                 <button onClick={()=>{
                     if(["Measured","Sent to Office"].includes(p.pipeline_status||"Draft")) updatePipelineStatus(p.id,"Quote Ready");
                     navigate(`/quote-pricing/${p.id}`);
                   }}
                   style={{flex:1,border:"none",background:"#f97316",color:"white",
-                    padding:"7px 0",borderRadius:7,cursor:"pointer",
-                    fontSize:12,fontWeight:700}}>
+                    padding:"5px 0",borderRadius:6,cursor:"pointer",
+                    fontSize:11,fontWeight:700}}>
                   📄 Quote
                 </button>
                 <button onClick={()=>navigate(`/project/${p.id}`)}
                   style={{flex:1,border:"1px solid #e2e8f0",background:"white",
-                    color:"#0f172a",padding:"7px 0",borderRadius:7,
-                    cursor:"pointer",fontSize:12,fontWeight:700}}>
+                    color:"#0f172a",padding:"5px 0",borderRadius:6,
+                    cursor:"pointer",fontSize:11,fontWeight:700}}>
                   ✏️ Edit
                 </button>
                 <button onClick={()=>setOpenCost(openCost===p.id?null:p.id)}
