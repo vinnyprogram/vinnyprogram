@@ -984,6 +984,12 @@ export default function ProjectEstimate() {
     try {
       const key = getDraftKey(selectedLeadId, projectAddress);
       localStorage.removeItem(key);
+      // Also sweep any other drafts for this same lead (orphaned from address changes)
+      const prefix = `draft_estimate_${selectedLeadId}`;
+      for(let i=localStorage.length-1; i>=0; i--){
+        const k = localStorage.key(i);
+        if(k && k.startsWith(prefix)) localStorage.removeItem(k);
+      }
     } catch(e){}
   }
   function loadDraft(key){try{const r=localStorage.getItem(key);return r?JSON.parse(r):null;}catch(e){return null;}}
