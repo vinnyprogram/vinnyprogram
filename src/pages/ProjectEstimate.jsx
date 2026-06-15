@@ -410,7 +410,7 @@ function AreaRow({ area, materials, onChange, onDelete, saveOptionsOnly, onMater
   const matLines = (area.mat_lines && area.mat_lines.length > 0)
     ? area.mat_lines
     : [{ id:1, material:area.material||"", thickness_in:area.thickness_in||"", r_value:area.r_value||"", oc:area.oc||"" }];
-  console.log("RENDER matLines:", JSON.stringify(matLines));
+  
 
   function updateMatLine(idx, field, value) {
     const lines = matLines.map((l,i)=> i===idx ? {...l,[field]:value} : l);
@@ -726,7 +726,16 @@ function AreaRow({ area, materials, onChange, onDelete, saveOptionsOnly, onMater
               </div>
               {!isOptCombo?(
                 <div style={{display:"flex",gap:4,marginBottom:4}}>
-                  <select style={{...XS,flex:3}} value={opt.material||""} onChange={e=>{if(e.target.value==="__combo__"){updateOpt("mat_lines",[{id:1,material:"",thickness_in:matLines[0].thickness_in||"",r_value:matLines[0].r_value||"",oc:""},{id:2,material:"",thickness_in:matLines[0].thickness_in||"",r_value:matLines[0].r_value||"",oc:""}]);updateOpt("material","__combo__");}else{updateOpt("material",e.target.value);}}}>
+                  <select style={{...XS,flex:3}} value={opt.material||""} onChange={e=>{
+                    if(e.target.value==="__combo__"){
+                      const opts=[...areaOptions];
+                      opts[oi]={...opts[oi],material:"__combo__",mat_lines:[
+                        {id:1,material:"",thickness_in:matLines[0].thickness_in||"",r_value:matLines[0].r_value||"",oc:""},
+                        {id:2,material:"",thickness_in:matLines[0].thickness_in||"",r_value:matLines[0].r_value||"",oc:""}
+                      ]};
+                      onChange("options",opts);
+                    } else { updateOpt("material",e.target.value); }
+                  }}>
                     <option value="">Material</option>{materials.map(m=><option key={m.id}>{m.name}</option>)}<option value="__combo__">⚡ Combo</option>
                   </select>
                   <select style={{...XS,flex:1}} value={opt.thickness_in||matLines[0].thickness_in||""} onChange={e=>updateOpt("thickness_in",e.target.value)}><option value="">Thick</option>{THICK_OPTS.map(t=><option key={t}>{t}</option>)}</select>
@@ -1303,16 +1312,7 @@ async function saveProject() {
         });
         if(segs.length>0) await supabase.from("segments").insert(segs);
       }
-     wasSaved.current = true; setSaved(true); setSavedProjectId(projectId); clearDraft();
-      // Clear ALL possible draft keys for this lead
-      try {
-        const keysToRemove = [];
-        for(let i=0; i<localStorage.length; i++){
-          const k = localStorage.key(i);
-          if(k && k.startsWith("draft_estimate_")) keysToRemove.push(k);
-        }
-        keysToRemove.forEach(k=>localStorage.removeItem(k));
-      } catch(e){}
+    wasSaved.current = true; setSaved(true); setSavedProjectId(projectId); clearDraft(); setHasUnsavedChanges(false);
       return;
     }
 
