@@ -1235,8 +1235,8 @@ export default function ProjectEstimate() {
       const collapsed=ex.map(a=>isAreaComplete(a)?{...a,_collapsed:true}:a);
       const last=collapsed[collapsed.length-1];
       const n=last
-        ?{...last,temp_id:Date.now(),sqft:0,measurements:[],mh:"",ml:"",mq:"1",deduct_sqft:"",_collapsed:false,options:[]}
-        :{temp_id:Date.now(),floor,area_type:"",material:"",thickness_in:"",r_value:"",oc:"",sqft:0,measurements:[],mh:"",ml:"",mq:"1",deduct_sqft:"",_collapsed:false,options:[]};
+        ?{...last,temp_id:Date.now(),sqft:0,measurements:[],mh:"",ml:"",mq:"1",deduct_sqft:"",_collapsed:false,options:[],is_optional:false}
+        :{temp_id:Date.now(),floor,area_type:"",material:"",thickness_in:"",r_value:"",oc:"",sqft:0,measurements:[],mh:"",ml:"",mq:"1",deduct_sqft:"",_collapsed:false,options:[],is_optional:false};
       return {...prev,[floor]:[...collapsed,n]};
     });
   }
