@@ -966,10 +966,6 @@ function EstimatePanel({ floors, areas, materialMap, crewNotes, projectName, pro
         <span style={{fontSize:17,color:C.green}}>${fmt(total)}</span>
       </div>
 
-      <div style={{ display:"flex", justifyContent:"space-between", paddingTop:6, borderTop:`2px solid ${C.ink}`, fontWeight:700 }}>
-        <span style={{fontSize:12}}>Total</span>
-        <span style={{fontSize:17,color:C.green}}>${fmt(total)}</span>
-      </div>
     </div>
   );
 }
