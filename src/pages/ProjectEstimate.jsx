@@ -867,7 +867,8 @@ function AreaRow({ area, materials, onChange, onDelete, saveOptionsOnly, onMater
 // ── EstimatePanel ─────────────────────────────────────────────────────────────
 function EstimatePanel({ floors, areas, materialMap, crewNotes, projectName, projectAddress, customer }) {
   function floorTotal(floor) {
-    return (areas[floor]||[]).reduce((s,a)=>s+getAreaTotalCost(a,materialMap),0);
+    return (areas[floor]||[]).filter(a=>!a.is_optional).reduce((s,a)=>s+getAreaTotalCost(a,materialMap),0);
+  }
   }
   const total = floors.reduce((s,f)=>s+floorTotal(f),0);
   return (
@@ -897,7 +898,7 @@ function EstimatePanel({ floors, areas, materialMap, crewNotes, projectName, pro
         </div>
       )}
       {(()=>{
-        const allAreas=floors.flatMap(floor=>(areas[floor]||[]).filter(a=>a.area_type&&a.sqft&&a.material!=="__custom_mat__").map(a=>({...a,floor})));
+       const allAreas=floors.flatMap(floor=>(areas[floor]||[]).filter(a=>a.area_type&&a.sqft&&a.material!=="__custom_mat__"&&!a.is_optional).map(a=>({...a,floor})));
         if(!allAreas.length) return <div style={{color:C.faint,fontSize:10,textAlign:"center",padding:"10px 0"}}>No areas yet</div>;
         const groupMap={};
         allAreas.forEach(a=>{
@@ -933,6 +934,38 @@ function EstimatePanel({ floors, areas, materialMap, crewNotes, projectName, pro
           );
         });
       })()}
+      {(()=>{
+        const optionalAreas=floors.flatMap(floor=>(areas[floor]||[]).filter(a=>a.area_type&&a.sqft&&a.material!=="__custom_mat__"&&a.is_optional).map(a=>({...a,floor})));
+        if(!optionalAreas.length) return null;
+        return (
+          <div style={{marginTop:4,marginBottom:8,paddingTop:8,borderTop:`1px dashed ${C.border}`}}>
+            <div style={{fontSize:10,fontWeight:800,color:"#f59e0b",textTransform:"uppercase",letterSpacing:0.4,marginBottom:6}}>
+              ⭐ Optional Add-ons
+            </div>
+            {optionalAreas.map((a,i)=>{
+              const cost=getAreaTotalCost(a,materialMap);
+              const mls=(a.mat_lines&&a.mat_lines.length>0)?a.mat_lines:[{material:a.material||"",thickness_in:a.thickness_in||"",r_value:a.r_value||""}];
+              const matLabel=mls.map(ml=>[ml.thickness_in,ml.material,ml.r_value].filter(Boolean).join(" ")).join(" + ");
+              return (
+                <div key={i} style={{paddingBottom:5,marginBottom:5,borderBottom:i<optionalAreas.length-1?`1px solid ${C.chip}`:"none"}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+                    <div style={{flex:1,paddingRight:4,lineHeight:1.5}}>
+                      <div style={{fontWeight:700,fontSize:12,color:C.ink}}>{a.floor.replace(" Floor","")} — {a.area_type}</div>
+                      <div style={{fontSize:10,color:C.muted,lineHeight:1.5}}>{matLabel}{" · "}{fmt(a.sqft)} ft²</div>
+                    </div>
+                    {cost>0&&<span style={{fontWeight:700,color:"#f59e0b",fontSize:12,flexShrink:0,paddingTop:2}}>+${fmt(cost)}</span>}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        );
+      })()}
+      <div style={{ display:"flex", justifyContent:"space-between", paddingTop:6, borderTop:`2px solid ${C.ink}`, fontWeight:700 }}>
+        <span style={{fontSize:12}}>Total</span>
+        <span style={{fontSize:17,color:C.green}}>${fmt(total)}</span>
+      </div>
+
       <div style={{ display:"flex", justifyContent:"space-between", paddingTop:6, borderTop:`2px solid ${C.ink}`, fontWeight:700 }}>
         <span style={{fontSize:12}}>Total</span>
         <span style={{fontSize:17,color:C.green}}>${fmt(total)}</span>
@@ -1190,7 +1223,7 @@ export default function ProjectEstimate() {
   const materialMap=useMemo(()=>Object.fromEntries(materials.map(m=>[m.name,m])),[materials]);
   const selectedLead=leads.find(l=>String(l.id)===String(selectedLeadId));
 
-  function floorTotal(floor){return(areas[floor]||[]).reduce((s,a)=>s+getAreaTotalCost(a,materialMap),0);}
+  function floorTotal(floor){return(areas[floor]||[]).filter(a=>!a.is_optional).reduce((s,a)=>s+getAreaTotalCost(a,materialMap),0);}
   const projectTotal=floors.reduce((s,f)=>s+floorTotal(f),0);
 
   function addFloor(){
