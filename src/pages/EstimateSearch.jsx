@@ -115,7 +115,10 @@ export default function EstimateSearch() {
         custGroups[cid].projects.push({...p, quote: quoteMap[p.id]||null});
       });
 
-      setGroups(Object.values(custGroups));
+      const sortedGroups = Object.values(custGroups).sort((a,b)=>
+        new Date(b.projects[0]?.created_at||0) - new Date(a.projects[0]?.created_at||0)
+      );
+      setGroups(sortedGroups);
       setLoading(false);
     }
     load();
