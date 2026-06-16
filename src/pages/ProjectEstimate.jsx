@@ -387,6 +387,9 @@ function AreaRow({ area, materials, onChange, onDelete, saveOptionsOnly, onMater
   const [thickOpts, setThickOpts] = useState(()=>loadCustomList("custom_thick_opts", THICK_OPTS));
   const [rValOpts, setRValOpts] = useState(()=>loadCustomList("custom_rval_opts", R_VALS));
 
+  const [calcOpen, setCalcOpen] = useState(false);
+  const [calcExpr, setCalcExpr] = useState(""); 
+
   useEffect(()=>{
     if(area._collapsed) setExpanded(false);
   },[area._collapsed]);
@@ -455,6 +458,26 @@ function AreaRow({ area, materials, onChange, onDelete, saveOptionsOnly, onMater
     onChange("sqft", total);
     onChange("mh", ""); onChange("ml", ""); onChange("mq", "1");
   }
+
+  function calcPress(val) {
+  if(val==="C") { setCalcExpr(""); return; }
+  if(val==="⌫") { setCalcExpr(p=>p.slice(0,-1)); return; }
+  if(val==="="){
+    try {
+      const safe = calcExpr.replace(/[^0-9+\-*/.()]/g,"");
+      const result = Function(`"use strict";return (${safe||0})`)();
+      setCalcExpr(String(Math.round(result*100)/100));
+    } catch(e){ setCalcExpr("Error"); }
+    return;
+  }
+  setCalcExpr(p=>p+val);
+}
+function useCalcResult(field) {
+  const n = parseFloat(calcExpr);
+  if(!isNaN(n)) onChange(field, String(n));
+  setCalcOpen(false);
+  setCalcExpr("");
+}
 
   function delMeas(i) {
     const meas = (area.measurements||[]).filter((_,j)=>j!==i);
@@ -784,8 +807,40 @@ function AreaRow({ area, materials, onChange, onDelete, saveOptionsOnly, onMater
       </div>
 
       {/* measurements */}
-      <div style={{ borderTop:`1px solid ${C.border}`, paddingTop:4, marginTop:2 }}>
-        <div style={{ display:"flex", gap:3, alignItems:"center", marginBottom:4 }}>
+      <div style={{ borderTop:`1px solid ${C.border}`, paddingTop:4, marginTop:2, position:"relative" }}>
+  {calcOpen && (
+    <div style={{position:"absolute",bottom:"100%",left:0,right:0,zIndex:50,
+        background:"#fff",border:`2px solid ${C.ink}`,borderRadius:10,
+        padding:8,boxShadow:"0 -4px 16px rgba(0,0,0,.2)",marginBottom:4}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+        <span style={{fontSize:10,fontWeight:700,color:C.muted}}>🧮 Calculator</span>
+        <button onClick={()=>{setCalcOpen(false);setCalcExpr("");}}
+          style={{border:"none",background:"none",color:C.faint,fontSize:16,cursor:"pointer",padding:0}}>✕</button>
+      </div>
+      <input readOnly value={calcExpr||"0"}
+        style={{...XS,width:"100%",marginBottom:6,textAlign:"right",fontSize:18,fontWeight:700,height:36}} />
+      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:4,marginBottom:6}}>
+        {["7","8","9","÷","4","5","6","×","1","2","3","−","C","0",".","+"].map(k=>(
+          <button key={k} onClick={()=>calcPress(k==="÷"?"/":k==="×"?"*":k==="−"?"-":k)}
+            style={{height:32,borderRadius:6,border:`1px solid ${C.border}`,background:"#f8fafc",
+              fontSize:14,fontWeight:600,cursor:"pointer",color:C.ink}}>{k}</button>
+        ))}
+      </div>
+      <div style={{display:"flex",gap:4,marginBottom:6}}>
+        <button onClick={()=>calcPress("⌫")} style={{flex:1,height:32,borderRadius:6,border:`1px solid ${C.border}`,background:"#f8fafc",fontSize:13,fontWeight:600,cursor:"pointer"}}>⌫</button>
+        <button onClick={()=>calcPress("=")} style={{flex:1,height:32,borderRadius:6,border:"none",background:C.ink,color:"#fff",fontSize:13,fontWeight:700,cursor:"pointer"}}>=</button>
+      </div>
+      <div style={{display:"flex",gap:4}}>
+        <button onClick={()=>useCalcResult("mh")} style={{flex:1,height:30,borderRadius:6,border:"none",background:"#059669",color:"#fff",fontSize:11,fontWeight:700,cursor:"pointer"}}>→ Use as H</button>
+        <button onClick={()=>useCalcResult("ml")} style={{flex:1,height:30,borderRadius:6,border:"none",background:"#059669",color:"#fff",fontSize:11,fontWeight:700,cursor:"pointer"}}>→ Use as L</button>
+      </div>
+    </div>
+  )}
+  <div style={{ display:"flex", gap:3, alignItems:"center", marginBottom:4 }}>
+    <button onClick={()=>setCalcOpen(p=>!p)} type="button"
+      style={{border:`1px solid ${C.border}`,background:calcOpen?C.ink:"#f8fafc",
+        color:calcOpen?"#fff":C.muted,borderRadius:5,width:28,height:30,
+        cursor:"pointer",fontSize:14,flexShrink:0,padding:0}}>🧮</button>
          {isComboMode ? (
               (()=>{
                 const totalR = matLines.reduce((sum,ml)=>{
