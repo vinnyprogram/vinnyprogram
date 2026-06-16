@@ -488,9 +488,12 @@ function AreaRow({ area, materials, onChange, onDelete, saveOptionsOnly, onMater
 
   // ── COLLAPSED ──
   if (isComplete && !expanded) return (
-    <div style={{ background:"#f0fdf4", border:"1px solid #86efac", borderLeft:"3px solid #059669", borderRadius:7, padding:"4px 8px", marginBottom:3 }}>
+  <div style={{ background:area.is_optional?"#fffbeb":"#f0fdf4", border:`1px solid ${area.is_optional?"#fde68a":"#86efac"}`, borderLeft:`3px solid ${area.is_optional?"#f59e0b":"#059669"}`, borderRadius:7, padding:"4px 8px", marginBottom:3 }}>
       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:2 }}>
-        <span style={{ fontSize:11, fontWeight:700, color:C.ink }}>{area.area_type||"—"}</span>
+        <span style={{ fontSize:11, fontWeight:700, color:C.ink }}>
+          {area.is_optional&&<span style={{color:"#f59e0b",marginRight:4}}>⭐</span>}
+          {area.area_type||"—"}
+        </span>
         <div style={{ display:"flex", alignItems:"center", gap:6 }}>
           <span style={{ fontSize:11, fontWeight:700, color:"#059669" }}>${fmt(totalCost)}</span>
           <button onClick={()=>setExpanded(true)} style={{ border:"none", background:"none", color:"#059669", cursor:"pointer", fontSize:14, padding:"0 2px", lineHeight:1 }}>✏️</button>
@@ -526,20 +529,26 @@ function AreaRow({ area, materials, onChange, onDelete, saveOptionsOnly, onMater
         borderLeft:isComplete?"3px solid #059669":`1px solid ${C.border}`,
         borderRadius:7, padding:"6px 8px", marginBottom:4 }}>
 
-      {isComplete && (
-      <div style={{ margin:"-6px -8px 8px -8px", padding:"10px 12px", background:"#059669",
-          borderRadius:"7px 7px 0 0", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-        <button onClick={()=>setExpanded(false)}
-          style={{border:"none",background:"rgba(255,255,255,0.2)",color:"#fff",
-            padding:"6px 16px",borderRadius:6,cursor:"pointer",fontSize:13,fontWeight:700}}>
-          ✓ Done
-        </button>
-        <button onClick={onDelete}
-          style={{border:"none",background:"rgba(255,0,0,0.3)",color:"#fff",
-            padding:"6px 12px",borderRadius:6,cursor:"pointer",fontSize:13,fontWeight:700}}>
-          🗑 Delete
-        </button>
-      </div>
+     {isComplete && (
+    <div style={{ margin:"-6px -8px 8px -8px", padding:"10px 12px", background:"#059669",
+        borderRadius:"7px 7px 0 0", display:"flex", justifyContent:"space-between", alignItems:"center", gap:6 }}>
+      <button onClick={()=>setExpanded(false)}
+        style={{border:"none",background:"rgba(255,255,255,0.2)",color:"#fff",
+          padding:"6px 16px",borderRadius:6,cursor:"pointer",fontSize:13,fontWeight:700}}>
+        ✓ Done
+      </button>
+      <button onClick={()=>onChange("is_optional",!area.is_optional)}
+        style={{border:"none",background:area.is_optional?"#fbbf24":"rgba(255,255,255,0.2)",
+          color:area.is_optional?"#78350f":"#fff",
+          padding:"6px 12px",borderRadius:6,cursor:"pointer",fontSize:13,fontWeight:700,whiteSpace:"nowrap"}}>
+        {area.is_optional?"⭐ Optional":"☆ Mark Optional"}
+      </button>
+      <button onClick={onDelete}
+        style={{border:"none",background:"rgba(255,0,0,0.3)",color:"#fff",
+          padding:"6px 12px",borderRadius:6,cursor:"pointer",fontSize:13,fontWeight:700}}>
+        🗑 Delete
+      </button>
+    </div>
     )}
 
       {/* area type */}
