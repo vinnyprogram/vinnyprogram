@@ -869,7 +869,6 @@ function EstimatePanel({ floors, areas, materialMap, crewNotes, projectName, pro
   function floorTotal(floor) {
     return (areas[floor]||[]).filter(a=>!a.is_optional).reduce((s,a)=>s+getAreaTotalCost(a,materialMap),0);
   }
-  }
   const total = floors.reduce((s,f)=>s+floorTotal(f),0);
   return (
     <div style={{ fontSize:11, lineHeight:1.55 }}>
