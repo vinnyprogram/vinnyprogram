@@ -131,7 +131,7 @@ function CustomerSection({ leads, selectedLead, selectedLeadId, jobAddress,
             </div>
             <button onClick={clear} style={{ border:"none", background:"none", color:C.faint, fontSize:13, cursor:"pointer", padding:"0 4px" }}>Change</button>
           </div>
-          <div style={{fontSize:10,color:C.faint,marginBottom:4}}>Job address (separate from customer's address)</div>
+          <div style={{fontSize:10,color:C.faint,marginBottom:4}}>Job address</div>
           <AddressInput style={{...I,width:"100%"}}
             placeholder="Job address for this estimate…" value={jobAddress}
             onChange={onAddressChange} />
