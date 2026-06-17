@@ -16,6 +16,7 @@ import QuotePricing from "./pages/QuotePricing";
 import EstimateDrawings from "./pages/EstimateDrawings";
 import ResetPassword from "./pages/ResetPassword";
 import HersEstimate from "./pages/HersEstimate";
+import HersSearch from "./pages/HersSearch";
 
 
 function Dashboard() { return <h2 style={{padding:20}}>Dashboard</h2>; }
@@ -72,6 +73,7 @@ function ProtectedApp() {
         <Route path="quote-pricing/:projectId" element={<QuotePricing />} />
         <Route path="project/drawings" element={<EstimateDrawings />} />
         
+        <Route path="/hers/search" element={<HersSearch />} />
         <Route path="/hers/new" element={<HersEstimate />} />
         <Route path="/hers/:id" element={<HersEstimate />} />
       </Route>
