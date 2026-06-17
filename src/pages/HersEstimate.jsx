@@ -629,12 +629,12 @@ export default function HersEstimate() {
 
       {/* header */}
       <div style={{position:"sticky",top:0,zIndex:100,background:C.white,borderBottom:`1px solid ${C.border}`,
-          padding:"10px 16px",display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}>
+          padding:"10px 16px",display:"flex",flexWrap:"wrap",justifyContent:"space-between",alignItems:"center",gap:8,rowGap:6}}>
         <button onClick={()=>navigate(-1)} style={Btn}>← Back</button>
-        <span style={{fontWeight:700,fontSize:14,flex:1,textAlign:"center"}}>
+        <span style={{fontWeight:700,fontSize:14,flex:"1 1 auto",textAlign:"center",minWidth:140}}>
           🏠 HERS Rating {isEditing?"Estimate":"— New Estimate"}
         </span>
-        <div style={{display:"flex",gap:6}}>
+        <div style={{display:"flex",gap:6,flexWrap:"wrap",justifyContent:"flex-end",flex:"1 1 auto"}}>
           {selectedLead && (
             <button onClick={emailToCustomer} style={{...Btn,color:"#2563eb",borderColor:"#2563eb"}}>
               📧 Email
