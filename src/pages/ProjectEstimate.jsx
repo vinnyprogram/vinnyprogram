@@ -1109,10 +1109,10 @@ export default function ProjectEstimate() {
   function loadDraft(key){try{const r=localStorage.getItem(key);return r?JSON.parse(r):null;}catch(e){return null;}}
 
   function saveDraftNow(overrideAreas,overrideFloors){
-  if(!selectedLeadId) return;
-  const key=getDraftKey(selectedLeadId, projectAddress);
+    if(!selectedLeadId) return;
+    const key=getDraftKey(selectedLeadId, projectAddress);
     try{
-      localStorage.setItem(key,JSON.stringify({savedAt:new Date().toISOString(),selectedLeadId,projectName,projectAddress,crewNotes,floors:overrideFloors||floors,areas:overrideAreas||areas}));
+      localStorage.setItem(key,JSON.stringify({savedAt:new Date().toISOString(),selectedLeadId,projectName,projectAddress,crewNotes,floors:overrideFloors||floors,areas:overrideAreas||areas,editingProjectId:isEditing?projectId:null}));
       if(!draftKey) setDraftKey(key);
     }catch(e){}
   }
@@ -1238,6 +1238,22 @@ export default function ProjectEstimate() {
       setAreas(newAreas);
         // Force leads reload if empty
         if(!leads.length) loadLeads();
+        setAreas(newAreas);
+        if(!leads.length) loadLeads();
+
+        // Check for a pending draft for THIS existing project (resume mid-edit)
+        if(resumeMode){
+          const dKey=getDraftKey(String(proj.lead_id), proj.address||"");
+          const draft=loadDraft(dKey);
+          if(draft && draft.editingProjectId===projectId){
+            if(draft.crewNotes) setCrewNotes(draft.crewNotes);
+            if(draft.floors?.length) setFloors(draft.floors);
+            if(draft.areas) setAreas(draft.areas);
+            if(draft.projectName) setProjectName(draft.projectName);
+            if(draft.projectAddress) setProjectAddress(draft.projectAddress);
+            setDraftRestored(true);
+          }
+        }
         setLoadingProject(false);
     }
     loadProject();
