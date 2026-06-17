@@ -580,6 +580,7 @@ export default function HersEstimate() {
         payment_schedule: scheduleOpen ? paymentSchedule.map(s=>({
           id: s.id, label: s.label||"", type: s.type, value: Number(s.value)||0,
         })) : [],
+        notes,
         status: "Unpaid",
       }]).select().single();
       if(error) throw error;
