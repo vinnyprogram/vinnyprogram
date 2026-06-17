@@ -873,6 +873,11 @@ function useCalcResult(field) {
               )}
               </>
             )}
+          <input placeholder="1" inputMode="decimal" value={area.mq||""}
+            onChange={e=>onChange("mq",e.target.value)}
+            onBlur={commitMeasurement} onKeyDown={e=>e.key==="Enter"&&commitMeasurement()}
+            className="area-mq-input" style={{...I,...noArrow,width:36,padding:"0 3px",textAlign:"center",height:30,fontSize:13}} />
+          <span style={{fontSize:11,color:C.faint}}>×</span>
           <input placeholder="H" inputMode="decimal" value={area.mh||""}
             onChange={e=>onChange("mh",e.target.value)}
             onBlur={commitMeasurement} onKeyDown={e=>e.key==="Enter"&&commitMeasurement()}
@@ -882,11 +887,6 @@ function useCalcResult(field) {
             onChange={e=>onChange("ml",e.target.value)}
             onBlur={commitMeasurement} onKeyDown={e=>e.key==="Enter"&&commitMeasurement()}
             className="area-hl-input" style={{...I,...noArrow,flex:1,padding:"0 4px",textAlign:"center",height:30,fontSize:13}} />
-          <span style={{fontSize:11,color:C.faint}}>×</span>
-          <input placeholder="1" inputMode="decimal" value={area.mq||""}
-            onChange={e=>onChange("mq",e.target.value)}
-            onBlur={commitMeasurement} onKeyDown={e=>e.key==="Enter"&&commitMeasurement()}
-            className="area-mq-input" style={{...I,...noArrow,width:36,padding:"0 3px",textAlign:"center",height:30,fontSize:13}} />
           <span style={{fontSize:11,fontWeight:700,color:livePreview>0?C.green:C.ink,whiteSpace:"nowrap"}}>
             {livePreview>0?`${fmt(livePreview)}→`:""}{fmt(area.sqft)}ft²
           </span>
