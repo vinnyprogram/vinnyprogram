@@ -120,14 +120,6 @@ export default function HersSearch() {
                 </a>
               )}
             </div>
-            {g.customer?.id && (
-              <button onClick={()=>navigate(`/customer/${g.customer.id}`)}
-                style={{border:"none",background:"#0f172a",color:"white",
-                  padding:"6px 12px",borderRadius:6,cursor:"pointer",
-                  fontSize:11,fontWeight:700,whiteSpace:"nowrap"}}>
-                👤 Profile
-              </button>
-            )}
           </div>
 
           {/* estimates */}
