@@ -57,6 +57,14 @@ export default function HersSearch() {
     load();
   },[]);
 
+  async function updateStatus(estimateId, newStatus) {
+    await supabase.from("hers_estimates").update({status:newStatus}).eq("id",estimateId);
+    setGroups(prev=>prev.map(g=>({
+      ...g,
+      estimates: g.estimates.map(e=>e.id===estimateId?{...e,status:newStatus}:e),
+    })));
+  }
+
   const filtered = groups.filter(g=>{
     if(!search.trim()) return true;
     const s = search.toLowerCase();
@@ -129,11 +137,16 @@ export default function HersSearch() {
                 background:ei===0?"#f0fdf4":"white"}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
                 <div>
-                  <span style={{fontSize:10,padding:"2px 7px",borderRadius:10,fontWeight:700,
+                  <select value={e.status||"Draft"} onChange={ev=>updateStatus(e.id, ev.target.value)}
+                    style={{fontSize:10,padding:"2px 7px",borderRadius:10,fontWeight:700,
+                      border:"none",cursor:"pointer",
                       background:(STATUS_COLORS[e.status]||STATUS_COLORS.Draft).bg,
                       color:(STATUS_COLORS[e.status]||STATUS_COLORS.Draft).text}}>
-                    {e.status||"Draft"}
-                  </span>
+                    <option value="Draft">Draft</option>
+                    <option value="Sent">Sent</option>
+                    <option value="Accepted">Accepted</option>
+                    <option value="Declined">Declined</option>
+                  </select>
                   {e.address && (
                     <div style={{fontSize:14,fontWeight:700,color:"#0f172a",marginTop:4}}>
                       📍 {e.address}

@@ -584,7 +584,6 @@ export default function HersEstimate() {
         status: "Unpaid",
       }]).select().single();
       if(error) throw error;
-      await supabase.from("hers_estimates").update({status:"Accepted"}).eq("id",estimateId);
       navigate(`/hers/invoice/${data.id}`);
     } catch(err){
       alert("Error creating invoice: "+(err.message||JSON.stringify(err)));
@@ -748,6 +747,15 @@ export default function HersEstimate() {
 
         {/* tax + notes */}
         <div style={CARD}>
+          <div style={{display:"flex",gap:12,marginBottom:10,alignItems:"center"}}>
+            <span style={{fontSize:12,color:C.muted,whiteSpace:"nowrap"}}>Status</span>
+            <select value={status} onChange={e=>setStatus(e.target.value)} style={{...I,width:130}}>
+              <option value="Draft">Draft</option>
+              <option value="Sent">Sent</option>
+              <option value="Accepted">Accepted</option>
+              <option value="Declined">Declined</option>
+            </select>
+          </div>
           <div style={{display:"flex",gap:12,marginBottom:10,alignItems:"center"}}>
             <span style={{fontSize:12,color:C.muted,whiteSpace:"nowrap"}}>Tax rate</span>
             <input type="number" value={taxRate} onChange={e=>setTaxRate(e.target.value)}
