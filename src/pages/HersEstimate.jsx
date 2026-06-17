@@ -33,6 +33,97 @@ function fmt(n) {
   return Number(n||0).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2});
 }
 
+function AdjustmentRow({ label, open, type, value, amount, onAdd, onTypeChange, onValueChange, onRemove }) {
+  if(!open){
+    return (
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"7px 0"}}>
+        <span style={{fontSize:13,color:C.ink}}>{label}</span>
+        <button onClick={onAdd} style={{border:"none",background:"none",color:C.green,
+            cursor:"pointer",fontSize:12,fontWeight:700}}>+ Add</button>
+      </div>
+    );
+  }
+  return (
+    <div style={{padding:"7px 0"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+        <span style={{fontSize:13,color:C.ink,fontWeight:600}}>{label}</span>
+        <button onClick={onRemove} style={{border:"none",background:"none",color:C.faint,
+            cursor:"pointer",fontSize:12}}>✕ Remove</button>
+      </div>
+      <div style={{display:"flex",gap:6,alignItems:"center"}}>
+        <select value={type} onChange={e=>onTypeChange(e.target.value)} style={{...I,width:64,fontSize:12,flexShrink:0}}>
+          <option value="percent">%</option>
+          <option value="fixed">$</option>
+        </select>
+        <input type="number" value={value} onChange={e=>onValueChange(e.target.value)}
+          placeholder={type==="percent"?"e.g. 15":"e.g. 100.00"}
+          style={{...I,flex:1,fontSize:12,minWidth:0}} />
+        <span style={{fontSize:12,color:C.muted,whiteSpace:"nowrap",flexShrink:0}}>
+          = ${fmt(amount)}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function PaymentScheduleEditor({ open, schedule, grandTotal, scheduledTotal, onAdd, onChange, onRemoveAll, installmentAmount }) {
+  function addInstallment(){
+    onChange([...schedule, { id: Date.now()+Math.random(), label:`Payment ${schedule.length+1}`, type:"percent", value:"" }]);
+  }
+  function updateInstallment(idx, field, val){
+    onChange(schedule.map((s,i)=> i===idx ? {...s,[field]:val} : s));
+  }
+  function removeInstallment(idx){
+    onChange(schedule.filter((_,i)=>i!==idx));
+  }
+  const diff = Math.round((grandTotal-scheduledTotal)*100)/100;
+
+  if(!open){
+    return (
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"7px 0"}}>
+        <span style={{fontSize:13,color:C.ink}}>Payment Schedule</span>
+        <button onClick={onAdd} style={{border:"none",background:"none",color:C.green,
+            cursor:"pointer",fontSize:12,fontWeight:700}}>+ Add</button>
+      </div>
+    );
+  }
+  return (
+    <div style={{padding:"7px 0"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+        <span style={{fontSize:13,color:C.ink,fontWeight:600}}>Payment Schedule</span>
+        <button onClick={onRemoveAll} style={{border:"none",background:"none",color:C.faint,
+            cursor:"pointer",fontSize:12}}>✕ Remove</button>
+      </div>
+      {schedule.map((s,idx)=>(
+        <div key={s.id} style={{display:"flex",gap:6,alignItems:"center",marginBottom:6}}>
+          <input value={s.label} onChange={e=>updateInstallment(idx,"label",e.target.value)}
+            placeholder="Label" style={{...I,flex:1.4,fontSize:12,minWidth:0}} />
+          <select value={s.type} onChange={e=>updateInstallment(idx,"type",e.target.value)}
+            style={{...I,width:56,fontSize:12,flexShrink:0}}>
+            <option value="percent">%</option>
+            <option value="fixed">$</option>
+          </select>
+          <input type="number" value={s.value} onChange={e=>updateInstallment(idx,"value",e.target.value)}
+            placeholder="0" style={{...I,width:64,fontSize:12,flexShrink:0}} />
+          <span style={{fontSize:12,color:C.muted,minWidth:64,textAlign:"right",flexShrink:0}}>
+            ${fmt(installmentAmount(s))}
+          </span>
+          <button onClick={()=>removeInstallment(idx)}
+            style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:14,flexShrink:0}}>✕</button>
+        </div>
+      ))}
+      <button onClick={addInstallment} style={{...Btn,fontSize:11,marginTop:2}}>+ Add installment</button>
+      {schedule.length>0 && Math.abs(diff)>0.01 && (
+        <div style={{fontSize:11,color:"#b45309",marginTop:8,lineHeight:1.4}}>
+          ⚠️ Scheduled payments total ${fmt(scheduledTotal)}, which is {diff>0
+            ? `$${fmt(diff)} short of`
+            : `$${fmt(Math.abs(diff))} over`} the grand total (${fmt(grandTotal)}).
+        </div>
+      )}
+    </div>
+  );
+}
+
 function CustomerSection({ leads, selectedLead, selectedLeadId, jobAddress,
     onSelect, onClear, onSaveNew, onAddressChange }) {
   const [query, setQuery]     = useState("");
@@ -254,6 +345,19 @@ export default function HersEstimate() {
   const [notes, setNotes]     = useState("");
   const [status, setStatus]   = useState("Draft");
 
+  // pricing options: markup, discount, deposit, payment schedule
+  const [markupOpen, setMarkupOpen]     = useState(false);
+  const [markupType, setMarkupType]     = useState("percent");
+  const [markupValue, setMarkupValue]   = useState("");
+  const [discountOpen, setDiscountOpen] = useState(false);
+  const [discountType, setDiscountType] = useState("percent");
+  const [discountValue, setDiscountValue] = useState("");
+  const [depositOpen, setDepositOpen]   = useState(false);
+  const [depositType, setDepositType]   = useState("percent");
+  const [depositValue, setDepositValue] = useState("");
+  const [scheduleOpen, setScheduleOpen] = useState(false);
+  const [paymentSchedule, setPaymentSchedule] = useState([]);
+
   useEffect(()=>{ load(); },[]);
 
   async function load() {
@@ -282,6 +386,13 @@ export default function HersEstimate() {
         const items = Array.isArray(est.line_items) ? est.line_items
           : (typeof est.line_items === "string" ? JSON.parse(est.line_items||"[]") : []);
         if(items.length) setLineItems(items.map(it=>({...it, id: it.id||Date.now()+Math.random()})));
+
+        if(est.markup_value){ setMarkupOpen(true); setMarkupType(est.markup_type||"percent"); setMarkupValue(String(est.markup_value)); }
+        if(est.discount_value){ setDiscountOpen(true); setDiscountType(est.discount_type||"percent"); setDiscountValue(String(est.discount_value)); }
+        if(est.deposit_value){ setDepositOpen(true); setDepositType(est.deposit_type||"percent"); setDepositValue(String(est.deposit_value)); }
+        const sched = Array.isArray(est.payment_schedule) ? est.payment_schedule
+          : (typeof est.payment_schedule === "string" ? JSON.parse(est.payment_schedule||"[]") : []);
+        if(sched.length){ setScheduleOpen(true); setPaymentSchedule(sched.map(s=>({...s, id: s.id||Date.now()+Math.random()}))); }
       }
       setLoading(false);
     }
@@ -344,8 +455,16 @@ export default function HersEstimate() {
   }
 
   const subtotal = lineItems.reduce((s,it)=>s+lineTotal(it),0);
-  const taxTotal = subtotal * (Number(taxRate)||0)/100;
-  const grandTotal = subtotal + taxTotal;
+  const markupAmount = markupOpen ? (markupType==="percent" ? subtotal*(Number(markupValue)||0)/100 : (Number(markupValue)||0)) : 0;
+  const discountAmount = discountOpen ? (discountType==="percent" ? subtotal*(Number(discountValue)||0)/100 : (Number(discountValue)||0)) : 0;
+  const adjustedSubtotal = subtotal + markupAmount - discountAmount;
+  const taxTotal = adjustedSubtotal * (Number(taxRate)||0)/100;
+  const grandTotal = adjustedSubtotal + taxTotal;
+  const depositAmount = depositOpen ? (depositType==="percent" ? grandTotal*(Number(depositValue)||0)/100 : (Number(depositValue)||0)) : 0;
+  function installmentAmount(s){
+    return s.type==="percent" ? grandTotal*(Number(s.value)||0)/100 : (Number(s.value)||0);
+  }
+  const scheduledTotal = paymentSchedule.reduce((s,it)=>s+installmentAmount(it),0);
 
   async function saveEstimate(){
     if(saving) return;
@@ -364,6 +483,15 @@ export default function HersEstimate() {
         tax_rate: Number(taxRate)||0,
         tax_total: Math.round(taxTotal*100)/100,
         grand_total: Math.round(grandTotal*100)/100,
+        markup_type: markupOpen ? markupType : null,
+        markup_value: markupOpen ? (Number(markupValue)||0) : 0,
+        discount_type: discountOpen ? discountType : null,
+        discount_value: discountOpen ? (Number(discountValue)||0) : 0,
+        deposit_type: depositOpen ? depositType : null,
+        deposit_value: depositOpen ? (Number(depositValue)||0) : 0,
+        payment_schedule: scheduleOpen ? paymentSchedule.map(s=>({
+          id: s.id, label: s.label||"", type: s.type, value: Number(s.value)||0,
+        })) : [],
         notes,
         updated_at: new Date().toISOString(),
       };
@@ -397,6 +525,15 @@ export default function HersEstimate() {
         tax_rate: Number(taxRate)||0,
         tax_total: Math.round(taxTotal*100)/100,
         grand_total: Math.round(grandTotal*100)/100,
+        markup_type: markupOpen ? markupType : null,
+        markup_value: markupOpen ? (Number(markupValue)||0) : 0,
+        discount_type: discountOpen ? discountType : null,
+        discount_value: discountOpen ? (Number(discountValue)||0) : 0,
+        deposit_type: depositOpen ? depositType : null,
+        deposit_value: depositOpen ? (Number(depositValue)||0) : 0,
+        payment_schedule: scheduleOpen ? paymentSchedule.map(s=>({
+          id: s.id, label: s.label||"", type: s.type, value: Number(s.value)||0,
+        })) : [],
         status: "Unpaid",
       }]).select().single();
       if(error) throw error;
@@ -569,12 +706,56 @@ export default function HersEstimate() {
             rows={2} style={{...I,width:"100%",height:"auto",padding:"8px",resize:"none",fontFamily:"inherit"}} />
         </div>
 
+        {/* pricing options: markup, discount, deposit, payment schedule */}
+        <div style={CARD}>
+          <div style={{fontSize:11,fontWeight:700,color:C.faint,textTransform:"uppercase",letterSpacing:0.4,marginBottom:4}}>
+            Pricing Options
+          </div>
+          <div style={{borderTop:`1px solid ${C.border}`}}>
+            <AdjustmentRow label="Markup" open={markupOpen} type={markupType} value={markupValue} amount={markupAmount}
+              onAdd={()=>setMarkupOpen(true)}
+              onTypeChange={setMarkupType} onValueChange={setMarkupValue}
+              onRemove={()=>{setMarkupOpen(false); setMarkupValue(""); setMarkupType("percent");}} />
+          </div>
+          <div style={{borderTop:`1px solid ${C.border}`}}>
+            <AdjustmentRow label="Discount" open={discountOpen} type={discountType} value={discountValue} amount={discountAmount}
+              onAdd={()=>setDiscountOpen(true)}
+              onTypeChange={setDiscountType} onValueChange={setDiscountValue}
+              onRemove={()=>{setDiscountOpen(false); setDiscountValue(""); setDiscountType("percent");}} />
+          </div>
+          <div style={{borderTop:`1px solid ${C.border}`}}>
+            <AdjustmentRow label="Request a deposit" open={depositOpen} type={depositType} value={depositValue} amount={depositAmount}
+              onAdd={()=>setDepositOpen(true)}
+              onTypeChange={setDepositType} onValueChange={setDepositValue}
+              onRemove={()=>{setDepositOpen(false); setDepositValue(""); setDepositType("percent");}} />
+          </div>
+          <div style={{borderTop:`1px solid ${C.border}`}}>
+            <PaymentScheduleEditor open={scheduleOpen} schedule={paymentSchedule} grandTotal={grandTotal}
+              scheduledTotal={scheduledTotal} installmentAmount={installmentAmount}
+              onAdd={()=>setScheduleOpen(true)}
+              onChange={setPaymentSchedule}
+              onRemoveAll={()=>{setScheduleOpen(false); setPaymentSchedule([]);}} />
+          </div>
+        </div>
+
         {/* totals */}
         <div style={{background:C.ink,borderRadius:12,padding:"16px 20px"}}>
           <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
             <span style={{color:"#94a3b8",fontSize:12}}>Subtotal</span>
             <span style={{color:"#fff",fontSize:12}}>${fmt(subtotal)}</span>
           </div>
+          {markupOpen && Number(markupValue)>0 && (
+            <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
+              <span style={{color:"#94a3b8",fontSize:12}}>Markup {markupType==="percent"?`(${markupValue}%)`:""}</span>
+              <span style={{color:"#fff",fontSize:12}}>+${fmt(markupAmount)}</span>
+            </div>
+          )}
+          {discountOpen && Number(discountValue)>0 && (
+            <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
+              <span style={{color:"#94a3b8",fontSize:12}}>Discount {discountType==="percent"?`(${discountValue}%)`:""}</span>
+              <span style={{color:"#fff",fontSize:12}}>-${fmt(discountAmount)}</span>
+            </div>
+          )}
           {Number(taxRate)>0 && (
             <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
               <span style={{color:"#94a3b8",fontSize:12}}>Tax ({taxRate}%)</span>
@@ -586,6 +767,26 @@ export default function HersEstimate() {
             <span style={{color:"#94a3b8",fontSize:12}}>Total</span>
             <span style={{color:"#059669",fontWeight:800,fontSize:24}}>${fmt(grandTotal)}</span>
           </div>
+          {depositOpen && Number(depositValue)>0 && (
+            <div style={{display:"flex",justifyContent:"space-between",marginTop:10,paddingTop:10,
+                borderTop:"1px solid #374151"}}>
+              <span style={{color:"#94a3b8",fontSize:12}}>Deposit required {depositType==="percent"?`(${depositValue}%)`:""}</span>
+              <span style={{color:"#fff",fontSize:13,fontWeight:700}}>${fmt(depositAmount)}</span>
+            </div>
+          )}
+          {scheduleOpen && paymentSchedule.length>0 && (
+            <div style={{marginTop:depositOpen&&Number(depositValue)>0?8:10,
+                paddingTop:depositOpen&&Number(depositValue)>0?0:10,
+                borderTop:depositOpen&&Number(depositValue)>0?"none":"1px solid #374151"}}>
+              <div style={{color:"#94a3b8",fontSize:12,marginBottom:4}}>Payment Schedule</div>
+              {paymentSchedule.map(s=>(
+                <div key={s.id} style={{display:"flex",justifyContent:"space-between",marginBottom:3}}>
+                  <span style={{color:"#cbd5e1",fontSize:11}}>{s.label||"Payment"}</span>
+                  <span style={{color:"#fff",fontSize:11}}>${fmt(installmentAmount(s))}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
       </div>
