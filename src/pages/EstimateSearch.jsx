@@ -118,6 +118,17 @@ export default function EstimateSearch() {
         custGroups[cid].projects.push({...p, quote: quoteMap[p.id]||null});
       });
 
+      // keep only the latest project per address within each customer group
+      Object.values(custGroups).forEach(g=>{
+        const seenAddr = {};
+        g.projects = g.projects.filter(p=>{
+          const addr = p.address||"No address";
+          if(seenAddr[addr]) return false;
+          seenAddr[addr] = true;
+          return true; // first occurrence = newest, since projs is already sorted desc
+        });
+      });
+
       const sortedGroups = Object.values(custGroups).sort((a,b)=>
         new Date(b.projects[0]?.created_at||0) - new Date(a.projects[0]?.created_at||0)
       );
