@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { useSearchParams, useNavigate, useParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
+import AddressInput from "./AddressInput";
 
 const C = {
   bg: "#f4f5f7", white: "#fff", ink: "#0f172a",
@@ -80,107 +81,7 @@ function calcArea(sqft, thick, mat) {
   return { qty:q, unit:u, unit_price:p, line_total:Math.round(q*p*100)/100 };
 }
 
-// ── Google Places Address Autocomplete ────────────────────────────────────────
-const GOOGLE_KEY = import.meta.env.VITE_GOOGLE_PLACES_KEY;
-let gmapsLoaded = false;
-let gmapsLoading = false;
-const gmapsCallbacks = [];
 
-function loadGoogleMaps(cb) {
-  if(gmapsLoaded){ cb(); return; }
-  gmapsCallbacks.push(cb);
-  if(gmapsLoading) return;
-  gmapsLoading = true;
-  const s = document.createElement("script");
-  s.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_KEY}&libraries=places`;
-  s.async = true;
-  s.onload = ()=>{ gmapsLoaded=true; gmapsCallbacks.forEach(fn=>fn()); gmapsCallbacks.length=0; };
-  document.head.appendChild(s);
-}
-
-function AddressInput({ value, onChange, placeholder, style }) {
-  const [suggestions, setSuggestions] = useState([]);
-  const [show, setShow] = useState(false);
-  const tokenRef = useRef(null);
-
-  useEffect(()=>{
-    if(!GOOGLE_KEY) return;
-    loadGoogleMaps(()=>{
-      if(!window.google?.maps?.places) return;
-      tokenRef.current = new window.google.maps.places.AutocompleteSessionToken();
-    });
-  },[]);
-
-async function fetch(input) {
-    if(!input||input.length<3){ setSuggestions([]); return; }
-    if(!window.google?.maps?.places) return;
-    try {
-      const {AutocompleteSuggestion} = window.google.maps.places;
-      const request = {
-        input,
-        sessionToken: tokenRef.current,
-        includedRegionCodes: ["us"],
-        includedPrimaryTypes: ["street_address"],
-      };
-      const {suggestions} = await AutocompleteSuggestion.fetchAutocompleteSuggestions(request);
-      const preds = (suggestions||[]).slice(0,5).map(s=>({
-        place_id: s.placePrediction?.placeId||Math.random(),
-        description: s.placePrediction?.text?.text||"",
-        structured_formatting: {
-          main_text: s.placePrediction?.mainText?.text||"",
-          secondary_text: s.placePrediction?.secondaryText?.text||"",
-        }
-      }));
-      setSuggestions(preds); setShow(preds.length>0);
-    } catch(e){ console.error("autocomplete error:",e); setSuggestions([]); }
-  }
-
-  function select(pred) {
-    onChange(pred.description);
-    setSuggestions([]); setShow(false);
-    if(window.google?.maps?.places)
-      tokenRef.current = new window.google.maps.places.AutocompleteSessionToken();
-  }
-
-  return (
-    <div style={{ position:"relative", flex: style?.flex||undefined, width: style?.width||undefined }}>
-      <input style={{...style, width:"100%", flex:undefined}}
-        placeholder={placeholder} value={value} autoComplete="off"
-        onChange={e=>{ onChange(e.target.value); fetch(e.target.value); }}
-        onFocus={()=>{ if(suggestions.length>0) setShow(true); }}
-        onBlur={()=>setTimeout(()=>setShow(false),150)} />
-      {show && suggestions.length>0 && (
-        <div style={{ position:"absolute", top:"100%", left:0, right:0, zIndex:999,
-            background:"white", border:"1px solid #e2e8f0", borderRadius:8,
-            boxShadow:"0 4px 16px rgba(0,0,0,.15)", marginTop:2, overflow:"hidden" }}>
-          {suggestions.map((s,i)=>(
-            <div key={s.place_id} onMouseDown={()=>select(s)}
-              style={{ padding:"10px 12px", cursor:"pointer", fontSize:13,
-                borderBottom:i<suggestions.length-1?"1px solid #f1f5f9":"none",
-                display:"flex", alignItems:"flex-start", gap:8, background:"white" }}
-              onMouseEnter={e=>e.currentTarget.style.background="#f8fafc"}
-              onMouseLeave={e=>e.currentTarget.style.background="white"}>
-              <span style={{fontSize:14,marginTop:1,flexShrink:0}}>📍</span>
-              <div>
-                <div style={{fontWeight:600,color:"#0f172a",lineHeight:1.4,fontSize:13}}>
-                  {s.structured_formatting?.main_text||s.description}
-                </div>
-                <div style={{fontSize:11,color:"#64748b",lineHeight:1.4}}>
-                  {s.structured_formatting?.secondary_text||""}
-                </div>
-              </div>
-            </div>
-          ))}
-          <div style={{padding:"5px 12px",fontSize:10,color:"#94a3b8",textAlign:"right",background:"#fafbfc"}}>
-            Powered by Google
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ── CustomerSection ───────────────────────────────────────────────────────────
 function CustomerSection({ leads, selectedLead, selectedLeadId, projectAddress,
     projectName, onSelect, onClear, onSaveNew, onAddressChange, onNameChange }) {
   const [query, setQuery]     = useState("");

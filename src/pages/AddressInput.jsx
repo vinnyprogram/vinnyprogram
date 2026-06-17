@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 
 const GOOGLE_KEY = import.meta.env.VITE_GOOGLE_PLACES_KEY;
 
-// Load Google Maps script once
+// Load Google Maps script once (shared singleton across the whole app)
 let scriptLoaded = false;
 let scriptLoading = false;
 const callbacks = [];
@@ -24,44 +24,49 @@ function loadGoogleMaps(cb) {
 }
 
 export default function AddressInput({ value, onChange, placeholder, style }) {
-  const inputRef = useRef(null);
-  const autocompleteRef = useRef(null);
   const [suggestions, setSuggestions] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
-  const serviceRef = useRef(null);
   const sessionRef = useRef(null);
 
   useEffect(()=>{
     if(!GOOGLE_KEY) return;
     loadGoogleMaps(()=>{
       if(!window.google?.maps?.places) return;
-      serviceRef.current = new window.google.maps.places.AutocompleteService();
       sessionRef.current = new window.google.maps.places.AutocompleteSessionToken();
     });
   },[]);
 
-  function fetchSuggestions(input) {
-    if(!input || input.length < 3 || !serviceRef.current){ setSuggestions([]); return; }
-    serviceRef.current.getPlacePredictions({
-      input,
-      sessionToken: sessionRef.current,
-      componentRestrictions: { country: "us" },
-      types: ["address"],
-    }, (predictions, status)=>{
-      if(status === window.google.maps.places.PlacesServiceStatus.OK && predictions){
-        setSuggestions(predictions.slice(0,5));
-        setShowSuggestions(true);
-      } else {
-        setSuggestions([]);
-      }
-    });
+  async function fetchSuggestions(input) {
+    if(!input || input.length < 3 || !window.google?.maps?.places){ setSuggestions([]); return; }
+    try {
+      const { AutocompleteSuggestion } = window.google.maps.places;
+      const request = {
+        input,
+        sessionToken: sessionRef.current,
+        includedRegionCodes: ["us"],
+        includedPrimaryTypes: ["street_address"],
+      };
+      const { suggestions: results } = await AutocompleteSuggestion.fetchAutocompleteSuggestions(request);
+      const preds = (results||[]).slice(0,5).map(s=>({
+        place_id: s.placePrediction?.placeId || Math.random(),
+        description: s.placePrediction?.text?.text || "",
+        structured_formatting: {
+          main_text: s.placePrediction?.mainText?.text || "",
+          secondary_text: s.placePrediction?.secondaryText?.text || "",
+        },
+      }));
+      setSuggestions(preds);
+      setShowSuggestions(preds.length > 0);
+    } catch(e) {
+      console.error("autocomplete error:", e);
+      setSuggestions([]);
+    }
   }
 
   function selectSuggestion(prediction) {
     onChange(prediction.description);
     setSuggestions([]);
     setShowSuggestions(false);
-    // reset session token after selection
     if(window.google?.maps?.places){
       sessionRef.current = new window.google.maps.places.AutocompleteSessionToken();
     }
@@ -73,10 +78,9 @@ export default function AddressInput({ value, onChange, placeholder, style }) {
   }
 
   return (
-    <div style={{ position:"relative", width:"100%" }}>
+    <div style={{ position:"relative", flex: style?.flex||undefined, width: style?.width||undefined }}>
       <input
-        ref={inputRef}
-        style={style}
+        style={{...style, width:"100%", flex:undefined}}
         placeholder={placeholder}
         value={value}
         onChange={e=>{
