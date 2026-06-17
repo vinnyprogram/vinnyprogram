@@ -483,37 +483,45 @@ export default function HersEstimate() {
             <ServiceManager services={services} onAdd={addService} onDelete={deleteService} />
           )}
 
-          <div style={{display:"grid",gridTemplateColumns:"3fr 1fr 1fr 1fr auto",gap:6,marginBottom:6}}>
-            {["Service","Price","Qty","Total",""].map(h=>(
-              <div key={h} style={{fontSize:9,color:C.faint,fontWeight:700,textTransform:"uppercase"}}>{h}</div>
-            ))}
-          </div>
-
+          
           {lineItems.map((it,idx)=>(
-            <div key={it.id} style={{display:"grid",gridTemplateColumns:"3fr 1fr 1fr 1fr auto",gap:6,marginBottom:6,alignItems:"center"}}>
-              <select value={services.find(s=>s.name===it.service_name)?it.service_name:(it.service_name?"__custom__":"")}
-                onChange={e=>{
-                  if(e.target.value==="__custom__") updateLine(idx,"service_name","");
-                  else updateLine(idx,"service_name",e.target.value);
-                }}
-                style={{...I,fontSize:12}}>
-                <option value="">Select service…</option>
-                {services.map(s=><option key={s.id} value={s.name}>{s.name}</option>)}
-                <option value="__custom__">✏️ Custom item</option>
-              </select>
-              <input type="number" placeholder="0.00" value={it.price}
-                onChange={e=>updateLine(idx,"price",e.target.value)}
-                style={{...I,fontSize:12,textAlign:"right"}} />
-              <input type="number" placeholder="1" value={it.qty}
-                onChange={e=>updateLine(idx,"qty",e.target.value)}
-                style={{...I,fontSize:12,textAlign:"center"}} />
-              <div style={{fontSize:13,fontWeight:700,color:C.green,textAlign:"right"}}>
-                ${fmt(lineTotal(it))}
-              </div>
-              <button onClick={()=>removeLine(idx)}
-                style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:16,padding:"0 4px"}}>✕</button>
+            <div key={it.id} style={{border:`1px solid ${C.border}`,borderRadius:8,padding:"8px 10px",marginBottom:8}}>
+                <div style={{display:"flex",gap:6,marginBottom:6,alignItems:"center"}}>
+                <select value={services.find(s=>s.name===it.service_name)?it.service_name:(it.service_name?"__custom__":"")}
+                    onChange={e=>{
+                    if(e.target.value==="__custom__") updateLine(idx,"service_name","");
+                    else updateLine(idx,"service_name",e.target.value);
+                    }}
+                    style={{...I,fontSize:12,flex:1,overflow:"hidden",textOverflow:"ellipsis"}}>
+                    <option value="">Select service…</option>
+                    {services.map(s=><option key={s.id} value={s.name}>{s.name}</option>)}
+                    <option value="__custom__">✏️ Custom item</option>
+                </select>
+                <button onClick={()=>removeLine(idx)}
+                    style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:16,padding:"0 4px",flexShrink:0}}>✕</button>
+                </div>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:6}}>
+                <div>
+                    <div style={{fontSize:9,color:C.faint,fontWeight:700,textTransform:"uppercase",marginBottom:2}}>Price</div>
+                    <input type="number" placeholder="0.00" value={it.price}
+                    onChange={e=>updateLine(idx,"price",e.target.value)}
+                    style={{...I,fontSize:12,textAlign:"right",width:"100%"}} />
+                </div>
+                <div>
+                    <div style={{fontSize:9,color:C.faint,fontWeight:700,textTransform:"uppercase",marginBottom:2}}>Qty</div>
+                    <input type="number" placeholder="1" value={it.qty}
+                    onChange={e=>updateLine(idx,"qty",e.target.value)}
+                    style={{...I,fontSize:12,textAlign:"center",width:"100%"}} />
+                </div>
+                <div>
+                    <div style={{fontSize:9,color:C.faint,fontWeight:700,textTransform:"uppercase",marginBottom:2}}>Total</div>
+                    <div style={{...I,display:"flex",alignItems:"center",justifyContent:"flex-end",fontSize:13,fontWeight:700,color:C.green,background:"#f8fafc"}}>
+                    ${fmt(lineTotal(it))}
+                    </div>
+                </div>
+                </div>
             </div>
-          ))}
+            ))}
 
           <div style={{display:"flex",gap:8,marginTop:8}}>
             <select onChange={e=>{ if(e.target.value){ addLine(e.target.value); e.target.value=""; } }}
