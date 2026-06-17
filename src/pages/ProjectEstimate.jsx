@@ -1387,7 +1387,7 @@ async function saveProject() {
     const targetProjectId = projectId || savedProjectId;
     if(targetProjectId){
      const allComplete = floors.every(f=>(areas[f]||[]).every(a=>!a.area_type||isAreaComplete(a)));
-     const {data:currentProj} = await supabase.from("projects").select("pipeline_status").eq("id",projectId).single();
+     const {data:currentProj} = await supabase.from("projects").select("pipeline_status").eq("id",targetProjectId).single();
      const updateFields = {
         name:projectName||"New Project",
         address:projectAddress||"",
@@ -1396,18 +1396,18 @@ async function saveProject() {
      if(allComplete && (currentProj?.pipeline_status||"Draft")==="Draft"){
         updateFields.pipeline_status = "Measured";
       }
-      await supabase.from("projects").update(updateFields).eq("id", projectId);
+      await supabase.from("projects").update(updateFields).eq("id", targetProjectId);
 
       // delete old areas and re-insert
       await supabase.from("segments").delete().in("area_id",
-        (await supabase.from("areas").select("id").eq("project_id",projectId)).data?.map(a=>a.id)||[]
+        (await supabase.from("areas").select("id").eq("project_id",targetProjectId)).data?.map(a=>a.id)||[]
       );
-      await supabase.from("areas").delete().eq("project_id", projectId);
-      await supabase.from("floors").delete().eq("project_id", projectId);
+      await supabase.from("areas").delete().eq("project_id", targetProjectId);
+      await supabase.from("floors").delete().eq("project_id", targetProjectId);
 
       // re-insert floors
       const {data:floorRows} = await supabase.from("floors").insert(
-        floors.map((name,i)=>({project_id:projectId,name,order_index:i+1,company_id:companyId}))
+        floors.map((name,i)=>({project_id:targetProjectId,name,order_index:i+1,company_id:companyId}))
       ).select();
       const floorMap={};
       (floorRows||[]).forEach(f=>{floorMap[f.name]=f.id;});
@@ -1418,7 +1418,7 @@ async function saveProject() {
         return mls.map((ml,mi)=>{
           const mat=materialMap[ml.material];
           const {qty,unit,unit_price,line_total}=calcArea(a.sqft,ml.thickness_in,mat);
-          return {project_id:projectId,floor_id:floorMap[floor],area_type:a.area_type,material:ml.material,thickness_in:ml.thickness_in||null,r_value:ml.r_value,sqft:a.sqft,qty,unit,unit_price,line_total,order_index:i*10+mi,company_id:companyId,options:mi===0?(a.options||[]):[]};
+          return {project_id:targetProjectId,floor_id:floorMap[floor],area_type:a.area_type,material:ml.material,thickness_in:ml.thickness_in||null,r_value:ml.r_value,sqft:a.sqft,qty,unit,unit_price,line_total,order_index:i*10+mi,company_id:companyId,options:mi===0?(a.options||[]):[]};
         });
       }));
       if(allAreas.length>0){
@@ -1432,7 +1432,7 @@ async function saveProject() {
         });
         if(segs.length>0) await supabase.from("segments").insert(segs);
       }
-    wasSaved.current = true; setSaved(true); setSavedProjectId(projectId); clearDraft(); setHasUnsavedChanges(false);
+    wasSaved.current = true; setSaved(true); setSavedProjectId(targetProjectId); clearDraft(); setHasUnsavedChanges(false);
       return;
     }
 
