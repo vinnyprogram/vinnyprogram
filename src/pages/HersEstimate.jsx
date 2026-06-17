@@ -32,6 +32,197 @@ function fmt(n) {
   return Number(n||0).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2});
 }
 
+function CustomerSection({ leads, selectedLead, selectedLeadId, jobAddress,
+    onSelect, onClear, onSaveNew, onAddressChange }) {
+  const [query, setQuery]     = useState("");
+  const [mode, setMode]       = useState(selectedLead ? "selected" : "search");
+  const [saving, setSaving]   = useState(false);
+  const [newForm, setNewForm] = useState({ name:"", phone:"", company_name:"", email:"", address:"" });
+
+  useEffect(()=>{
+    if(selectedLead && mode==="search") setMode("selected");
+  },[selectedLead]);
+
+  function openNew() {
+    setNewForm({ name:query||"", phone:"", company_name:"", email:"", address:"" });
+    setMode("new");
+  }
+  function clear() {
+    onClear(); setQuery("");
+    setNewForm({ name:"", phone:"", company_name:"", email:"", address:"" });
+    setMode("search");
+  }
+  const results = query.trim().length >= 1
+    ? leads.filter(l=>
+        (l.name||"").toLowerCase().includes(query.toLowerCase())||
+        (l.phone||"").includes(query)
+      ).sort((a,b)=>{
+        const q=query.toLowerCase();
+        const aS=(a.name||"").toLowerCase().startsWith(q);
+        const bS=(b.name||"").toLowerCase().startsWith(q);
+        if(aS&&!bS) return -1; if(!aS&&bS) return 1;
+        return (a.name||"").localeCompare(b.name||"");
+      }).slice(0,8)
+    : [];
+
+  function selectLead(lead) { onSelect(lead); setQuery(""); setMode("selected"); }
+
+  async function saveNew() {
+    if (!newForm.name && !newForm.phone) return;
+
+    const phone = (newForm.phone||"").replace(/\D/g,"");
+    const email = (newForm.email||"").toLowerCase().trim();
+    const name = (newForm.name||"").toLowerCase().trim();
+
+    const phoneMatch = phone.length >= 7 && leads.find(l=>
+      (l.phone||"").replace(/\D/g,"").includes(phone) ||
+      phone.includes((l.phone||"").replace(/\D/g,"").slice(-7))
+    );
+    const emailMatch = email && leads.find(l=>
+      (l.email||"").toLowerCase().trim() === email
+    );
+    const nameMatch = name && leads.find(l=>
+      (l.name||"").toLowerCase().trim() === name
+    );
+
+    if(phoneMatch){
+      alert(`⚠️ "${phoneMatch.name}" already exists with this phone. Loading their profile.`);
+      setNewForm({ name:"", phone:"", company_name:"", email:"", address:"" });
+      setMode("selected");
+      onSelect(phoneMatch);
+      return;
+    }
+    if(emailMatch){
+      alert(`⚠️ "${emailMatch.name}" already exists with this email. Loading their profile.`);
+      setNewForm({ name:"", phone:"", company_name:"", email:"", address:"" });
+      setMode("selected");
+      onSelect(emailMatch);
+      return;
+    }
+    if(nameMatch){
+      const proceed = window.confirm(`⚠️ A customer named "${nameMatch.name}" already exists.\n\nAre you sure this is a different person?`);
+      if(!proceed) return;
+    }
+
+    setSaving(true);
+    await onSaveNew(newForm);
+    setNewForm({ name:"", phone:"", company_name:"", email:"", address:"" });
+    setMode("selected");
+    setSaving(false);
+  }
+
+  const nf = (k,v) => setNewForm(p=>({...p,[k]:v}));
+
+  return (
+    <div style={CARD}>
+      <div style={{fontSize:11,fontWeight:700,color:C.faint,textTransform:"uppercase",letterSpacing:0.4,marginBottom:8}}>
+        Customer
+      </div>
+
+      {/* SELECTED */}
+      {mode==="selected" && selectedLead && (
+        <div>
+          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:8 }}>
+            <div style={{ fontSize:13, lineHeight:1.5 }}>
+              <span style={{ fontWeight:700 }}>{selectedLead.name}</span>
+              {selectedLead.phone && <span style={{ color:C.muted, fontSize:11, marginLeft:6 }}>{selectedLead.phone}</span>}
+              {selectedLead.company_name && <span style={{ color:C.muted, fontSize:11, marginLeft:6 }}>· {selectedLead.company_name}</span>}
+            </div>
+            <button onClick={clear} style={{ border:"none", background:"none", color:C.faint, fontSize:13, cursor:"pointer", padding:"0 4px" }}>Change</button>
+          </div>
+          <div style={{fontSize:10,color:C.faint,marginBottom:4}}>Job address (separate from customer's address)</div>
+          <input placeholder="Job address for this estimate…" value={jobAddress}
+            onChange={e=>onAddressChange(e.target.value)}
+            style={{...I,width:"100%"}} />
+        </div>
+      )}
+
+      {/* SEARCH */}
+      {mode==="search" && (
+        <div>
+          <div style={{ display:"flex", gap:6, marginBottom:results.length||query?6:0 }}>
+            <input style={{...I,flex:1}} placeholder="Search customer by name or phone…"
+              value={query} onChange={e=>setQuery(e.target.value)} />
+            <button onClick={openNew} style={{...BtnD,flexShrink:0}}>+ New</button>
+          </div>
+          {results.length>0 && (
+            <div style={{ border:`1px solid ${C.border}`, borderRadius:6, overflow:"hidden", marginBottom:4 }}>
+              {results.map((l,i)=>(
+                <div key={l.id} onClick={()=>selectLead(l)}
+                  style={{ display:"flex", justifyContent:"space-between", alignItems:"center",
+                    padding:"8px 10px", cursor:"pointer", fontSize:13,
+                    background:i%2===0?C.white:"#fafbfc",
+                    borderBottom:i<results.length-1?`1px solid ${C.border}`:"none" }}>
+                  <div>
+                    <div style={{ fontWeight:600 }}>{l.name}</div>
+                    {l.company_name && <div style={{ color:C.muted, fontSize:11 }}>{l.company_name}</div>}
+                  </div>
+                  <span style={{ color:C.faint, fontSize:12 }}>{l.phone}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {query.trim().length>=2 && results.length===0 && (
+            <div style={{ fontSize:12, color:C.faint, marginBottom:4, padding:"6px 0", textAlign:"center" }}>
+              No match — <button onClick={openNew} style={{ border:"none", background:"none", color:C.green, cursor:"pointer", fontSize:12, padding:0, fontWeight:700 }}>Register new</button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* NEW CUSTOMER */}
+      {mode==="new" && (
+        <div>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
+            <span style={{ fontSize:11, fontWeight:700, color:C.muted, textTransform:"uppercase", letterSpacing:0.4 }}>New customer</span>
+            <button onClick={()=>setMode("search")} style={{ border:"none", background:"none", color:C.faint, fontSize:16, cursor:"pointer", padding:0 }}>✕</button>
+          </div>
+
+          <textarea
+              placeholder="📋 Paste customer info here to auto-fill (name, phone, email, company, address)…"
+              rows={2}
+              style={{...I,width:"100%",marginBottom:8,height:"auto",padding:"6px 8px",resize:"none",fontFamily:"inherit"}}
+              onChange={e=>{
+                const text = e.target.value;
+                if(!text.trim()) return;
+                const parts = text.split(/[\n\-,;|]+/).map(s=>s.trim()).filter(Boolean);
+                const emailMatch = text.match(/[\w.+-]+@[\w-]+\.[a-z]{2,}/i);
+                const phoneMatch = text.match(/\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}/);
+                const addrMatch = text.match(/\d+\s+\w[\w\s]+(?:st|ave|rd|blvd|dr|ln|ct|way|pl|street|avenue|road|drive|lane|court|boulevard)\b[^]*/i);
+                const extracted = {};
+                if(emailMatch) extracted.email = emailMatch[0];
+                if(phoneMatch) extracted.phone = phoneMatch[0];
+                if(addrMatch) extracted.address = addrMatch[0].split(/[\n\-]/)[0].trim();
+                const remaining = parts.filter(l=>
+                  !l.match(/[\w.+-]+@[\w-]+\.[a-z]{2,}/i) &&
+                  !l.match(/\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}/) &&
+                  !(addrMatch && l.includes(addrMatch[0].split(" ")[0]))
+                );
+                if(remaining[0]) extracted.name = remaining[0];
+                if(remaining[1]) extracted.company_name = remaining[1];
+                setNewForm(p=>({...p,...extracted}));
+                e.target.value="";
+              }}
+            />
+
+          <input style={{...I,width:"100%",marginBottom:6}} placeholder="Full name *" value={newForm.name} onChange={e=>nf("name",e.target.value)} />
+          <input style={{...I,width:"100%",marginBottom:6}} placeholder="Phone number" value={newForm.phone} onChange={e=>nf("phone",e.target.value)} />
+          <input style={{...I,width:"100%",marginBottom:6}} placeholder="Email" value={newForm.email} onChange={e=>nf("email",e.target.value)} />
+          <input style={{...I,width:"100%",marginBottom:6}} placeholder="Company name" value={newForm.company_name} onChange={e=>nf("company_name",e.target.value)} />
+          <div style={{fontSize:10,color:C.faint,marginBottom:4}}>Customer's address (home/business — not necessarily the job site)</div>
+          <input style={{...I,width:"100%",marginBottom:10}} placeholder="Customer address" value={newForm.address} onChange={e=>nf("address",e.target.value)} />
+
+          <button onClick={saveNew} disabled={saving||(!newForm.name&&!newForm.phone)}
+            style={{ ...BtnD, width:"100%", justifyContent:"center", height:36, fontSize:13,
+              opacity:(saving||(!newForm.name&&!newForm.phone))?0.4:1 }}>
+            {saving?"Saving…":"Save customer"}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function HersEstimate() {
   const navigate = useNavigate();
   const { id: estimateId } = useParams();
@@ -44,8 +235,6 @@ export default function HersEstimate() {
 
   // customer
   const [leads, setLeads]       = useState([]);
-  const [query, setQuery]       = useState("");
-  const [showResults, setShowResults] = useState(false);
   const [selectedLeadId, setSelectedLeadId] = useState("");
   const [address, setAddress]   = useState("");
 
@@ -96,17 +285,29 @@ export default function HersEstimate() {
   }
 
   const selectedLead = leads.find(l=>String(l.id)===String(selectedLeadId));
-  const results = query.trim().length>=1
-    ? leads.filter(l=>
-        (l.name||"").toLowerCase().includes(query.toLowerCase())||
-        (l.phone||"").includes(query)
-      ).slice(0,8)
-    : [];
 
   function selectLead(lead){
     setSelectedLeadId(String(lead.id));
-    setAddress(lead.address||"");
-    setQuery(""); setShowResults(false);
+    setAddress(""); // job address stays separate from customer's own address
+  }
+
+  function loadLeads(){
+    supabase.from("customers").select("id,name,phone,address,email,company_name").order("name").limit(1000)
+      .then(({data})=>{ if(data) setLeads(data); });
+  }
+
+  async function saveNewCustomer(form){
+    const { data, error } = await supabase.from("customers").insert([{
+      name: form.name||"", phone: form.phone||"", company_name: form.company_name||"",
+      email: form.email||"", address: form.address||"", status:"New", estimate_amount:0,
+      company_id: companyId,
+    }]).select().single();
+    if(error){ alert("Could not save customer: "+(error.message||JSON.stringify(error))); return; }
+    if(data){
+      loadLeads();
+      setSelectedLeadId(String(data.id));
+      setAddress(""); // job address entered separately
+    }
   }
 
   function addLine(serviceName){
@@ -255,47 +456,16 @@ export default function HersEstimate() {
       <div style={{maxWidth:760,margin:"0 auto",padding:"16px 14px"}}>
 
         {/* customer */}
-        <div style={CARD}>
-          <div style={{fontSize:11,fontWeight:700,color:C.faint,textTransform:"uppercase",letterSpacing:0.4,marginBottom:8}}>
-            Customer
-          </div>
-          {selectedLead ? (
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
-              <div>
-                <div style={{fontWeight:700,fontSize:14,color:C.ink}}>{selectedLead.name}</div>
-                {selectedLead.phone && <div style={{fontSize:12,color:C.muted}}>{selectedLead.phone}</div>}
-                {selectedLead.company_name && <div style={{fontSize:12,color:C.muted}}>{selectedLead.company_name}</div>}
-              </div>
-              <button onClick={()=>{setSelectedLeadId("");setAddress("");}}
-                style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:13}}>
-                Change
-              </button>
-            </div>
-          ) : (
-            <div>
-              <input placeholder="Search customer by name or phone…" value={query}
-                onChange={e=>{setQuery(e.target.value);setShowResults(true);}}
-                style={{...I,width:"100%",marginBottom:results.length?6:0}} />
-              {showResults && results.length>0 && (
-                <div style={{border:`1px solid ${C.border}`,borderRadius:6,overflow:"hidden"}}>
-                  {results.map((l,i)=>(
-                    <div key={l.id} onClick={()=>selectLead(l)}
-                      style={{padding:"8px 10px",cursor:"pointer",fontSize:13,
-                        background:i%2===0?C.white:"#fafbfc",
-                        borderBottom:i<results.length-1?`1px solid ${C.border}`:"none"}}>
-                      <div style={{fontWeight:600}}>{l.name}</div>
-                      <div style={{fontSize:11,color:C.muted}}>{l.phone}</div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-          {selectedLead && (
-            <input placeholder="Job address…" value={address} onChange={e=>setAddress(e.target.value)}
-              style={{...I,width:"100%",marginTop:8}} />
-          )}
-        </div>
+        <CustomerSection
+          leads={leads}
+          selectedLead={selectedLead}
+          selectedLeadId={selectedLeadId}
+          jobAddress={address}
+          onSelect={selectLead}
+          onClear={()=>{setSelectedLeadId("");setAddress("");}}
+          onSaveNew={saveNewCustomer}
+          onAddressChange={setAddress}
+        />
 
         {/* line items */}
         <div style={CARD}>
