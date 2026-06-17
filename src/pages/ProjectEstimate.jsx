@@ -414,6 +414,11 @@ function AreaRow({ area, materials, onChange, onDelete, saveOptionsOnly, onMater
     ? area.mat_lines
     : [{ id:1, material:area.material||"", thickness_in:area.thickness_in||"", r_value:area.r_value||"", oc:area.oc||"" }];
   
+  const computedSqft = (()=>{
+  const raw=(area.measurements||[]).reduce((s,m)=>s+(m.sqft||0),0);
+  const d=parseFloat(area.deduct_sqft)||0;
+  return Math.max(0,Math.round(raw-d));
+})();
 
   function updateMatLine(idx, field, value) {
     const lines = matLines.map((l,i)=> i===idx ? {...l,[field]:value} : l);
@@ -439,7 +444,7 @@ function AreaRow({ area, materials, onChange, onDelete, saveOptionsOnly, onMater
 
   const totalCost = matLines.reduce((sum, ml) => {
     const mat = materials.find(m=>m.name===ml.material);
-    return sum + calcArea(area.sqft, ml.thickness_in, mat).line_total;
+    return sum + calcArea(computedSqft, ml.thickness_in, mat).line_total;
   }, 0);
 
   const firstMat = matLines[0].material;
@@ -527,7 +532,7 @@ function useCalcResult(field) {
           {[ml.material, ml.thickness_in, ml.r_value, ml.oc].filter(Boolean).join(" · ")}
           {i===0 && (
             <span style={{ marginLeft:6, color:C.faint }}>
-              {fmt(area.sqft)} ft²
+              {fmt(computedSqft)} ft²
               {(area.measurements||[]).length>0 && <span style={{ marginLeft:4 }}>({area.measurements.map(m=>`${m.h}×${m.l}${m.q>1?`×${m.q}`:""}`).join("  ")})</span>}
               {area.deduct_sqft>0 && <span style={{color:"#ef4444"}}> −{area.deduct_sqft}</span>}
             </span>
@@ -644,7 +649,7 @@ function useCalcResult(field) {
           )}
           {(()=>{
             const mat=materials.find(m=>m.name===matLines[0].material);
-            const {qty,unit,unit_price,line_total}=calcArea(area.sqft,matLines[0].thickness_in,mat);
+            const {qty,unit,unit_price,line_total}=calcArea(computedSqft,matLines[0].thickness_in,mat);
             return line_total>0?(
               <div style={{display:"flex",justifyContent:"flex-end",gap:6,fontSize:10,color:C.muted,marginBottom:2}}>
                 <span>{fmt(qty)} {unit?.replace("_"," ")} × ${unit_price}</span>
@@ -734,7 +739,7 @@ function useCalcResult(field) {
               )}
               {(()=>{
                 const mat=materials.find(m=>m.name===ml.material);
-                const {qty,unit,unit_price,line_total}=calcArea(area.sqft,ml.thickness_in,mat);
+                const {qty,unit,unit_price,line_total}=calcArea(computedSqft,ml.thickness_in,mat);
                 return line_total>0?(<div style={{display:"flex",justifyContent:"flex-end",gap:6,fontSize:10,color:"#0369a1"}}><span>{fmt(qty)} {unit?.replace("_"," ")} × ${unit_price}</span><span style={{fontWeight:700}}>${fmt(line_total)}</span></div>):null;
               })()}
             </div>
@@ -888,7 +893,7 @@ function useCalcResult(field) {
             onBlur={commitMeasurement} onKeyDown={e=>e.key==="Enter"&&commitMeasurement()}
             className="area-hl-input" style={{...I,...noArrow,flex:1,padding:"0 4px",textAlign:"center",height:30,fontSize:13}} />
           <span style={{fontSize:11,fontWeight:700,color:livePreview>0?C.green:C.ink,whiteSpace:"nowrap"}}>
-            {livePreview>0?`${fmt(livePreview)}→`:""}{fmt(area.sqft)}ft²
+            {livePreview>0?`${fmt(livePreview)}→`:""}{fmt(computedSqft)}ft²
           </span>
         </div>
         {(area.measurements||[]).length>0 && (
@@ -1033,9 +1038,12 @@ function isAreaComplete(area) {
 
 function getAreaTotalCost(area, materialMap) {
   const lines=area.mat_lines&&area.mat_lines.length>0?area.mat_lines:[{material:area.material||"",thickness_in:area.thickness_in||"",r_value:area.r_value||"",oc:area.oc||""}];
+  const raw=(area.measurements||[]).reduce((s,m)=>s+(m.sqft||0),0);
+  const d=parseFloat(area.deduct_sqft)||0;
+  const safeSqft=raw>0?Math.max(0,Math.round(raw-d)):(area.sqft||0);
   return lines.reduce((sum,ml)=>{
     const mat=materialMap[ml.material];
-    return sum+calcArea(area.sqft,ml.thickness_in,mat).line_total;
+    return sum+calcArea(safeSqft,ml.thickness_in,mat).line_total;
   },0);
 }
 
