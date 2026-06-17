@@ -326,6 +326,7 @@ export default function HersEstimate() {
   const [saving, setSaving]     = useState(false);
   const [saved, setSaved]       = useState(false);
   const [companyId, setCompanyId] = useState(null);
+  const [ownerEmail, setOwnerEmail] = useState("");
 
   // customer
   const [leads, setLeads]       = useState([]);
@@ -363,6 +364,7 @@ export default function HersEstimate() {
   async function load() {
     const { data:{ user } } = await supabase.auth.getUser();
     if(!user) return;
+    setOwnerEmail(user.email||"");
     const { data:cd } = await supabase.from("companies").select("id").eq("user_id",user.id).maybeSingle();
     if(!cd) return;
     setCompanyId(cd.id);
@@ -510,6 +512,50 @@ export default function HersEstimate() {
     setSaving(false);
   }
 
+  function emailToCustomer(){
+    if(!selectedLead){ alert("Please select a customer first."); return; }
+    if(!selectedLead.email){ alert(`${selectedLead.name} doesn't have an email on file. Add one to their customer profile first.`); return; }
+    const validItems = lineItems.filter(it=>it.service_name && Number(it.price)>=0);
+    if(!validItems.length){ alert("Add at least one line item first."); return; }
+
+    const lines = [];
+    lines.push(`Hi ${selectedLead.name},`);
+    lines.push("");
+    lines.push("Here is your HERS Rating estimate:");
+    lines.push("");
+    validItems.forEach(it=>{
+      lines.push(`- ${it.service_name} (x${it.qty||1}): $${fmt(lineTotal(it))}`);
+    });
+    lines.push("");
+    lines.push(`Subtotal: $${fmt(subtotal)}`);
+    if(markupOpen && Number(markupValue)>0) lines.push(`Markup${markupType==="percent"?` (${markupValue}%)`:""}: +$${fmt(markupAmount)}`);
+    if(discountOpen && Number(discountValue)>0) lines.push(`Discount${discountType==="percent"?` (${discountValue}%)`:""}: -$${fmt(discountAmount)}`);
+    if(Number(taxRate)>0) lines.push(`Tax (${taxRate}%): $${fmt(taxTotal)}`);
+    lines.push(`Total: $${fmt(grandTotal)}`);
+    if(depositOpen && Number(depositValue)>0){
+      lines.push("");
+      lines.push(`Deposit required${depositType==="percent"?` (${depositValue}%)`:""}: $${fmt(depositAmount)}`);
+    }
+    if(scheduleOpen && paymentSchedule.length>0){
+      lines.push("");
+      lines.push("Payment Schedule:");
+      paymentSchedule.forEach(s=>lines.push(`  - ${s.label||"Payment"}: $${fmt(installmentAmount(s))}`));
+    }
+    if(address){ lines.push(""); lines.push(`Job address: ${address}`); }
+    if(notes){ lines.push(""); lines.push(notes); }
+    lines.push("");
+    lines.push("Please let us know if you have any questions or would like to proceed.");
+
+    const subject = `Your HERS Rating Estimate${address?` — ${address}`:""}`;
+    const body = lines.join("\n");
+    const params = new URLSearchParams();
+    if(ownerEmail) params.set("cc", ownerEmail);
+    params.set("subject", subject);
+    params.set("body", body);
+    window.location.href = `mailto:${selectedLead.email}?${params.toString()}`;
+  }
+
+
   async function convertToInvoice(){
     if(!isEditing) return;
     if(!window.confirm("Create an invoice from this estimate?")) return;
@@ -588,6 +634,11 @@ export default function HersEstimate() {
           🏠 HERS Rating {isEditing?"Estimate":"— New Estimate"}
         </span>
         <div style={{display:"flex",gap:6}}>
+          {selectedLead && (
+            <button onClick={emailToCustomer} style={{...Btn,color:"#2563eb",borderColor:"#2563eb"}}>
+              📧 Email
+            </button>
+          )}
           {isEditing && (
             <button onClick={convertToInvoice} style={{...Btn,color:"#7c3aed",borderColor:"#7c3aed"}}>
               💵 Invoice
