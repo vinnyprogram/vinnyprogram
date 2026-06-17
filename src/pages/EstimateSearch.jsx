@@ -69,12 +69,15 @@ export default function EstimateSearch() {
   }
 
   function resumeDraft(draft) {
-    if(draft.selectedLeadId){
+    if(draft.editingProjectId){
+      navigate(`/project/${draft.editingProjectId}?resume=1`);
+    } else if(draft.selectedLeadId){
       navigate(`/project/new?leadId=${draft.selectedLeadId}&address=${encodeURIComponent(draft.projectAddress||"")}&resume=1`);
     } else {
       navigate("/project/new");
     }
-  } // project id with cost panel open
+  }
+  // project id with cost panel open
   const [groups, setGroups]     = useState([]);
   const [loading, setLoading]   = useState(true);
 
