@@ -6,14 +6,16 @@ export default function MainLayout() {
   const location = useLocation();
   const { company, signOut } = useAuth();
   const [estimateOpen, setEstimateOpen] = useState(false);
+  const [hersOpen, setHersOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
 
   const isActive = (path) =>
     location.pathname === path ||
     (path === "/estimates" && (
-      location.pathname.includes("estimate") ||
-      location.pathname.includes("project")
-    ));
+      (location.pathname.includes("estimate") || location.pathname.includes("project"))
+      && !location.pathname.includes("hers")
+    )) ||
+    (path === "/hers" && location.pathname.includes("hers"));
 
   const linkStyle = (path) => ({
     color: isActive(path) ? "#fff" : "#94a3b8",
@@ -76,7 +78,7 @@ export default function MainLayout() {
             Jobs
           </Link>
 
-          {/* Estimates dropdown */}
+          {/* Insulation module */}
           <div>
             <button
               onClick={()=>setEstimateOpen(p=>!p)}
@@ -89,7 +91,7 @@ export default function MainLayout() {
                 padding:"10px 12px", width:"100%", textAlign:"left", borderRadius:8,
                 display:"flex", justifyContent:"space-between", alignItems:"center",
               }}>
-              <span>Estimates</span>
+              <span>🧰 Insulation</span>
               <span style={{ fontSize:10, opacity:0.5 }}>{estimateOpen?"▲":"▼"}</span>
             </button>
 
@@ -127,6 +129,47 @@ export default function MainLayout() {
                   onMouseEnter={e=>e.currentTarget.style.background="#374151"}
                   onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
                   <span>📐</span> By Drawings
+                </Link>
+
+              </div>
+            )}
+          </div>
+
+          {/* HERS Rating module */}
+          <div>
+            <button
+              onClick={()=>setHersOpen(p=>!p)}
+              style={{
+                background: hersOpen||isActive("/hers") ? "#1f2937" : "none",
+                border:"none", cursor:"pointer",
+                color: isActive("/hers") ? "#fff" : "#94a3b8",
+                fontSize:15,
+                fontWeight: isActive("/hers") ? 700 : 400,
+                padding:"10px 12px", width:"100%", textAlign:"left", borderRadius:8,
+                display:"flex", justifyContent:"space-between", alignItems:"center",
+              }}>
+              <span>📋 HERS Rating</span>
+              <span style={{ fontSize:10, opacity:0.5 }}>{hersOpen?"▲":"▼"}</span>
+            </button>
+
+            {hersOpen && (
+              <div style={{ marginLeft:12, marginTop:2,
+                  display:"flex", flexDirection:"column", gap:1 }}>
+
+                <Link to="/hers/search"
+                  onClick={()=>{ setHersOpen(false); setMenuOpen(false); }}
+                  style={subLink}
+                  onMouseEnter={e=>e.currentTarget.style.background="#374151"}
+                  onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                  <span>🔍</span> Search Estimates
+                </Link>
+
+                <Link to="/hers/new"
+                  onClick={()=>{ setHersOpen(false); setMenuOpen(false); }}
+                  style={subLink}
+                  onMouseEnter={e=>e.currentTarget.style.background="#374151"}
+                  onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                  <span>+</span> New Estimate
                 </Link>
 
               </div>
