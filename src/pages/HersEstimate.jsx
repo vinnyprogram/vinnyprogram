@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
+import AddressInput from "./AddressInput";
 
 const C = {
   bg: "#f4f5f7", white: "#fff", ink: "#0f172a",
@@ -131,9 +132,9 @@ function CustomerSection({ leads, selectedLead, selectedLeadId, jobAddress,
             <button onClick={clear} style={{ border:"none", background:"none", color:C.faint, fontSize:13, cursor:"pointer", padding:"0 4px" }}>Change</button>
           </div>
           <div style={{fontSize:10,color:C.faint,marginBottom:4}}>Job address (separate from customer's address)</div>
-          <input placeholder="Job address for this estimate…" value={jobAddress}
-            onChange={e=>onAddressChange(e.target.value)}
-            style={{...I,width:"100%"}} />
+          <AddressInput style={{...I,width:"100%"}}
+            placeholder="Job address for this estimate…" value={jobAddress}
+            onChange={onAddressChange} />
         </div>
       )}
 
@@ -210,7 +211,9 @@ function CustomerSection({ leads, selectedLead, selectedLeadId, jobAddress,
           <input style={{...I,width:"100%",marginBottom:6}} placeholder="Email" value={newForm.email} onChange={e=>nf("email",e.target.value)} />
           <input style={{...I,width:"100%",marginBottom:6}} placeholder="Company name" value={newForm.company_name} onChange={e=>nf("company_name",e.target.value)} />
           <div style={{fontSize:10,color:C.faint,marginBottom:4}}>Customer's address (home/business — not necessarily the job site)</div>
-          <input style={{...I,width:"100%",marginBottom:10}} placeholder="Customer address" value={newForm.address} onChange={e=>nf("address",e.target.value)} />
+          <AddressInput style={{...I,width:"100%",marginBottom:10}}
+            placeholder="Customer address" value={newForm.address}
+            onChange={v=>nf("address",v)} />
 
           <button onClick={saveNew} disabled={saving||(!newForm.name&&!newForm.phone)}
             style={{ ...BtnD, width:"100%", justifyContent:"center", height:36, fontSize:13,
@@ -417,6 +420,12 @@ export default function HersEstimate() {
     setServices(p=>p.filter(s=>s.id!==id));
   }
 
+  async function updateService(id, field, value){
+    const patch = field==="default_price" ? { default_price: Number(value)||0 } : { name: value };
+    setServices(p=>p.map(s=>s.id===id?{...s,...patch}:s)); // optimistic
+    await supabase.from("hers_services").update(patch).eq("id", id);
+  }
+
   if(loading) return (
     <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"system-ui",color:C.muted}}>
       Loading…
@@ -480,7 +489,7 @@ export default function HersEstimate() {
           </div>
 
           {showServiceManager && (
-            <ServiceManager services={services} onAdd={addService} onDelete={deleteService} />
+            <ServiceManager services={services} onAdd={addService} onDelete={deleteService} onUpdate={updateService} />
           )}
 
           {lineItems.map((it,idx)=>(
@@ -584,21 +593,29 @@ export default function HersEstimate() {
   );
 }
 
-function ServiceManager({ services, onAdd, onDelete }) {
+function ServiceManager({ services, onAdd, onDelete, onUpdate }) {
   const [name, setName] = useState("");
   const [price, setPrice] = useState("");
   return (
     <div style={{background:"#f8fafc",border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 12px",marginBottom:12}}>
-      <div style={{fontSize:11,fontWeight:700,color:C.muted,marginBottom:8}}>Saved Services</div>
+      <div style={{fontSize:11,fontWeight:700,color:C.muted,marginBottom:8}}>Saved Services — click to edit</div>
       {services.map(s=>(
-        <div key={s.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",
+        <div key={s.id} style={{display:"flex",alignItems:"center",gap:8,
             padding:"5px 0",borderBottom:`1px solid ${C.border}`}}>
-          <span style={{fontSize:12,color:C.ink}}>{s.name}</span>
-          <div style={{display:"flex",alignItems:"center",gap:8}}>
-            <span style={{fontSize:12,color:C.green,fontWeight:700}}>${fmt(s.default_price)}</span>
-            <button onClick={()=>onDelete(s.id)}
-              style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:13}}>✕</button>
-          </div>
+          <input value={s.name}
+            onChange={e=>onUpdate(s.id,"name",e.target.value)}
+            style={{...I,flex:1,fontSize:12,border:"1px solid transparent",background:"transparent"}}
+            onFocus={e=>e.target.style.border=`1px solid ${C.border}`}
+            onBlur={e=>e.target.style.border="1px solid transparent"} />
+          <span style={{fontSize:12,color:C.green,fontWeight:700,flexShrink:0}}>$</span>
+          <input type="number" value={s.default_price}
+            onChange={e=>onUpdate(s.id,"default_price",e.target.value)}
+            style={{...I,width:70,fontSize:12,textAlign:"right",flexShrink:0,
+              border:"1px solid transparent",background:"transparent",color:C.green,fontWeight:700}}
+            onFocus={e=>e.target.style.border=`1px solid ${C.border}`}
+            onBlur={e=>e.target.style.border="1px solid transparent"} />
+          <button onClick={()=>onDelete(s.id)}
+            style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:13,flexShrink:0}}>✕</button>
         </div>
       ))}
       <div style={{display:"flex",gap:6,marginTop:8}}>
