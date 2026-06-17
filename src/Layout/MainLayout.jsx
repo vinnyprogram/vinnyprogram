@@ -172,6 +172,14 @@ export default function MainLayout() {
                   <span>+</span> New Estimate
                 </Link>
 
+                <Link to="/hers/invoices"
+                  onClick={()=>{ setHersOpen(false); setMenuOpen(false); }}
+                  style={subLink}
+                  onMouseEnter={e=>e.currentTarget.style.background="#374151"}
+                  onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                  <span>🧾</span> Search Invoices
+                </Link>
+
               </div>
             )}
           </div>
