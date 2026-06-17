@@ -1384,7 +1384,8 @@ async function saveProject() {
     const companyId = cd?.id||null;
 
     // ── EDIT MODE: update existing project ──
-    if(isEditing && projectId){
+    const targetProjectId = projectId || savedProjectId;
+    if(targetProjectId){
      const allComplete = floors.every(f=>(areas[f]||[]).every(a=>!a.area_type||isAreaComplete(a)));
      const {data:currentProj} = await supabase.from("projects").select("pipeline_status").eq("id",projectId).single();
      const updateFields = {
