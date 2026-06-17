@@ -172,10 +172,10 @@ export default function HersInvoice() {
     lines.push("Please let us know if you have any questions.");
 
     const subject = `Invoice${invoice.address?` — ${invoice.address}`:""}`;
-    const params = new URLSearchParams();
-    params.set("subject", subject);
-    params.set("body", lines.join("\n"));
-    window.location.href = `mailto:${customer.email}?${params.toString()}`;
+    const parts = [];
+    parts.push(`subject=${encodeURIComponent(subject)}`);
+    parts.push(`body=${encodeURIComponent(lines.join("\n"))}`);
+    window.location.href = `mailto:${customer.email}?${parts.join("&")}`;
   }
 
   return (

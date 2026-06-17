@@ -548,11 +548,11 @@ export default function HersEstimate() {
 
     const subject = `Your HERS Rating Estimate${address?` — ${address}`:""}`;
     const body = lines.join("\n");
-    const params = new URLSearchParams();
-    if(ownerEmail) params.set("cc", ownerEmail);
-    params.set("subject", subject);
-    params.set("body", body);
-    window.location.href = `mailto:${selectedLead.email}?${params.toString()}`;
+    const parts = [];
+    if(ownerEmail) parts.push(`cc=${encodeURIComponent(ownerEmail)}`);
+    parts.push(`subject=${encodeURIComponent(subject)}`);
+    parts.push(`body=${encodeURIComponent(body)}`);
+    window.location.href = `mailto:${selectedLead.email}?${parts.join("&")}`;
   }
 
 
