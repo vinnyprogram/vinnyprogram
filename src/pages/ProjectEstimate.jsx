@@ -1529,7 +1529,8 @@ async function saveProject() {
           <div style={{display:"flex",flexWrap:"wrap",gap:4,marginBottom:5}} className={currentAreas.some(a=>!isAreaComplete(a))?"area-focus-bg":""}>
             {floors.map(floor=>{
               const act=activeFloor===floor;
-              return (<button key={floor} onClick={()=>setActiveFloor(floor)} className="floor-btn" style={{padding:"8px 14px",borderRadius:8,height:"auto",border:act?"2px solid #059669":"2px solid #86efac",background:act?"#059669":C.white,color:act?"#fff":"#059669",cursor:"pointer",fontSize:14,fontWeight:700,whiteSpace:"nowrap",boxShadow:act?"0 2px 8px rgba(5,150,105,.3)":"none"}}>{floor}</button>);
+              const hasAreas=(areas[floor]||[]).some(a=>isAreaComplete(a));
+              return (<button key={floor} onClick={()=>setActiveFloor(floor)} className="floor-btn" style={{padding:"8px 14px",borderRadius:8,height:"auto",border:act?"2px solid #059669":"2px solid #86efac",background:act?"#059669":(hasAreas?"#dcfce7":C.white),color:act?"#fff":"#059669",cursor:"pointer",fontSize:14,fontWeight:700,whiteSpace:"nowrap",boxShadow:act?"0 2px 8px rgba(5,150,105,.3)":"none"}}>{floor}{hasAreas&&!act&&<span style={{marginLeft:4,fontSize:10}}>✓</span>}</button>);
             })}
             {addingFloor?(
               <div style={{display:"flex",gap:3}}>
