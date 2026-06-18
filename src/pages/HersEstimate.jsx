@@ -321,6 +321,7 @@ export default function HersEstimate() {
   const navigate = useNavigate();
   const { id: estimateId } = useParams();
   const isEditing = !!estimateId;
+  const locked = !!existingInvoiceId;
 
   const [loading, setLoading]   = useState(isEditing);
   const [saving, setSaving]     = useState(false);
@@ -657,13 +658,31 @@ export default function HersEstimate() {
               {existingInvoiceId ? "📄 View Invoice" : "💵 Invoice"}
             </button>
           )}
-          <button onClick={saveEstimate} disabled={saving} style={{...BtnD,opacity:saving?0.6:1}}>
-            {saving?"Saving…":"Save"}
-          </button>
+          {!locked && (
+            <button onClick={saveEstimate} disabled={saving} style={{...BtnD,opacity:saving?0.6:1}}>
+              {saving?"Saving…":"Save"}
+            </button>
+          )}
         </div>
       </div>
 
       <div style={{maxWidth:760,margin:"0 auto",padding:"16px 14px"}}>
+
+        {locked && (
+          <div style={{background:"#fef3c7",border:"1px solid #fde68a",borderRadius:10,
+              padding:"12px 14px",marginBottom:14,display:"flex",justifyContent:"space-between",
+              alignItems:"center",gap:10,flexWrap:"wrap"}}>
+            <span style={{fontSize:13,color:"#92400e"}}>
+              🔒 This estimate is locked — an invoice has already been created from it. Make further changes on the invoice instead.
+            </span>
+            <button onClick={()=>navigate(`/hers/invoice/${existingInvoiceId}`)}
+              style={{...Btn,whiteSpace:"nowrap",borderColor:"#92400e",color:"#92400e"}}>
+              📄 Go to Invoice
+            </button>
+          </div>
+        )}
+
+        <div style={{pointerEvents:locked?"none":"auto", opacity:locked?0.6:1}}>
 
         {/* customer */}
         <CustomerSection
@@ -860,6 +879,8 @@ export default function HersEstimate() {
               ))}
             </div>
           )}
+        </div>
+
         </div>
 
       </div>
