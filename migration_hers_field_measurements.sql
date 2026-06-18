@@ -3,7 +3,7 @@
 CREATE TABLE IF NOT EXISTS hers_field_measurements (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   hers_invoice_id uuid REFERENCES hers_invoices(id) ON DELETE CASCADE UNIQUE,
-  company_id bigint REFERENCES companies(id),
+  company_id uuid REFERENCES companies(id),
   floors jsonb DEFAULT '[]',
   roof_segments jsonb DEFAULT '[]',
   wall_segments jsonb DEFAULT '[]',

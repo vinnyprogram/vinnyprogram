@@ -1,21 +1,18 @@
 // Shared pricing-option controls used by both HersEstimate.jsx and HersInvoice.jsx.
-// Extracted to a single file so Markup/Discount/Deposit/Payment Schedule logic and
-// styling can't drift between the two pages the way the address autocomplete did.
 
-const I = {
-  height: 22, fontSize: 11, borderRadius: 4, border: "1px solid #e2e8f0",
-  background: "#fff", padding: "0 5px", width: "100%",
-  boxSizing: "border-box", color: "#0f172a", outline: "none",
-};
-const Btn = {
-  height: 22, fontSize: 11, borderRadius: 4, border: "1px solid #e2e8f0",
-  background: "#fff", padding: "0 8px", cursor: "pointer", color: "#0f172a",
-  fontWeight: 600,
-};
-
-function fmt(n) {
+function fmtAdj(n) {
   return Number(n||0).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2});
 }
+
+const adjI = {
+  height: 22, fontSize: 11, borderRadius: 4, border: "1px solid #e2e8f0",
+  background: "#fff", padding: "0 5px", boxSizing: "border-box",
+  color: "#0f172a", outline: "none",
+};
+const adjBtn = {
+  height: 22, fontSize: 11, borderRadius: 4, border: "1px solid #e2e8f0",
+  background: "#fff", padding: "0 8px", cursor: "pointer", color: "#0f172a", fontWeight: 600,
+};
 
 export function AdjustmentRow({ label, open, type, value, amount, onAdd, onTypeChange, onValueChange, onRemove }) {
   if(!open){
@@ -35,15 +32,15 @@ export function AdjustmentRow({ label, open, type, value, amount, onAdd, onTypeC
             cursor:"pointer",fontSize:12}}>✕ Remove</button>
       </div>
       <div style={{display:"flex",gap:6,alignItems:"center"}}>
-        <select value={type} onChange={e=>onTypeChange(e.target.value)} style={{...I,width:64,fontSize:12,flexShrink:0}}>
+        <select value={type} onChange={e=>onTypeChange(e.target.value)} style={{...adjI,width:64,fontSize:12,flexShrink:0}}>
           <option value="percent">%</option>
           <option value="fixed">$</option>
         </select>
         <input type="number" value={value} onChange={e=>onValueChange(e.target.value)}
           placeholder={type==="percent"?"e.g. 15":"e.g. 100.00"}
-          style={{...I,flex:1,fontSize:12,minWidth:0}} />
+          style={{...adjI,flex:1,fontSize:12,minWidth:0}} />
         <span style={{fontSize:12,color:"#64748b",whiteSpace:"nowrap",flexShrink:0}}>
-          = ${fmt(amount)}
+          = ${fmtAdj(amount)}
         </span>
       </div>
     </div>
@@ -81,27 +78,27 @@ export function PaymentScheduleEditor({ open, schedule, grandTotal, scheduledTot
       {schedule.map((s,idx)=>(
         <div key={s.id} style={{display:"flex",gap:6,alignItems:"center",marginBottom:6}}>
           <input value={s.label} onChange={e=>updateInstallment(idx,"label",e.target.value)}
-            placeholder="Label" style={{...I,flex:1.4,fontSize:12,minWidth:0}} />
+            placeholder="Label" style={{...adjI,flex:1.4,fontSize:12,minWidth:0}} />
           <select value={s.type} onChange={e=>updateInstallment(idx,"type",e.target.value)}
-            style={{...I,width:56,fontSize:12,flexShrink:0}}>
+            style={{...adjI,width:56,fontSize:12,flexShrink:0}}>
             <option value="percent">%</option>
             <option value="fixed">$</option>
           </select>
           <input type="number" value={s.value} onChange={e=>updateInstallment(idx,"value",e.target.value)}
-            placeholder="0" style={{...I,width:64,fontSize:12,flexShrink:0}} />
+            placeholder="0" style={{...adjI,width:64,fontSize:12,flexShrink:0}} />
           <span style={{fontSize:12,color:"#64748b",minWidth:64,textAlign:"right",flexShrink:0}}>
-            ${fmt(installmentAmount(s))}
+            ${fmtAdj(installmentAmount(s))}
           </span>
           <button onClick={()=>removeInstallment(idx)}
             style={{border:"none",background:"none",color:"#94a3b8",cursor:"pointer",fontSize:14,flexShrink:0}}>✕</button>
         </div>
       ))}
-      <button onClick={addInstallment} style={{...Btn,fontSize:11,marginTop:2}}>+ Add installment</button>
+      <button onClick={addInstallment} style={{...adjBtn,fontSize:11,marginTop:2}}>+ Add installment</button>
       {schedule.length>0 && Math.abs(diff)>0.01 && (
         <div style={{fontSize:11,color:"#b45309",marginTop:8,lineHeight:1.4}}>
-          ⚠️ Scheduled payments total ${fmt(scheduledTotal)}, which is {diff>0
-            ? `$${fmt(diff)} short of`
-            : `$${fmt(Math.abs(diff))} over`} the grand total (${fmt(grandTotal)}).
+          ⚠️ Scheduled payments total ${fmtAdj(scheduledTotal)}, which is {diff>0
+            ? `$${fmtAdj(diff)} short of`
+            : `$${fmtAdj(Math.abs(diff))} over`} the grand total (${fmtAdj(grandTotal)}).
         </div>
       )}
     </div>
