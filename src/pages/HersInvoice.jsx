@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
+import { AdjustmentRow, PaymentScheduleEditor } from "./PricingOptions";
 
 const C = {
   bg: "#f4f5f7", white: "#fff", ink: "#0f172a",
@@ -54,6 +55,21 @@ export default function HersInvoice() {
 
   const [invoice, setInvoice]   = useState(null);
   const [customer, setCustomer] = useState(null);
+  const [services, setServices] = useState([]);
+
+  const [lineItems, setLineItems] = useState([]);
+  const [taxRate, setTaxRate] = useState("0");
+  const [markupOpen, setMarkupOpen]     = useState(false);
+  const [markupType, setMarkupType]     = useState("percent");
+  const [markupValue, setMarkupValue]   = useState("");
+  const [discountOpen, setDiscountOpen] = useState(false);
+  const [discountType, setDiscountType] = useState("percent");
+  const [discountValue, setDiscountValue] = useState("");
+  const [depositOpen, setDepositOpen]   = useState(false);
+  const [depositType, setDepositType]   = useState("percent");
+  const [depositValue, setDepositValue] = useState("");
+  const [scheduleOpen, setScheduleOpen] = useState(false);
+  const [paymentSchedule, setPaymentSchedule] = useState([]);
 
   const [payments, setPayments] = useState([]);
   const [payAmount, setPayAmount] = useState("");
@@ -70,6 +86,24 @@ export default function HersInvoice() {
     const { data:inv } = await supabase.from("hers_invoices").select("*").eq("id", invoiceId).maybeSingle();
     if(!inv){ setLoading(false); return; }
     setInvoice(inv);
+
+    const items = Array.isArray(inv.line_items) ? inv.line_items
+      : (typeof inv.line_items === "string" ? JSON.parse(inv.line_items||"[]") : []);
+    setLineItems(items.map(it=>({...it, id: it.id||Date.now()+Math.random()})));
+    setTaxRate(String(inv.tax_rate||0));
+    if(inv.markup_value){ setMarkupOpen(true); setMarkupType(inv.markup_type||"percent"); setMarkupValue(String(inv.markup_value)); }
+    if(inv.discount_value){ setDiscountOpen(true); setDiscountType(inv.discount_type||"percent"); setDiscountValue(String(inv.discount_value)); }
+    if(inv.deposit_value){ setDepositOpen(true); setDepositType(inv.deposit_type||"percent"); setDepositValue(String(inv.deposit_value)); }
+    const sched = Array.isArray(inv.payment_schedule) ? inv.payment_schedule
+      : (typeof inv.payment_schedule === "string" ? JSON.parse(inv.payment_schedule||"[]") : []);
+    if(sched.length){ setScheduleOpen(true); setPaymentSchedule(sched.map(s=>({...s, id: s.id||Date.now()+Math.random()}))); }
+
+    if(inv.company_id){
+      const { data:svc } = await supabase.from("hers_services")
+        .select("*").eq("company_id", inv.company_id).order("sort_order");
+      if(svc) setServices(svc);
+    }
+
     let pmts = Array.isArray(inv.payments) ? inv.payments
       : (typeof inv.payments === "string" ? JSON.parse(inv.payments||"[]") : []);
     // legacy fallback: if this invoice has an old-style amount_paid but no ledger entries, preserve it as one entry
@@ -102,19 +136,47 @@ export default function HersInvoice() {
     </div>
   );
 
-  const lineItems = Array.isArray(invoice.line_items) ? invoice.line_items
-    : (typeof invoice.line_items === "string" ? JSON.parse(invoice.line_items||"[]") : []);
+  function addLine(serviceName){
+    const svc = services.find(s=>s.name===serviceName);
+    setLineItems(p=>[...p, {
+      id: Date.now()+Math.random(),
+      service_name: serviceName||"",
+      price: svc ? String(svc.default_price||0) : "",
+      qty: "1", tax: "0",
+    }]);
+  }
 
-  const subtotal = Number(invoice.subtotal)||0;
-  const grandTotal = Number(invoice.grand_total)||0;
-  const markupAmount = invoice.markup_value ? (invoice.markup_type==="percent" ? subtotal*(Number(invoice.markup_value)||0)/100 : (Number(invoice.markup_value)||0)) : 0;
-  const discountAmount = invoice.discount_value ? (invoice.discount_type==="percent" ? subtotal*(Number(invoice.discount_value)||0)/100 : (Number(invoice.discount_value)||0)) : 0;
-  const depositAmount = invoice.deposit_value ? (invoice.deposit_type==="percent" ? grandTotal*(Number(invoice.deposit_value)||0)/100 : (Number(invoice.deposit_value)||0)) : 0;
-  const paymentSchedule = Array.isArray(invoice.payment_schedule) ? invoice.payment_schedule
-    : (typeof invoice.payment_schedule === "string" ? JSON.parse(invoice.payment_schedule||"[]") : []);
+  function updateLine(idx, field, value){
+    setLineItems(p=>p.map((it,i)=>{
+      if(i!==idx) return it;
+      const upd = {...it, [field]: value};
+      if(field==="service_name"){
+        const svc = services.find(s=>s.name===value);
+        if(svc) upd.price = String(svc.default_price||0);
+      }
+      return upd;
+    }));
+  }
+
+  function removeLine(idx){
+    setLineItems(p=>p.filter((_,i)=>i!==idx));
+  }
+
+  function lineTotal(it){
+    return (Number(it.price)||0) * (Number(it.qty)||1);
+  }
+
+  const subtotal = lineItems.reduce((s,it)=>s+lineTotal(it),0);
+  const markupAmount = markupOpen ? (markupType==="percent" ? subtotal*(Number(markupValue)||0)/100 : (Number(markupValue)||0)) : 0;
+  const discountAmount = discountOpen ? (discountType==="percent" ? subtotal*(Number(discountValue)||0)/100 : (Number(discountValue)||0)) : 0;
+  const adjustedSubtotal = subtotal + markupAmount - discountAmount;
+  const taxTotal = adjustedSubtotal * (Number(taxRate)||0)/100;
+  const grandTotal = adjustedSubtotal + taxTotal;
+  const depositAmount = depositOpen ? (depositType==="percent" ? grandTotal*(Number(depositValue)||0)/100 : (Number(depositValue)||0)) : 0;
   function installmentAmount(s){
     return s.type==="percent" ? grandTotal*(Number(s.value)||0)/100 : (Number(s.value)||0);
   }
+  const scheduledTotal = paymentSchedule.reduce((s,it)=>s+installmentAmount(it),0);
 
   const totalPaid = payments.reduce((s,p)=>s+(Number(p.amount)||0),0);
   const balanceDue = Math.max(0, Math.round((grandTotal-totalPaid)*100)/100);
@@ -129,7 +191,22 @@ export default function HersInvoice() {
     if(saving) return;
     setSaving(true);
     try {
+      const validItems = lineItems.filter(it=>it.service_name && Number(it.price)>=0);
       const payload = {
+        line_items: validItems,
+        subtotal: Math.round(subtotal*100)/100,
+        tax_rate: Number(taxRate)||0,
+        tax_total: Math.round(taxTotal*100)/100,
+        grand_total: Math.round(grandTotal*100)/100,
+        markup_type: markupOpen ? markupType : null,
+        markup_value: markupOpen ? (Number(markupValue)||0) : 0,
+        discount_type: discountOpen ? discountType : null,
+        discount_value: discountOpen ? (Number(discountValue)||0) : 0,
+        deposit_type: depositOpen ? depositType : null,
+        deposit_value: depositOpen ? (Number(depositValue)||0) : 0,
+        payment_schedule: scheduleOpen ? paymentSchedule.map(s=>({
+          id: s.id, label: s.label||"", type: s.type, value: Number(s.value)||0,
+        })) : [],
         payments: payments.map(p=>({
           id: p.id, amount: Math.round((Number(p.amount)||0)*100)/100, method: p.method||"Other",
           reference: p.reference||null, date: p.date||null,
@@ -190,9 +267,9 @@ export default function HersInvoice() {
     });
     lines.push("");
     lines.push(`Subtotal: $${fmt(subtotal)}`);
-    if(markupAmount>0) lines.push(`Markup${invoice.markup_type==="percent"?` (${invoice.markup_value}%)`:""}: +$${fmt(markupAmount)}`);
-    if(discountAmount>0) lines.push(`Discount${invoice.discount_type==="percent"?` (${invoice.discount_value}%)`:""}: -$${fmt(discountAmount)}`);
-    if(Number(invoice.tax_rate)>0) lines.push(`Tax (${invoice.tax_rate}%): $${fmt(invoice.tax_total)}`);
+    if(markupAmount>0) lines.push(`Markup${markupType==="percent"?` (${markupValue}%)`:""}: +$${fmt(markupAmount)}`);
+    if(discountAmount>0) lines.push(`Discount${discountType==="percent"?` (${discountValue}%)`:""}: -$${fmt(discountAmount)}`);
+    if(Number(taxRate)>0) lines.push(`Tax (${taxRate}%): $${fmt(taxTotal)}`);
     lines.push(`Total: $${fmt(grandTotal)}`);
     if(payments.length>0){
       lines.push("");
@@ -276,26 +353,102 @@ export default function HersInvoice() {
           )}
         </div>
 
-        {/* line items (locked from the estimate) */}
-        <div style={CARD}>
+        {/* line items - editable */}
+        <div style={{...CARD, pointerEvents:isVoid?"none":"auto", opacity:isVoid?0.6:1}}>
           <div style={{fontSize:11,fontWeight:700,color:C.faint,textTransform:"uppercase",letterSpacing:0.4,marginBottom:10}}>
             Line Items
           </div>
           {lineItems.map((it,idx)=>(
-            <div key={idx} style={{display:"flex",justifyContent:"space-between",alignItems:"center",
-                padding:"8px 0",borderBottom:idx<lineItems.length-1?`1px solid ${C.border}`:"none"}}>
-              <div>
-                <div style={{fontSize:13,color:C.ink}}>{it.service_name}</div>
-                <div style={{fontSize:11,color:C.faint}}>Qty {it.qty||1} × ${fmt(it.price)}</div>
+            <div key={it.id} style={{border:`1px solid ${C.border}`,borderRadius:8,padding:"8px 10px",marginBottom:8,boxSizing:"border-box"}}>
+              <div style={{display:"flex",gap:6,marginBottom:6,alignItems:"center"}}>
+                <select value={services.find(s=>s.name===it.service_name)?it.service_name:(it.service_name?"__custom__":"")}
+                  onChange={e=>{
+                    if(e.target.value==="__custom__") updateLine(idx,"service_name","");
+                    else updateLine(idx,"service_name",e.target.value);
+                  }}
+                  style={{...I,fontSize:12,flex:1,minWidth:0,textOverflow:"ellipsis"}}>
+                  <option value="">Select service…</option>
+                  {services.map(s=><option key={s.id} value={s.name}>{s.name}</option>)}
+                  <option value="__custom__">✏️ Custom item</option>
+                </select>
+                <button onClick={()=>removeLine(idx)}
+                  style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:16,padding:"0 4px",flexShrink:0}}>✕</button>
               </div>
-              <div style={{fontSize:13,fontWeight:700,color:C.green}}>
-                ${fmt((Number(it.price)||0)*(Number(it.qty)||1))}
+              {it.service_name && !services.find(s=>s.name===it.service_name) && (
+                <input value={it.service_name} onChange={e=>updateLine(idx,"service_name",e.target.value)}
+                  placeholder="Custom service name…" style={{...I,width:"100%",marginBottom:6,fontSize:12}} />
+              )}
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:6}}>
+                <div>
+                  <div style={{fontSize:9,color:C.faint,fontWeight:700,textTransform:"uppercase",marginBottom:2}}>Price</div>
+                  <input type="number" placeholder="0.00" value={it.price}
+                    onChange={e=>updateLine(idx,"price",e.target.value)}
+                    style={{...I,fontSize:12,textAlign:"right",width:"100%",boxSizing:"border-box"}} />
+                </div>
+                <div>
+                  <div style={{fontSize:9,color:C.faint,fontWeight:700,textTransform:"uppercase",marginBottom:2}}>Qty</div>
+                  <input type="number" placeholder="1" value={it.qty}
+                    onChange={e=>updateLine(idx,"qty",e.target.value)}
+                    style={{...I,fontSize:12,textAlign:"center",width:"100%",boxSizing:"border-box"}} />
+                </div>
+                <div>
+                  <div style={{fontSize:9,color:C.faint,fontWeight:700,textTransform:"uppercase",marginBottom:2}}>Total</div>
+                  <div style={{...I,display:"flex",alignItems:"center",justifyContent:"flex-end",
+                      fontSize:13,fontWeight:700,color:C.green,background:"#f8fafc",boxSizing:"border-box"}}>
+                    ${fmt(lineTotal(it))}
+                  </div>
+                </div>
               </div>
             </div>
           ))}
+          <div style={{display:"flex",gap:8,marginTop:8}}>
+            <select onChange={e=>{ if(e.target.value){ addLine(e.target.value); e.target.value=""; } }}
+              style={{...I,flex:1,fontSize:12}}>
+              <option value="">+ Add from price list…</option>
+              {services.map(s=><option key={s.id} value={s.name}>{s.name} — ${fmt(s.default_price)}</option>)}
+            </select>
+            <button onClick={()=>addLine("")} style={{...Btn,whiteSpace:"nowrap"}}>+ Custom Line</button>
+          </div>
         </div>
 
-        {/* pricing breakdown (read-only snapshot from the estimate) */}
+        {/* pricing options - editable */}
+        <div style={{...CARD, pointerEvents:isVoid?"none":"auto", opacity:isVoid?0.6:1}}>
+          <div style={{fontSize:11,fontWeight:700,color:C.faint,textTransform:"uppercase",letterSpacing:0.4,marginBottom:4}}>
+            Pricing Options
+          </div>
+          <div style={{display:"flex",gap:12,margin:"10px 0",alignItems:"center"}}>
+            <span style={{fontSize:12,color:C.muted,whiteSpace:"nowrap"}}>Tax rate</span>
+            <input type="number" value={taxRate} onChange={e=>setTaxRate(e.target.value)} style={{...I,width:80}} />
+            <span style={{fontSize:12,color:C.muted}}>%</span>
+          </div>
+          <div style={{borderTop:`1px solid ${C.border}`}}>
+            <AdjustmentRow label="Markup" open={markupOpen} type={markupType} value={markupValue} amount={markupAmount}
+              onAdd={()=>setMarkupOpen(true)}
+              onTypeChange={setMarkupType} onValueChange={setMarkupValue}
+              onRemove={()=>{setMarkupOpen(false); setMarkupValue(""); setMarkupType("percent");}} />
+          </div>
+          <div style={{borderTop:`1px solid ${C.border}`}}>
+            <AdjustmentRow label="Discount" open={discountOpen} type={discountType} value={discountValue} amount={discountAmount}
+              onAdd={()=>setDiscountOpen(true)}
+              onTypeChange={setDiscountType} onValueChange={setDiscountValue}
+              onRemove={()=>{setDiscountOpen(false); setDiscountValue(""); setDiscountType("percent");}} />
+          </div>
+          <div style={{borderTop:`1px solid ${C.border}`}}>
+            <AdjustmentRow label="Request a deposit" open={depositOpen} type={depositType} value={depositValue} amount={depositAmount}
+              onAdd={()=>setDepositOpen(true)}
+              onTypeChange={setDepositType} onValueChange={setDepositValue}
+              onRemove={()=>{setDepositOpen(false); setDepositValue(""); setDepositType("percent");}} />
+          </div>
+          <div style={{borderTop:`1px solid ${C.border}`}}>
+            <PaymentScheduleEditor open={scheduleOpen} schedule={paymentSchedule} grandTotal={grandTotal}
+              scheduledTotal={scheduledTotal} installmentAmount={installmentAmount}
+              onAdd={()=>setScheduleOpen(true)}
+              onChange={setPaymentSchedule}
+              onRemoveAll={()=>{setScheduleOpen(false); setPaymentSchedule([]);}} />
+          </div>
+        </div>
+
+        {/* pricing breakdown - live calculation */}
         <div style={{background:C.ink,borderRadius:12,padding:"16px 20px",marginBottom:12}}>
           <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
             <span style={{color:"#94a3b8",fontSize:12}}>Subtotal</span>
@@ -303,20 +456,20 @@ export default function HersInvoice() {
           </div>
           {markupAmount>0 && (
             <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
-              <span style={{color:"#94a3b8",fontSize:12}}>Markup{invoice.markup_type==="percent"?` (${invoice.markup_value}%)`:""}</span>
+              <span style={{color:"#94a3b8",fontSize:12}}>Markup{markupType==="percent"?` (${markupValue}%)`:""}</span>
               <span style={{color:"#fff",fontSize:12}}>+${fmt(markupAmount)}</span>
             </div>
           )}
           {discountAmount>0 && (
             <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
-              <span style={{color:"#94a3b8",fontSize:12}}>Discount{invoice.discount_type==="percent"?` (${invoice.discount_value}%)`:""}</span>
+              <span style={{color:"#94a3b8",fontSize:12}}>Discount{discountType==="percent"?` (${discountValue}%)`:""}</span>
               <span style={{color:"#fff",fontSize:12}}>-${fmt(discountAmount)}</span>
             </div>
           )}
-          {Number(invoice.tax_rate)>0 && (
+          {Number(taxRate)>0 && (
             <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
-              <span style={{color:"#94a3b8",fontSize:12}}>Tax ({invoice.tax_rate}%)</span>
-              <span style={{color:"#fff",fontSize:12}}>${fmt(invoice.tax_total)}</span>
+              <span style={{color:"#94a3b8",fontSize:12}}>Tax ({taxRate}%)</span>
+              <span style={{color:"#fff",fontSize:12}}>${fmt(taxTotal)}</span>
             </div>
           )}
           <div style={{borderTop:"1px solid #374151",paddingTop:10,marginTop:4,
@@ -326,7 +479,7 @@ export default function HersInvoice() {
           </div>
           {depositAmount>0 && (
             <div style={{display:"flex",justifyContent:"space-between",marginTop:10,paddingTop:10,borderTop:"1px solid #374151"}}>
-              <span style={{color:"#94a3b8",fontSize:12}}>Deposit required{invoice.deposit_type==="percent"?` (${invoice.deposit_value}%)`:""}</span>
+              <span style={{color:"#94a3b8",fontSize:12}}>Deposit required{depositType==="percent"?` (${depositValue}%)`:""}</span>
               <span style={{color:"#fff",fontSize:13,fontWeight:700}}>${fmt(depositAmount)}</span>
             </div>
           )}
