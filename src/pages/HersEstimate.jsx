@@ -327,6 +327,7 @@ export default function HersEstimate() {
   const [saved, setSaved]       = useState(false);
   const [companyId, setCompanyId] = useState(null);
   const [ownerEmail, setOwnerEmail] = useState("");
+  const [existingInvoiceId, setExistingInvoiceId] = useState(null);
 
   // customer
   const [leads, setLeads]       = useState([]);
@@ -395,6 +396,11 @@ export default function HersEstimate() {
         const sched = Array.isArray(est.payment_schedule) ? est.payment_schedule
           : (typeof est.payment_schedule === "string" ? JSON.parse(est.payment_schedule||"[]") : []);
         if(sched.length){ setScheduleOpen(true); setPaymentSchedule(sched.map(s=>({...s, id: s.id||Date.now()+Math.random()}))); }
+
+        const { data:existingInv } = await supabase.from("hers_invoices")
+          .select("id").eq("hers_estimate_id", estimateId)
+          .order("created_at",{ascending:false}).limit(1).maybeSingle();
+        if(existingInv) setExistingInvoiceId(existingInv.id);
       }
       setLoading(false);
     }
@@ -558,8 +564,15 @@ export default function HersEstimate() {
 
   async function convertToInvoice(){
     if(!isEditing) return;
+    if(existingInvoiceId){ navigate(`/hers/invoice/${existingInvoiceId}`); return; }
     if(!window.confirm("Create an invoice from this estimate?")) return;
     try {
+      // defensive re-check in case state is stale or this ran twice in a race
+      const { data:existingInv } = await supabase.from("hers_invoices")
+        .select("id").eq("hers_estimate_id", estimateId)
+        .order("created_at",{ascending:false}).limit(1).maybeSingle();
+      if(existingInv){ navigate(`/hers/invoice/${existingInv.id}`); return; }
+
       const validItems = lineItems.filter(it=>it.service_name && Number(it.price)>=0);
       const { data, error } = await supabase.from("hers_invoices").insert([{
         company_id: companyId,
@@ -641,7 +654,7 @@ export default function HersEstimate() {
           )}
           {isEditing && (
             <button onClick={convertToInvoice} style={{...Btn,color:"#7c3aed",borderColor:"#7c3aed"}}>
-              💵 Invoice
+              {existingInvoiceId ? "📄 View Invoice" : "💵 Invoice"}
             </button>
           )}
           <button onClick={saveEstimate} disabled={saving} style={{...BtnD,opacity:saving?0.6:1}}>

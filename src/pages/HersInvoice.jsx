@@ -58,9 +58,10 @@ export default function HersInvoice() {
   const [payments, setPayments] = useState([]);
   const [payAmount, setPayAmount] = useState("");
   const [payMethod, setPayMethod] = useState("Cash");
+  const [payReference, setPayReference] = useState("");
   const [payDate, setPayDate]     = useState(new Date().toISOString().slice(0,10));
   const [dueDate, setDueDate]     = useState("");
-  const [isVoid, setIsVoid]       = useState(false);
+  const [status, setStatus]       = useState("Unpaid");
   const [notes, setNotes]         = useState("");
 
   useEffect(()=>{ load(); },[]);
@@ -78,7 +79,7 @@ export default function HersInvoice() {
     }
     setPayments(pmts);
     setDueDate(inv.due_date||"");
-    setIsVoid(inv.status==="Void");
+    setStatus(inv.status||"Unpaid");
     setNotes(inv.notes||"");
     if(inv.customer_id){
       const { data:cust } = await supabase.from("customers")
@@ -117,24 +118,28 @@ export default function HersInvoice() {
 
   const totalPaid = payments.reduce((s,p)=>s+(Number(p.amount)||0),0);
   const balanceDue = Math.max(0, Math.round((grandTotal-totalPaid)*100)/100);
-  const derivedStatus = isVoid ? "Void" : (totalPaid<=0 ? "Unpaid" : totalPaid>=grandTotal ? "Paid" : "Partial");
+  const isVoid = status==="Void";
   const depositReceived = depositAmount>0 && totalPaid>=depositAmount;
+
+  function suggestStatus(amt){
+    return amt<=0 ? "Unpaid" : amt>=grandTotal ? "Paid" : "Partial";
+  }
 
   async function save(){
     if(saving) return;
     setSaving(true);
     try {
-      const nowPaidInFull = derivedStatus==="Paid";
       const payload = {
         payments: payments.map(p=>({
-          id: p.id, amount: Math.round((Number(p.amount)||0)*100)/100, method: p.method||"Other", date: p.date||null,
+          id: p.id, amount: Math.round((Number(p.amount)||0)*100)/100, method: p.method||"Other",
+          reference: p.reference||null, date: p.date||null,
         })),
         amount_paid: Math.round(totalPaid*100)/100,
         due_date: dueDate||null,
-        status: derivedStatus,
+        status,
         deposit_paid: depositReceived,
         notes,
-        paid_at: nowPaidInFull ? (invoice.paid_at || new Date().toISOString()) : null,
+        paid_at: status==="Paid" ? (invoice.paid_at || new Date().toISOString()) : null,
         updated_at: new Date().toISOString(),
       };
       const { error } = await supabase.from("hers_invoices").update(payload).eq("id", invoiceId);
@@ -151,22 +156,24 @@ export default function HersInvoice() {
   function addPayment(){
     const amt = Number(payAmount);
     if(!amt || amt<=0){ alert("Enter a payment amount greater than $0."); return; }
-    setPayments(p=>[...p, { id: Date.now()+Math.random(), amount: amt, method: payMethod, date: payDate }]);
-    setPayAmount("");
+    const newPayments = [...payments, {
+      id: Date.now()+Math.random(), amount: amt, method: payMethod,
+      reference: payMethod!=="Cash" ? (payReference||null) : null, date: payDate,
+    }];
+    setPayments(newPayments);
+    setPayAmount(""); setPayReference("");
+    if(status!=="Void") setStatus(suggestStatus(newPayments.reduce((s,p)=>s+(Number(p.amount)||0),0)));
   }
 
   function removePayment(id){
     if(!window.confirm("Remove this payment record?")) return;
-    setPayments(p=>p.filter(x=>x.id!==id));
+    const newPayments = payments.filter(x=>x.id!==id);
+    setPayments(newPayments);
+    if(status!=="Void") setStatus(suggestStatus(newPayments.reduce((s,p)=>s+(Number(p.amount)||0),0)));
   }
 
-  function markPaidInFull(){
+  function fillRemainingBalance(){
     setPayAmount(String(balanceDue));
-  }
-
-  function toggleVoid(){
-    if(!isVoid && !window.confirm("Void this invoice? You can undo this later if needed.")) return;
-    setIsVoid(p=>!p);
   }
 
   function emailInvoice(){
@@ -192,7 +199,8 @@ export default function HersInvoice() {
       lines.push("Payments received:");
       payments.forEach(p=>{
         const d = p.date ? new Date(p.date+"T00:00:00").toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"}) : "";
-        lines.push(`  - $${fmt(p.amount)} (${p.method||"Other"})${d?` on ${d}`:""}`);
+        const ref = p.reference ? ` #${p.reference}` : "";
+        lines.push(`  - $${fmt(p.amount)} (${p.method||"Other"}${ref})${d?` on ${d}`:""}`);
       });
       lines.push(`Total Paid: $${fmt(totalPaid)}`);
     }
@@ -342,10 +350,14 @@ export default function HersInvoice() {
             <div style={{fontSize:11,fontWeight:700,color:C.faint,textTransform:"uppercase",letterSpacing:0.4}}>
               Payment Tracking
             </div>
-            <span style={{fontSize:11,padding:"3px 9px",borderRadius:10,fontWeight:700,
-                background:STATUS_COLORS[derivedStatus].bg,color:STATUS_COLORS[derivedStatus].text}}>
-              {derivedStatus}
-            </span>
+            <select value={status} onChange={e=>setStatus(e.target.value)}
+              style={{fontSize:11,padding:"3px 9px",borderRadius:10,fontWeight:700,border:"none",cursor:"pointer",
+                background:STATUS_COLORS[status].bg,color:STATUS_COLORS[status].text}}>
+              <option value="Unpaid">Unpaid</option>
+              <option value="Partial">Partial</option>
+              <option value="Paid">Paid</option>
+              <option value="Void">Void</option>
+            </select>
           </div>
 
           <div style={{marginBottom:10}}>
@@ -372,7 +384,7 @@ export default function HersInvoice() {
             </div>
           )}
 
-          {invoice.paid_at && derivedStatus==="Paid" && (
+          {invoice.paid_at && status==="Paid" && (
             <div style={{fontSize:11,color:C.faint,marginBottom:10}}>
               Marked paid on {new Date(invoice.paid_at).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}
             </div>
@@ -387,7 +399,7 @@ export default function HersInvoice() {
               {payments.map(p=>(
                 <div key={p.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",
                     padding:"6px 0",borderBottom:`1px solid ${C.border}`,fontSize:13}}>
-                  <span>{PAY_METHODS[p.method]||"📝"} {p.method||"Other"}
+                  <span>{PAY_METHODS[p.method]||"📝"} {p.method||"Other"}{p.reference?` #${p.reference}`:""}
                     {p.date && <span style={{color:C.faint,fontSize:11}}> · {new Date(p.date+"T00:00:00").toLocaleDateString("en-US",{month:"short",day:"numeric"})}</span>}
                   </span>
                   <span style={{display:"flex",alignItems:"center",gap:8}}>
@@ -421,6 +433,15 @@ export default function HersInvoice() {
                   </select>
                 </div>
               </div>
+              {payMethod!=="Cash" && (
+                <div style={{marginBottom:8}}>
+                  <div style={{fontSize:9,color:C.faint,fontWeight:700,textTransform:"uppercase",marginBottom:3}}>
+                    {payMethod==="Check"?"Check #":"Reference / Confirmation #"} (optional)
+                  </div>
+                  <input value={payReference} onChange={e=>setPayReference(e.target.value)}
+                    placeholder={payMethod==="Check"?"e.g. 1042":"e.g. auth code"} style={{...I,width:"100%"}} />
+                </div>
+              )}
               <div style={{marginBottom:8}}>
                 <div style={{fontSize:9,color:C.faint,fontWeight:700,textTransform:"uppercase",marginBottom:3}}>Date</div>
                 <input type="date" value={payDate} onChange={e=>setPayDate(e.target.value)} style={{...I,width:"100%"}} />
@@ -431,14 +452,10 @@ export default function HersInvoice() {
             </div>
           )}
 
-          <div style={{display:"flex",gap:8}}>
-            <button onClick={markPaidInFull} disabled={isVoid||balanceDue<=0} style={{...Btn,flex:1,opacity:(isVoid||balanceDue<=0)?0.4:1}}>
-              ✅ Fill Remaining Balance
-            </button>
-            <button onClick={toggleVoid} style={{...Btn,flex:1,color:isVoid?C.green:"#dc2626",borderColor:isVoid?C.green:"#dc2626"}}>
-              {isVoid?"↩ Un-void":"🚫 Void Invoice"}
-            </button>
-          </div>
+          <button onClick={fillRemainingBalance} disabled={isVoid||balanceDue<=0}
+            style={{...Btn,width:"100%",justifyContent:"center",opacity:(isVoid||balanceDue<=0)?0.4:1}}>
+            ✅ Fill Remaining Balance
+          </button>
         </div>
 
         {/* notes */}
