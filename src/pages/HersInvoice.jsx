@@ -325,6 +325,9 @@ export default function HersInvoice() {
               📄 View Estimate
             </button>
           )}
+          <button onClick={()=>navigate(`/hers/measurements/${invoiceId}`)} style={{...Btn,color:"#7c3aed",borderColor:"#7c3aed"}}>
+            📐 Field Measurements
+          </button>
           <button onClick={emailInvoice} style={{...Btn,color:"#2563eb",borderColor:"#2563eb"}}>
             📧 Email
           </button>
