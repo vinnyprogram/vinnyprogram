@@ -85,6 +85,7 @@ function ProtectedApp() {
         <Route path="/hers/invoices" element={<HersInvoiceSearch />} />
         <Route path="/hers/invoice/:id" element={<HersInvoice />} />
         <Route path="/hers/measurements/:invoiceId" element={<HersFieldMeasurements />} />
+        <Route path="/hers/measurements/estimate/:estimateId" element={<HersFieldMeasurements />} />
         <Route path="/hers/new" element={<HersEstimate />} />
         <Route path="/hers/:id" element={<HersEstimate />} />
       </Route>

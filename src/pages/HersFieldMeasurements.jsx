@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
-
 const C = {
   bg:"#f4f5f7", white:"#fff", ink:"#0f172a",
   muted:"#64748b", faint:"#94a3b8",
@@ -340,7 +339,10 @@ function WindowsEditor({ windows, onChange }) {
 // ══════════════════════════════════════════════════════
 export default function HersFieldMeasurements() {
   const navigate   = useNavigate();
-  const { invoiceId } = useParams();
+  const { invoiceId, estimateId } = useParams();
+  // mode: "invoice" (accessed from invoice page) or "estimate" (accessed from estimate page)
+  const mode = estimateId ? "estimate" : "invoice";
+  const contextId = estimateId || invoiceId; // eslint-disable-line no-unused-vars
 
   const [loading, setLoading]     = useState(true);
   const [saving, setSaving]       = useState(false);
@@ -368,21 +370,36 @@ export default function HersFieldMeasurements() {
   const [showCustomArea, setShowCustomArea] = useState(false);
 
   const loadData = useCallback(async()=>{
-    const { data:inv } = await supabase.from("hers_invoices").select("*").eq("id",invoiceId).maybeSingle();
-    if(!inv){ setLoading(false); return; }
-    setInvoice(inv);
-    if(inv.customer_id){
-      const { data:cust } = await supabase.from("customers").select("id,name,phone,company_name").eq("id",inv.customer_id).maybeSingle();
+    // Load the context record (estimate or invoice)
+    let context = null;
+    if(mode==="estimate"){
+      const { data:e } = await supabase.from("hers_estimates").select("*").eq("id",estimateId).maybeSingle();
+      if(!e){ setLoading(false); return; }
+      context = { id:null, customer_id:e.customer_id, address:e.address, company_id:e.company_id };
+    } else {
+      const { data:i } = await supabase.from("hers_invoices").select("*").eq("id",invoiceId).maybeSingle();
+      if(!i){ setLoading(false); return; }
+      context = i;
+    }
+    setInvoice(context);
+
+    if(context.customer_id){
+      const { data:cust } = await supabase.from("customers").select("id,name,phone,company_name").eq("id",context.customer_id).maybeSingle();
       if(cust) setCustomer(cust);
     }
-    const { data:fm } = await supabase.from("hers_field_measurements").select("*").eq("hers_invoice_id",invoiceId).maybeSingle();
+
+    // Load field measurements
+    const fmQuery = mode==="estimate"
+      ? supabase.from("hers_field_measurements").select("*").eq("hers_estimate_id",estimateId)
+      : supabase.from("hers_field_measurements").select("*").eq("hers_invoice_id",invoiceId);
+    const { data:fm } = await fmQuery.maybeSingle();
+
     if(fm){
       setFloors(parseArr(fm.floors).map(withId));
       const savedAreas = parseArr(fm.areas);
       if(savedAreas.length){
         setAreas(savedAreas.map(a=>({...withId(a),measurements:(a.measurements||[]).map(withId),dh:"",dl:"",dq:"1"})));
       } else {
-        // migrate old segment columns
         const migrated = [];
         parseArr(fm.roof_segments).forEach(s=>{ migrated.push({id:uid(),type:"Roof Rafter w/ Strapping",measurements:s.length?[{id:uid(),h:s.height||0,l:s.length||0,q:1,sqft:(s.height||0)*(s.length||0)}]:[],dh:"",dl:"",dq:"1"}); });
         parseArr(fm.wall_segments).forEach(s=>{ migrated.push({id:uid(),type:"Exterior Wall",measurements:s.length?[{id:uid(),h:s.height||0,l:s.length||0,q:1,sqft:(s.height||0)*(s.length||0)}]:[],dh:"",dl:"",dq:"1"}); });
@@ -393,12 +410,20 @@ export default function HersFieldMeasurements() {
       setWindows(parseArr(fm.windows).map(withId));
       setNotes(fm.notes||"");
     }
-    const { data:phData } = await supabase.from("job_photos").select("*").eq("hers_invoice_id",invoiceId).is("doc_type",null).order("created_at",{ascending:false});
+
+    // Load photos/docs keyed by invoice OR estimate
+    const photoFilter = mode==="invoice"
+      ? supabase.from("job_photos").select("*").eq("hers_invoice_id",invoiceId)
+      : supabase.from("job_photos").select("*").eq("hers_estimate_id",estimateId);
+    const { data:phData } = await photoFilter.is("doc_type",null).order("created_at",{ascending:false});
     setPhotos(phData||[]);
-    const { data:docData } = await supabase.from("job_photos").select("*").eq("hers_invoice_id",invoiceId).eq("doc_type","document").order("created_at",{ascending:false});
+    const docFilter = mode==="invoice"
+      ? supabase.from("job_photos").select("*").eq("hers_invoice_id",invoiceId)
+      : supabase.from("job_photos").select("*").eq("hers_estimate_id",estimateId);
+    const { data:docData } = await docFilter.eq("doc_type","document").order("created_at",{ascending:false});
     setDocs(docData||[]);
     setLoading(false);
-  },[invoiceId]);
+  },[invoiceId, estimateId, mode]);
 
   useEffect(()=>{ loadData(); },[loadData]);
 
@@ -518,7 +543,6 @@ export default function HersFieldMeasurements() {
     setSaving(true);
     try {
       const payload = {
-        hers_invoice_id: invoiceId,
         company_id: invoice.company_id,
         floors: floors.map(f=>({id:f.id,label:f.label||"",width:Number(f.width)||0,length:Number(f.length)||0,height:Number(f.height)||0})),
         areas: areas.map(a=>({
@@ -532,8 +556,17 @@ export default function HersFieldMeasurements() {
         notes,
         updated_at: new Date().toISOString(),
       };
-      const { error } = await supabase.from("hers_field_measurements").upsert(payload,{onConflict:"hers_invoice_id"});
-      if(error) throw error;
+      if(mode==="estimate"){
+        payload.hers_estimate_id = estimateId;
+        const { error } = await supabase.from("hers_field_measurements")
+          .upsert(payload,{onConflict:"hers_estimate_id"});
+        if(error) throw error;
+      } else {
+        payload.hers_invoice_id = invoiceId;
+        const { error } = await supabase.from("hers_field_measurements")
+          .upsert(payload,{onConflict:"hers_invoice_id"});
+        if(error) throw error;
+      }
       setSaved(true); setTimeout(()=>setSaved(false),2500);
     } catch(err){ alert("Error saving: "+(err.message||JSON.stringify(err))); }
     setSaving(false);
@@ -543,13 +576,19 @@ export default function HersFieldMeasurements() {
     if(!files?.length) return;
     setUploading(true);
     const errors=[];
+    const path_prefix = mode==="estimate"
+      ? `${invoice.company_id}/hers/est-${estimateId}`
+      : `${invoice.company_id}/hers/${invoiceId}`;
+    const photo_key = mode==="estimate"
+      ? { hers_estimate_id: estimateId }
+      : { hers_invoice_id: invoiceId };
     for(const file of Array.from(files)){
       const ext=file.name.split('.').pop();
-      const path=`${invoice.company_id}/hers/${invoiceId}/${Date.now()}.${ext}`;
+      const path=`${path_prefix}/${Date.now()}.${ext}`;
       const { error:upErr } = await supabase.storage.from("job-photos").upload(path,file);
       if(upErr){ errors.push(upErr.message); continue; }
       const { data:urlData } = supabase.storage.from("job-photos").getPublicUrl(path);
-      await supabase.from("job_photos").insert([{hers_invoice_id:invoiceId,url:urlData.publicUrl,company_id:invoice.company_id}]);
+      await supabase.from("job_photos").insert([{...photo_key,url:urlData.publicUrl,company_id:invoice.company_id}]);
     }
     if(errors.length) alert("Upload failed:\n"+errors.join("\n"));
     await loadData(); setUploading(false);
@@ -558,12 +597,18 @@ export default function HersFieldMeasurements() {
   async function uploadDocs(files){
     if(!files?.length) return;
     setUploadingDoc(true);
+    const path_prefix = mode==="estimate"
+      ? `${invoice.company_id}/hers/est-${estimateId}/docs`
+      : `${invoice.company_id}/hers/${invoiceId}/docs`;
+    const photo_key = mode==="estimate"
+      ? { hers_estimate_id: estimateId }
+      : { hers_invoice_id: invoiceId };
     for(const file of Array.from(files)){
-      const path=`${invoice.company_id}/hers/${invoiceId}/docs/${Date.now()}_${file.name}`;
+      const path=`${path_prefix}/${Date.now()}_${file.name}`;
       const { error:upErr } = await supabase.storage.from("job-photos").upload(path,file);
       if(upErr){ console.error(upErr); continue; }
       const { data:urlData } = supabase.storage.from("job-photos").getPublicUrl(path);
-      await supabase.from("job_photos").insert([{hers_invoice_id:invoiceId,url:urlData.publicUrl,caption:file.name,company_id:invoice.company_id,doc_type:"document"}]);
+      await supabase.from("job_photos").insert([{...photo_key,url:urlData.publicUrl,caption:file.name,company_id:invoice.company_id,doc_type:"document"}]);
     }
     await loadData(); setUploadingDoc(false);
   }

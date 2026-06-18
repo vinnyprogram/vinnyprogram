@@ -569,6 +569,12 @@ export default function HersEstimate() {
             </button>
           )}
           {isEditing && (
+            <button onClick={()=>navigate(`/hers/measurements/estimate/${estimateId}`)}
+              style={{...Btn,color:"#059669",borderColor:"#059669"}}>
+              📐 Measurements
+            </button>
+          )}
+          {isEditing && (
             <button onClick={convertToInvoice} style={{...Btn,color:"#7c3aed",borderColor:"#7c3aed"}}>
               {existingInvoiceId ? "📄 View Invoice" : "💵 Invoice"}
             </button>
