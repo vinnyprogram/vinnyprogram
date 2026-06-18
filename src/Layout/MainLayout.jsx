@@ -13,8 +13,9 @@ export default function MainLayout() {
     location.pathname === path ||
     (path === "/estimates" && (
       (location.pathname.includes("estimate") || location.pathname.includes("project"))
-      && !location.pathname.includes("hers")
+      && !location.pathname.includes("hers") && !location.pathname.startsWith("/projects")
     )) ||
+    (path === "/projects" && location.pathname.startsWith("/projects")) ||
     (path === "/hers" && location.pathname.includes("hers"));
 
   const linkStyle = (path) => ({
@@ -71,8 +72,26 @@ export default function MainLayout() {
           <Link to="/" style={linkStyle("/")} onClick={()=>setMenuOpen(false)}>
             Dashboard
           </Link>
+
+          {/* Unified New Job — top level entry point */}
+          <Link to="/job/new"
+            style={{
+              ...linkStyle("/job/new"),
+              background:"#059669",
+              color:"#fff",
+              fontWeight:700,
+              borderRadius:8,
+              marginBottom:6,
+            }}
+            onClick={()=>setMenuOpen(false)}>
+            ＋ New Job
+          </Link>
+
           <Link to="/crm" style={linkStyle("/crm")} onClick={()=>setMenuOpen(false)}>
             CRM
+          </Link>
+          <Link to="/projects" style={linkStyle("/projects")} onClick={()=>setMenuOpen(false)}>
+            🏠 Projects
           </Link>
           <Link to="/jobs" style={linkStyle("/jobs")} onClick={()=>setMenuOpen(false)}>
             Jobs

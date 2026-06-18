@@ -136,6 +136,102 @@ function AreaCard({ area, onChange, onRemove }) {
   );
 }
 
+// ── Ekotrope Summary ── read-only totals for entering into Ekotrope
+function EkotropeSummary({ floors, areas, windows, bedrooms }) {
+  const [open, setOpen] = useState(true);
+  const totalCFA    = floors.reduce((s,f)=>s+(Number(f.width)||0)*(Number(f.length)||0),0);
+  const totalVolume = floors.reduce((s,f)=>s+(Number(f.width)||0)*(Number(f.length)||0)*(Number(f.height)||0),0);
+
+  // Group area totals
+  const areaTotals = {};
+  areas.forEach(a=>{
+    const sqft = (a.measurements||[]).reduce((s,m)=>s+(m.sqft||0),0);
+    if(sqft>0) areaTotals[a.type] = (areaTotals[a.type]||0) + sqft;
+  });
+
+  return (
+    <div style={{...CARD, background:"#0f172a", border:"none", marginBottom:12}}>
+      <button onClick={()=>setOpen(p=>!p)}
+        style={{background:"none",border:"none",cursor:"pointer",width:"100%",
+          display:"flex",justifyContent:"space-between",alignItems:"center",padding:0}}>
+        <div style={{fontSize:11,fontWeight:700,color:"#94a3b8",textTransform:"uppercase",letterSpacing:0.6}}>
+          📊 Ekotrope Summary
+        </div>
+        <span style={{color:"#64748b",fontSize:12}}>{open?"▲ Hide":"▼ Show"}</span>
+      </button>
+
+      {open && (
+        <div style={{marginTop:12}}>
+          {/* Key figures */}
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:12}}>
+            <div style={{background:"#1e293b",borderRadius:8,padding:"8px 10px"}}>
+              <div style={{fontSize:9,color:"#64748b",fontWeight:700,textTransform:"uppercase",marginBottom:4}}>CFA</div>
+              <div style={{fontSize:18,fontWeight:800,color:"#34d399"}}>{Math.round(totalCFA).toLocaleString()}</div>
+              <div style={{fontSize:10,color:"#475569"}}>ft²</div>
+            </div>
+            <div style={{background:"#1e293b",borderRadius:8,padding:"8px 10px"}}>
+              <div style={{fontSize:9,color:"#64748b",fontWeight:700,textTransform:"uppercase",marginBottom:4}}>Volume</div>
+              <div style={{fontSize:18,fontWeight:800,color:"#34d399"}}>{Math.round(totalVolume).toLocaleString()}</div>
+              <div style={{fontSize:10,color:"#475569"}}>ft³</div>
+            </div>
+            <div style={{background:"#1e293b",borderRadius:8,padding:"8px 10px"}}>
+              <div style={{fontSize:9,color:"#64748b",fontWeight:700,textTransform:"uppercase",marginBottom:4}}>Bedrooms</div>
+              <div style={{fontSize:18,fontWeight:800,color:"#34d399"}}>{bedrooms||0}</div>
+              <div style={{fontSize:10,color:"#475569"}}>rooms</div>
+            </div>
+          </div>
+
+          {/* Area totals table */}
+          {Object.keys(areaTotals).length>0 && (
+            <div style={{marginBottom:12}}>
+              <div style={{fontSize:10,color:"#64748b",fontWeight:700,textTransform:"uppercase",marginBottom:6}}>Areas</div>
+              {Object.entries(areaTotals).map(([type, sqft])=>(
+                <div key={type} style={{display:"flex",justifyContent:"space-between",alignItems:"center",
+                    padding:"6px 10px",borderRadius:6,marginBottom:3,background:"#1e293b"}}>
+                  <span style={{fontSize:12,color:"#cbd5e1"}}>{type}</span>
+                  <span style={{fontSize:13,fontWeight:700,color:"#34d399"}}>{Math.round(sqft).toLocaleString()} ft²</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Windows table */}
+          {windows.length>0 && (
+            <div>
+              <div style={{fontSize:10,color:"#64748b",fontWeight:700,textTransform:"uppercase",marginBottom:6}}>Windows</div>
+              <div style={{overflowX:"auto"}}>
+                <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
+                  <thead>
+                    <tr style={{color:"#64748b"}}>
+                      {["Label","Facing","W","H","Top→OH","Bot→OH","Depth"].map(h=>(
+                        <th key={h} style={{textAlign:"left",padding:"4px 6px",fontWeight:700,
+                            textTransform:"uppercase",fontSize:9,whiteSpace:"nowrap"}}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {windows.map(w=>(
+                      <tr key={w.id} style={{borderTop:"1px solid #1e293b"}}>
+                        <td style={{padding:"5px 6px",color:"#cbd5e1"}}>{w.label||"—"}</td>
+                        <td style={{padding:"5px 6px",color:"#34d399",fontWeight:700}}>{w.orientation||"—"}</td>
+                        <td style={{padding:"5px 6px",color:"#cbd5e1"}}>{w.width||"—"}</td>
+                        <td style={{padding:"5px 6px",color:"#cbd5e1"}}>{w.height||"—"}</td>
+                        <td style={{padding:"5px 6px",color:w.top_to_overhang?"#fbbf24":"#475569"}}>{w.top_to_overhang||"—"}</td>
+                        <td style={{padding:"5px 6px",color:w.bottom_to_overhang?"#fbbf24":"#475569"}}>{w.bottom_to_overhang||"—"}</td>
+                        <td style={{padding:"5px 6px",color:w.overhang_depth?"#fbbf24":"#475569"}}>{w.overhang_depth||"—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Floors editor ──
 function FloorsEditor({ floors, onChange }) {
   function add(){ onChange([...floors, {id:uid(), label:`Floor ${floors.length+1}`, width:"", length:"", height:""}]); }
@@ -385,6 +481,11 @@ export default function HersFieldMeasurements() {
       if(!projFloors?.length){ alert("Insulation project has no floors set up yet — open the estimate first to create floors."); setPushing(false); return; }
       const targetFloor = projFloors[0];
 
+      // Copy address from HERS invoice to insulation project if it's missing or different
+      if(invoice.address && (!proj.address || proj.address !== invoice.address)){
+        await supabase.from("projects").update({ address: invoice.address }).eq("id", proj.id);
+      }
+
       const { data:existing } = await supabase.from("areas").select("id,area_type,sqft,floor_id").eq("project_id",proj.id);
       const existingMap = {};
       (existing||[]).forEach(a=>{ existingMap[a.area_type]=a; });
@@ -514,6 +615,11 @@ export default function HersFieldMeasurements() {
             <input type="number" value={bedrooms} onChange={e=>setBedrooms(e.target.value)} style={{...I,width:80}} />
           </div>
         </div>
+
+        {/* Ekotrope Summary */}
+        {(areas.length>0 || floors.length>0 || windows.length>0 || Number(bedrooms)>0) && (
+          <EkotropeSummary floors={floors} areas={areas} windows={windows} bedrooms={bedrooms} />
+        )}
 
         <FloorsEditor floors={floors} onChange={setFloors} />
 

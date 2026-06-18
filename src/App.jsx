@@ -20,6 +20,8 @@ import HersSearch from "./pages/HersSearch";
 import HersInvoice from "./pages/HersInvoice";
 import HersInvoiceSearch from "./pages/HersInvoiceSearch";
 import HersFieldMeasurements from "./pages/HersFieldMeasurements";
+import JobStart from "./pages/JobStart";
+import Projects from "./pages/Projects";
 
 
 function Dashboard() { return <h2 style={{padding:20}}>Dashboard</h2>; }
@@ -66,6 +68,7 @@ function ProtectedApp() {
         <Route path="jobs" element={<Jobs />} />
         <Route path="estimates/search" element={<EstimateSearch />} />
         <Route path="estimates" element={<EstimateStart />} />
+        <Route path="job/new" element={<JobStart />} />
         <Route path="how-to-use" element={<HowToUse />} />
         <Route path="project/new" element={<ProjectEstimate />} />
         <Route path="project/:id" element={<ProjectEstimate />} />
@@ -76,6 +79,8 @@ function ProtectedApp() {
         <Route path="quote-pricing/:projectId" element={<QuotePricing />} />
         <Route path="project/drawings" element={<EstimateDrawings />} />
         
+        <Route path="/projects" element={<Projects />} />
+        <Route path="/projects/:customerId" element={<Projects />} />
         <Route path="/hers/search" element={<HersSearch />} />
         <Route path="/hers/invoices" element={<HersInvoiceSearch />} />
         <Route path="/hers/invoice/:id" element={<HersInvoice />} />

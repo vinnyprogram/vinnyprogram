@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import AddressInput from "./AddressInput";
 import { AdjustmentRow, PaymentScheduleEditor } from "./PricingOptions";
@@ -230,7 +230,11 @@ function CustomerSection({ leads, selectedLead, selectedLeadId, jobAddress,
 export default function HersEstimate() {
   const navigate = useNavigate();
   const { id: estimateId } = useParams();
+  const [searchParams] = useSearchParams();
   const isEditing = !!estimateId;
+
+  const paramLeadId  = searchParams.get("leadId")||"";
+  const paramAddress = decodeURIComponent(searchParams.get("address")||"");
 
   const [loading, setLoading]   = useState(isEditing);
   const [saving, setSaving]     = useState(false);
@@ -243,8 +247,8 @@ export default function HersEstimate() {
 
   // customer
   const [leads, setLeads]       = useState([]);
-  const [selectedLeadId, setSelectedLeadId] = useState("");
-  const [address, setAddress]   = useState("");
+  const [selectedLeadId, setSelectedLeadId] = useState(paramLeadId);
+  const [address, setAddress]   = useState(paramAddress);
 
   // services price list
   const [services, setServices] = useState([]);
