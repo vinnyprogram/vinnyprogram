@@ -134,20 +134,12 @@ export default function MainLayout() {
                   <span>🔍</span> Search Estimates
                 </Link>
 
-                <Link to="/project/new?type=onsite"
+                <Link to="/job/new"
                   onClick={()=>{ setEstimateOpen(false); setMenuOpen(false); }}
                   style={subLink}
                   onMouseEnter={e=>e.currentTarget.style.background="#374151"}
                   onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-                  <span>🏠</span> On Site
-                </Link>
-
-                <Link to="/project/drawings"
-                  onClick={()=>{ setEstimateOpen(false); setMenuOpen(false); }}
-                  style={subLink}
-                  onMouseEnter={e=>e.currentTarget.style.background="#374151"}
-                  onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-                  <span>📐</span> By Drawings
+                  <span>+</span> New Estimate
                 </Link>
 
               </div>
@@ -183,7 +175,7 @@ export default function MainLayout() {
                   <span>🔍</span> Search Estimates
                 </Link>
 
-                <Link to="/hers/new"
+                <Link to="/job/new"
                   onClick={()=>{ setHersOpen(false); setMenuOpen(false); }}
                   style={subLink}
                   onMouseEnter={e=>e.currentTarget.style.background="#374151"}

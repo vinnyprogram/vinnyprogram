@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 
@@ -7,9 +7,10 @@ const C = {
   muted:"#64748b", faint:"#94a3b8",
   border:"#e2e8f0", green:"#059669",
   greenBg:"#f0fdf4", greenBorder:"#86efac",
+  dark:"#111827", darkCard:"#1e2a3a",
 };
 const I = {
-  height:34, fontSize:13, borderRadius:6, border:`1px solid ${C.border}`,
+  height:32, fontSize:12, borderRadius:6, border:`1px solid ${C.border}`,
   background:C.white, padding:"0 8px", boxSizing:"border-box",
   color:C.ink, outline:"none", width:"100%",
 };
@@ -27,8 +28,11 @@ const CARD = {
   background:C.white, borderRadius:10, border:`1px solid ${C.border}`,
   padding:"14px 16px", marginBottom:12,
 };
+const lbl = { fontSize:9, color:C.faint, fontWeight:700, textTransform:"uppercase", marginBottom:2 };
 
-// Same area types as the insulation estimate — exact match so data maps 1:1
+const ORIENTATIONS = ["N","NE","E","SE","S","SW","W","NW"];
+
+// Exact same area types as the insulation estimate
 const AREA_TYPES = [
   "Roof Rafter w/ Strapping",
   "Roof Rafter behind knee walls",
@@ -43,10 +47,12 @@ const AREA_TYPES = [
   "Other",
 ];
 
-// Types to auto-label dim1 as "Height" vs "Width"
+// Auto-label dim1 as Height for vertical areas
 const HEIGHT_TYPES = new Set(["Exterior Wall","Demising Wall","Rim Joist","Concrete Wall","Interior Walls","Fire Blocking"]);
 
-const ORIENTATIONS = ["N","NE","E","SE","S","SW","W","NW"];
+// Same insulation material specs as ProjectEstimate
+const THICK_OPTS = ["2x3","2x4","2x6","2x8","2x10","2x12","I-joist 14in","I-joist 16in","I-joist 18in"];
+const R_VALS     = ["R-11","R-13","R-15","R-19","R-21","R-28","R-30","R-38","R-49","R-60"];
 
 function fmt(n, d=1) {
   return Number(n||0).toLocaleString("en-US",{minimumFractionDigits:d,maximumFractionDigits:d});
@@ -57,8 +63,83 @@ function parseArr(v) {
 function uid() { return Date.now() + Math.random(); }
 function withId(x) { return {...x, id: x.id||uid()}; }
 
-// ── Single area card, mirrors insulation estimate layout ──
+// ── Ekotrope Summary panel ──
+function EkotropeSummary({ floors, areas, bedrooms }) {
+  const [open, setOpen] = useState(true);
+  const totalCFA = floors.reduce((s,f)=>s+(Number(f.width)||0)*(Number(f.length)||0),0);
+  const totalVol = floors.reduce((s,f)=>s+(Number(f.width)||0)*(Number(f.length)||0)*(Number(f.height)||0),0);
+
+  // Aggregate by type (possibly multiple areas of same type)
+  const byType = {};
+  areas.forEach(a=>{
+    const key = a.customLabel ? `${a.type} — ${a.customLabel}` : a.type;
+    const sqft = (a.measurements||[]).reduce((s,m)=>s+(m.sqft||0),0);
+    byType[key] = (byType[key]||0) + sqft;
+  });
+
+  return (
+    <div style={{background:C.dark,borderRadius:12,padding:"14px 16px",marginBottom:14,
+        boxShadow:"0 4px 20px rgba(0,0,0,.3)"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:open?14:0}}>
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          <span style={{fontSize:14}}>🟦</span>
+          <span style={{fontSize:11,fontWeight:800,color:"#e2e8f0",textTransform:"uppercase",letterSpacing:1}}>
+            Ekotrope Summary
+          </span>
+        </div>
+        <button onClick={()=>setOpen(p=>!p)}
+          style={{border:"none",background:"none",color:"#64748b",cursor:"pointer",fontSize:12,fontWeight:600}}>
+          {open?"▲ Hide":"▼ Show"}
+        </button>
+      </div>
+
+      {open && (
+        <>
+          {/* CFA / Volume / Bedrooms */}
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:14}}>
+            {[
+              {label:"CFA",value:fmt(totalCFA,0),unit:"ft²"},
+              {label:"Volume",value:fmt(totalVol,0),unit:"ft³"},
+              {label:"Bedrooms",value:String(Number(bedrooms)||0),unit:"rooms"},
+            ].map(({label,value,unit})=>(
+              <div key={label} style={{background:C.darkCard,borderRadius:8,padding:"10px 12px",textAlign:"center"}}>
+                <div style={{fontSize:9,color:"#64748b",fontWeight:700,textTransform:"uppercase",letterSpacing:0.5,marginBottom:4}}>{label}</div>
+                <div style={{fontSize:22,fontWeight:800,color:"#34d399",lineHeight:1}}>{value}</div>
+                <div style={{fontSize:10,color:"#475569",marginTop:2}}>{unit}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* Areas */}
+          {Object.keys(byType).length>0 && (
+            <>
+              <div style={{fontSize:9,fontWeight:700,color:"#475569",textTransform:"uppercase",letterSpacing:1,marginBottom:6}}>Areas</div>
+              <div style={{display:"flex",flexDirection:"column",gap:1}}>
+                {Object.entries(byType).map(([type,sqft])=>(
+                  <div key={type} style={{display:"flex",justifyContent:"space-between",alignItems:"center",
+                      padding:"6px 8px",borderRadius:6,background:sqft>0?C.darkCard:"transparent"}}>
+                    <span style={{fontSize:12,color:"#94a3b8"}}>{type}</span>
+                    <span style={{fontSize:13,fontWeight:700,color:"#34d399"}}>{fmt(sqft,0)} ft²</span>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+
+          {Object.keys(byType).length===0 && (
+            <div style={{textAlign:"center",color:"#475569",fontSize:12,padding:"8px 0"}}>
+              Add measurements below to populate this summary
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+// ── Area card with measurements + insulation specs ──
 function AreaCard({ area, onChange, onRemove }) {
+  const [specsOpen, setSpecsOpen] = useState(!!(area.material||area.r_value));
   const isHeight = HEIGHT_TYPES.has(area.type);
   const d1Label = isHeight ? "Height (ft)" : "Width (ft)";
   const meas = area.measurements||[];
@@ -72,169 +153,113 @@ function AreaCard({ area, onChange, onRemove }) {
   function commit() {
     if(!dh||!dl) return;
     const sqft = Math.round(dh*dl*dq*100)/100;
-    onChange("measurements", [...meas, {id:uid(), h:dh, l:dl, q:dq, sqft}]);
+    onChange("measurements",[...meas,{id:uid(),h:dh,l:dl,q:dq,sqft}]);
     onChange("dh",""); onChange("dl",""); onChange("dq","1");
   }
-  function delMeas(idx) {
-    onChange("measurements", meas.filter((_,i)=>i!==idx));
-  }
+  function delMeas(idx){ onChange("measurements",meas.filter((_,i)=>i!==idx)); }
 
   return (
     <div style={{background:C.greenBg, border:`1px solid ${C.greenBorder}`, borderLeft:`3px solid ${C.green}`,
         borderRadius:8, padding:"10px 12px", marginBottom:8}}>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
-        <div style={{fontWeight:700,fontSize:13,color:C.ink}}>{area.type}</div>
-        <div style={{display:"flex",alignItems:"center",gap:10}}>
-          <span style={{fontWeight:700,fontSize:13,color:C.green}}>{fmt(totalSqft,1)} ft²</span>
+
+      {/* Header row: type + custom label + total + remove */}
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8,gap:8}}>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{fontWeight:700,fontSize:13,color:C.ink}}>{area.type}</div>
+          <input value={area.customLabel||""} onChange={e=>onChange("customLabel",e.target.value)}
+            placeholder="Add label (e.g. Garage, North side, 1st floor)…"
+            style={{...I,marginTop:4,fontSize:11,height:26,color:C.muted,
+              background:"transparent",border:"none",borderBottom:`1px dashed ${C.border}`,
+              borderRadius:0,paddingLeft:0}} />
+        </div>
+        <div style={{display:"flex",alignItems:"center",gap:10,flexShrink:0}}>
+          <span style={{fontWeight:700,fontSize:13,color:C.green}}>{fmt(totalSqft,0)} ft²</span>
           <button onClick={onRemove} style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:13}}>✕</button>
         </div>
       </div>
 
-      {/* existing measurements as chips */}
+      {/* Measurement chips */}
       {meas.length>0 && (
         <div style={{display:"flex",flexWrap:"wrap",gap:4,marginBottom:8}}>
           {meas.map((m,i)=>(
             <span key={m.id} style={{background:"#dcfce7",color:"#166534",borderRadius:6,
                 padding:"2px 8px",fontSize:11,fontWeight:600,display:"inline-flex",alignItems:"center",gap:4}}>
-              {m.h}×{m.l}{m.q>1?`×${m.q}`:""} <span style={{color:C.faint,fontSize:10}}>={fmt(m.sqft,0)}ft²</span>
+              {m.h}×{m.l}{m.q>1?`×${m.q}`:""} <span style={{color:C.faint,fontSize:10}}>={fmt(m.sqft,0)}</span>
               <button onClick={()=>delMeas(i)} style={{border:"none",background:"none",color:"#4ade80",cursor:"pointer",fontSize:12,padding:0,lineHeight:1}}>✕</button>
             </span>
           ))}
         </div>
       )}
 
-      {/* input row */}
-      <div style={{display:"flex",gap:6,alignItems:"center"}}>
+      {/* Measurement input */}
+      <div style={{display:"flex",gap:6,alignItems:"center",marginBottom:8}}>
         <div style={{flex:1}}>
-          <div style={{fontSize:9,color:C.faint,fontWeight:700,textTransform:"uppercase",marginBottom:2}}>{d1Label}</div>
+          <div style={lbl}>{d1Label}</div>
           <input type="number" value={area.dh||""} onChange={e=>onChange("dh",e.target.value)}
             onKeyDown={e=>e.key==="Enter"&&commit()} placeholder="0"
-            style={{...I,height:30,textAlign:"right",fontSize:12}} />
+            style={{...I,textAlign:"right"}} />
         </div>
         <span style={{color:C.faint,fontSize:14,flexShrink:0,paddingTop:14}}>×</span>
         <div style={{flex:1}}>
-          <div style={{fontSize:9,color:C.faint,fontWeight:700,textTransform:"uppercase",marginBottom:2}}>Length (ft)</div>
+          <div style={lbl}>Length (ft)</div>
           <input type="number" value={area.dl||""} onChange={e=>onChange("dl",e.target.value)}
             onKeyDown={e=>e.key==="Enter"&&commit()} placeholder="0"
-            style={{...I,height:30,textAlign:"right",fontSize:12}} />
+            style={{...I,textAlign:"right"}} />
         </div>
-        <div style={{width:52,flexShrink:0}}>
-          <div style={{fontSize:9,color:C.faint,fontWeight:700,textTransform:"uppercase",marginBottom:2}}>Qty</div>
+        <div style={{width:48,flexShrink:0}}>
+          <div style={lbl}>Qty</div>
           <input type="number" value={area.dq||""} onChange={e=>onChange("dq",e.target.value)}
             onKeyDown={e=>e.key==="Enter"&&commit()} placeholder="1"
-            style={{...I,height:30,textAlign:"center",fontSize:12}} />
+            style={{...I,textAlign:"center"}} />
         </div>
         <div style={{flexShrink:0,paddingTop:14}}>
           <button onClick={commit} disabled={!dh||!dl}
             style={{...Btn,background:dh&&dl?C.green:"#f1f5f9",color:dh&&dl?"#fff":C.faint,
-              borderColor:dh&&dl?C.green:C.border,height:30,fontSize:11}}>
-            {preview>0?`+${fmt(preview,0)}ft²`:"Add"}
+              borderColor:dh&&dl?C.green:C.border,height:32,fontSize:11}}>
+            {preview>0?`+${fmt(preview,0)}`:"Add"}
           </button>
         </div>
       </div>
-    </div>
-  );
-}
 
-// ── Ekotrope Summary ── read-only totals for entering into Ekotrope
-function EkotropeSummary({ floors, areas, windows, bedrooms }) {
-  const [open, setOpen] = useState(true);
-  const totalCFA    = floors.reduce((s,f)=>s+(Number(f.width)||0)*(Number(f.length)||0),0);
-  const totalVolume = floors.reduce((s,f)=>s+(Number(f.width)||0)*(Number(f.length)||0)*(Number(f.height)||0),0);
+      {/* Insulation Specs toggle */}
+      <div style={{borderTop:`1px solid ${C.greenBorder}`,paddingTop:6}}>
+        <button onClick={()=>setSpecsOpen(p=>!p)}
+          style={{border:"none",background:"none",cursor:"pointer",
+            fontSize:11,color:specsOpen?C.green:C.muted,fontWeight:600,padding:"2px 0"}}>
+          {specsOpen?"▾ Insulation specs":"▸ Add insulation specs (material, R-value)"}
+        </button>
 
-  // Group area totals
-  const areaTotals = {};
-  areas.forEach(a=>{
-    const sqft = (a.measurements||[]).reduce((s,m)=>s+(m.sqft||0),0);
-    if(sqft>0) areaTotals[a.type] = (areaTotals[a.type]||0) + sqft;
-  });
-
-  return (
-    <div style={{...CARD, background:"#0f172a", border:"none", marginBottom:12}}>
-      <button onClick={()=>setOpen(p=>!p)}
-        style={{background:"none",border:"none",cursor:"pointer",width:"100%",
-          display:"flex",justifyContent:"space-between",alignItems:"center",padding:0}}>
-        <div style={{fontSize:11,fontWeight:700,color:"#94a3b8",textTransform:"uppercase",letterSpacing:0.6}}>
-          📊 Ekotrope Summary
-        </div>
-        <span style={{color:"#64748b",fontSize:12}}>{open?"▲ Hide":"▼ Show"}</span>
-      </button>
-
-      {open && (
-        <div style={{marginTop:12}}>
-          {/* Key figures */}
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:12}}>
-            <div style={{background:"#1e293b",borderRadius:8,padding:"8px 10px"}}>
-              <div style={{fontSize:9,color:"#64748b",fontWeight:700,textTransform:"uppercase",marginBottom:4}}>CFA</div>
-              <div style={{fontSize:18,fontWeight:800,color:"#34d399"}}>{Math.round(totalCFA).toLocaleString()}</div>
-              <div style={{fontSize:10,color:"#475569"}}>ft²</div>
+        {specsOpen && (
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:6,marginTop:8}}>
+            <div>
+              <div style={lbl}>Material</div>
+              <input value={area.material||""} onChange={e=>onChange("material",e.target.value)}
+                placeholder="e.g. Open cell" style={{...I,fontSize:11}} />
             </div>
-            <div style={{background:"#1e293b",borderRadius:8,padding:"8px 10px"}}>
-              <div style={{fontSize:9,color:"#64748b",fontWeight:700,textTransform:"uppercase",marginBottom:4}}>Volume</div>
-              <div style={{fontSize:18,fontWeight:800,color:"#34d399"}}>{Math.round(totalVolume).toLocaleString()}</div>
-              <div style={{fontSize:10,color:"#475569"}}>ft³</div>
+            <div>
+              <div style={lbl}>Thickness</div>
+              <select value={area.thickness||""} onChange={e=>onChange("thickness",e.target.value)} style={{...I,fontSize:11}}>
+                <option value="">—</option>
+                {THICK_OPTS.map(t=><option key={t} value={t}>{t}</option>)}
+              </select>
             </div>
-            <div style={{background:"#1e293b",borderRadius:8,padding:"8px 10px"}}>
-              <div style={{fontSize:9,color:"#64748b",fontWeight:700,textTransform:"uppercase",marginBottom:4}}>Bedrooms</div>
-              <div style={{fontSize:18,fontWeight:800,color:"#34d399"}}>{bedrooms||0}</div>
-              <div style={{fontSize:10,color:"#475569"}}>rooms</div>
+            <div>
+              <div style={lbl}>R-Value</div>
+              <select value={area.r_value||""} onChange={e=>onChange("r_value",e.target.value)} style={{...I,fontSize:11}}>
+                <option value="">—</option>
+                {R_VALS.map(r=><option key={r} value={r}>{r}</option>)}
+              </select>
             </div>
           </div>
-
-          {/* Area totals table */}
-          {Object.keys(areaTotals).length>0 && (
-            <div style={{marginBottom:12}}>
-              <div style={{fontSize:10,color:"#64748b",fontWeight:700,textTransform:"uppercase",marginBottom:6}}>Areas</div>
-              {Object.entries(areaTotals).map(([type, sqft])=>(
-                <div key={type} style={{display:"flex",justifyContent:"space-between",alignItems:"center",
-                    padding:"6px 10px",borderRadius:6,marginBottom:3,background:"#1e293b"}}>
-                  <span style={{fontSize:12,color:"#cbd5e1"}}>{type}</span>
-                  <span style={{fontSize:13,fontWeight:700,color:"#34d399"}}>{Math.round(sqft).toLocaleString()} ft²</span>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Windows table */}
-          {windows.length>0 && (
-            <div>
-              <div style={{fontSize:10,color:"#64748b",fontWeight:700,textTransform:"uppercase",marginBottom:6}}>Windows</div>
-              <div style={{overflowX:"auto"}}>
-                <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
-                  <thead>
-                    <tr style={{color:"#64748b"}}>
-                      {["Label","Facing","W","H","Top→OH","Bot→OH","Depth"].map(h=>(
-                        <th key={h} style={{textAlign:"left",padding:"4px 6px",fontWeight:700,
-                            textTransform:"uppercase",fontSize:9,whiteSpace:"nowrap"}}>{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {windows.map(w=>(
-                      <tr key={w.id} style={{borderTop:"1px solid #1e293b"}}>
-                        <td style={{padding:"5px 6px",color:"#cbd5e1"}}>{w.label||"—"}</td>
-                        <td style={{padding:"5px 6px",color:"#34d399",fontWeight:700}}>{w.orientation||"—"}</td>
-                        <td style={{padding:"5px 6px",color:"#cbd5e1"}}>{w.width||"—"}</td>
-                        <td style={{padding:"5px 6px",color:"#cbd5e1"}}>{w.height||"—"}</td>
-                        <td style={{padding:"5px 6px",color:w.top_to_overhang?"#fbbf24":"#475569"}}>{w.top_to_overhang||"—"}</td>
-                        <td style={{padding:"5px 6px",color:w.bottom_to_overhang?"#fbbf24":"#475569"}}>{w.bottom_to_overhang||"—"}</td>
-                        <td style={{padding:"5px 6px",color:w.overhang_depth?"#fbbf24":"#475569"}}>{w.overhang_depth||"—"}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }
 
 // ── Floors editor ──
 function FloorsEditor({ floors, onChange }) {
-  function add(){ onChange([...floors, {id:uid(), label:`Floor ${floors.length+1}`, width:"", length:"", height:""}]); }
+  function add(){ onChange([...floors,{id:uid(),label:`Floor ${floors.length+1}`,width:"",length:"",height:""}]); }
   function upd(idx,f,v){ onChange(floors.map((fl,i)=>i===idx?{...fl,[f]:v}:fl)); }
   function rem(idx){ onChange(floors.filter((_,i)=>i!==idx)); }
   const totalCFA = floors.reduce((s,f)=>s+(Number(f.width)||0)*(Number(f.length)||0),0);
@@ -251,22 +276,13 @@ function FloorsEditor({ floors, onChange }) {
           <div key={f.id} style={{border:`1px solid ${C.border}`,borderRadius:8,padding:"8px 10px",marginBottom:8}}>
             <div style={{display:"flex",gap:6,marginBottom:6,alignItems:"center"}}>
               <input value={f.label} onChange={e=>upd(idx,"label",e.target.value)} placeholder="e.g. 1st Floor"
-                style={{...I,flex:1,fontSize:12,height:30}} />
+                style={{...I,flex:1}} />
               <button onClick={()=>rem(idx)} style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:16,flexShrink:0}}>✕</button>
             </div>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:6,marginBottom:4}}>
-              <div>
-                <div style={{fontSize:9,color:C.faint,fontWeight:700,textTransform:"uppercase",marginBottom:2}}>Width (ft)</div>
-                <input type="number" value={f.width} onChange={e=>upd(idx,"width",e.target.value)} style={{...I,fontSize:12,textAlign:"right",height:30}} />
-              </div>
-              <div>
-                <div style={{fontSize:9,color:C.faint,fontWeight:700,textTransform:"uppercase",marginBottom:2}}>Length (ft)</div>
-                <input type="number" value={f.length} onChange={e=>upd(idx,"length",e.target.value)} style={{...I,fontSize:12,textAlign:"right",height:30}} />
-              </div>
-              <div>
-                <div style={{fontSize:9,color:C.faint,fontWeight:700,textTransform:"uppercase",marginBottom:2}}>Height (ft)</div>
-                <input type="number" value={f.height} onChange={e=>upd(idx,"height",e.target.value)} style={{...I,fontSize:12,textAlign:"right",height:30}} />
-              </div>
+              <div><div style={lbl}>Width (ft)</div><input type="number" value={f.width} onChange={e=>upd(idx,"width",e.target.value)} style={{...I,textAlign:"right"}} /></div>
+              <div><div style={lbl}>Length (ft)</div><input type="number" value={f.length} onChange={e=>upd(idx,"length",e.target.value)} style={{...I,textAlign:"right"}} /></div>
+              <div><div style={lbl}>Height (ft)</div><input type="number" value={f.height} onChange={e=>upd(idx,"height",e.target.value)} style={{...I,textAlign:"right"}} /></div>
             </div>
             <div style={{display:"flex",justifyContent:"space-between",fontSize:11,color:C.muted}}>
               <span>CFA: <b style={{color:C.green}}>{fmt(cfa)} ft²</b></span>
@@ -289,7 +305,7 @@ function FloorsEditor({ floors, onChange }) {
 
 // ── Windows editor ──
 function WindowsEditor({ windows, onChange }) {
-  function add(){ onChange([...windows, {id:uid(), label:`Window ${windows.length+1}`, orientation:"N", width:"", height:"", top_to_overhang:"", bottom_to_overhang:"", overhang_depth:""}]); }
+  function add(){ onChange([...windows,{id:uid(),label:`Window ${windows.length+1}`,orientation:"N",width:"",height:"",top_to_overhang:"",bottom_to_overhang:"",overhang_depth:""}]); }
   function upd(idx,f,v){ onChange(windows.map((w,i)=>i===idx?{...w,[f]:v}:w)); }
   function rem(idx){ onChange(windows.filter((_,i)=>i!==idx)); }
   return (
@@ -298,38 +314,21 @@ function WindowsEditor({ windows, onChange }) {
       {windows.map((w,idx)=>(
         <div key={w.id} style={{border:`1px solid ${C.border}`,borderRadius:8,padding:"8px 10px",marginBottom:8}}>
           <div style={{display:"flex",gap:6,marginBottom:6,alignItems:"center"}}>
-            <input value={w.label} onChange={e=>upd(idx,"label",e.target.value)} placeholder="e.g. Living room"
-              style={{...I,flex:1,fontSize:12,height:30}} />
-            <select value={w.orientation} onChange={e=>upd(idx,"orientation",e.target.value)}
-              style={{...I,width:60,fontSize:12,height:30,flexShrink:0}}>
+            <input value={w.label} onChange={e=>upd(idx,"label",e.target.value)} placeholder="e.g. Living room" style={{...I,flex:1}} />
+            <select value={w.orientation} onChange={e=>upd(idx,"orientation",e.target.value)} style={{...I,width:60,flexShrink:0}}>
               {ORIENTATIONS.map(o=><option key={o} value={o}>{o}</option>)}
             </select>
             <button onClick={()=>rem(idx)} style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:16,flexShrink:0}}>✕</button>
           </div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginBottom:8}}>
-            <div>
-              <div style={{fontSize:9,color:C.faint,fontWeight:700,textTransform:"uppercase",marginBottom:2}}>Width (ft)</div>
-              <input type="number" value={w.width} onChange={e=>upd(idx,"width",e.target.value)} style={{...I,fontSize:12,textAlign:"right",height:30}} />
-            </div>
-            <div>
-              <div style={{fontSize:9,color:C.faint,fontWeight:700,textTransform:"uppercase",marginBottom:2}}>Height (ft)</div>
-              <input type="number" value={w.height} onChange={e=>upd(idx,"height",e.target.value)} style={{...I,fontSize:12,textAlign:"right",height:30}} />
-            </div>
+            <div><div style={lbl}>Width (ft)</div><input type="number" value={w.width} onChange={e=>upd(idx,"width",e.target.value)} style={{...I,textAlign:"right"}} /></div>
+            <div><div style={lbl}>Height (ft)</div><input type="number" value={w.height} onChange={e=>upd(idx,"height",e.target.value)} style={{...I,textAlign:"right"}} /></div>
           </div>
           <div style={{fontSize:9,color:C.faint,fontWeight:700,textTransform:"uppercase",marginBottom:4}}>Overhang shading (optional, for Ekotrope)</div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:6}}>
-            <div>
-              <div style={{fontSize:9,color:C.faint,fontWeight:700,textTransform:"uppercase",marginBottom:2}}>Top→overhang</div>
-              <input type="number" value={w.top_to_overhang} onChange={e=>upd(idx,"top_to_overhang",e.target.value)} style={{...I,fontSize:12,textAlign:"right",height:30}} />
-            </div>
-            <div>
-              <div style={{fontSize:9,color:C.faint,fontWeight:700,textTransform:"uppercase",marginBottom:2}}>Bottom→overhang</div>
-              <input type="number" value={w.bottom_to_overhang} onChange={e=>upd(idx,"bottom_to_overhang",e.target.value)} style={{...I,fontSize:12,textAlign:"right",height:30}} />
-            </div>
-            <div>
-              <div style={{fontSize:9,color:C.faint,fontWeight:700,textTransform:"uppercase",marginBottom:2}}>Overhang depth</div>
-              <input type="number" value={w.overhang_depth} onChange={e=>upd(idx,"overhang_depth",e.target.value)} style={{...I,fontSize:12,textAlign:"right",height:30}} />
-            </div>
+            <div><div style={lbl}>Top→overhang</div><input type="number" value={w.top_to_overhang} onChange={e=>upd(idx,"top_to_overhang",e.target.value)} style={{...I,textAlign:"right"}} /></div>
+            <div><div style={lbl}>Bottom→overhang</div><input type="number" value={w.bottom_to_overhang} onChange={e=>upd(idx,"bottom_to_overhang",e.target.value)} style={{...I,textAlign:"right"}} /></div>
+            <div><div style={lbl}>Overhang depth</div><input type="number" value={w.overhang_depth} onChange={e=>upd(idx,"overhang_depth",e.target.value)} style={{...I,textAlign:"right"}} /></div>
           </div>
         </div>
       ))}
@@ -338,9 +337,9 @@ function WindowsEditor({ windows, onChange }) {
   );
 }
 
-// ══════════════════════════════════════════════
+// ══════════════════════════════════════════════════════
 export default function HersFieldMeasurements() {
-  const navigate  = useNavigate();
+  const navigate   = useNavigate();
   const { invoiceId } = useParams();
 
   const [loading, setLoading]     = useState(true);
@@ -349,28 +348,26 @@ export default function HersFieldMeasurements() {
   const [importing, setImporting] = useState(false);
   const [pushing, setPushing]     = useState(false);
 
-  const [invoice, setInvoice]     = useState(null);
-  const [customer, setCustomer]   = useState(null);
+  const [invoice, setInvoice]   = useState(null);
+  const [customer, setCustomer] = useState(null);
 
-  const [floors, setFloors]     = useState([]);
-  const [areas, setAreas]       = useState([]);  // [{id, type, measurements:[{id,h,l,q,sqft}], dh, dl, dq}]
-  const [windows, setWindows]   = useState([]);
+  const [floors, setFloors]   = useState([]);
+  const [areas, setAreas]     = useState([]);
+  const [windows, setWindows] = useState([]);
   const [bedrooms, setBedrooms] = useState("0");
-  const [notes, setNotes]       = useState("");
+  const [notes, setNotes]     = useState("");
 
-  const [photos, setPhotos]         = useState([]);
-  const [docs, setDocs]             = useState([]);
-  const [uploading, setUploading]   = useState(false);
+  const [photos, setPhotos]             = useState([]);
+  const [docs, setDocs]                 = useState([]);
+  const [uploading, setUploading]       = useState(false);
   const [uploadingDoc, setUploadingDoc] = useState(false);
 
-  const [showAddArea, setShowAddArea]   = useState(false);
-  const [newAreaType, setNewAreaType]   = useState("");
-  const [customArea, setCustomArea]     = useState("");
+  const [showAddArea, setShowAddArea]     = useState(false);
+  const [newAreaType, setNewAreaType]     = useState("");
+  const [customArea, setCustomArea]       = useState("");
   const [showCustomArea, setShowCustomArea] = useState(false);
 
-  useEffect(()=>{ load(); },[]);
-
-  async function load() {
+  const loadData = useCallback(async()=>{
     const { data:inv } = await supabase.from("hers_invoices").select("*").eq("id",invoiceId).maybeSingle();
     if(!inv){ setLoading(false); return; }
     setInvoice(inv);
@@ -381,22 +378,15 @@ export default function HersFieldMeasurements() {
     const { data:fm } = await supabase.from("hers_field_measurements").select("*").eq("hers_invoice_id",invoiceId).maybeSingle();
     if(fm){
       setFloors(parseArr(fm.floors).map(withId));
-      // Support both old segment format and new unified areas
       const savedAreas = parseArr(fm.areas);
       if(savedAreas.length){
-        setAreas(savedAreas.map(a=>({...withId(a), measurements:(a.measurements||[]).map(withId), dh:"",dl:"",dq:"1"})));
+        setAreas(savedAreas.map(a=>({...withId(a),measurements:(a.measurements||[]).map(withId),dh:"",dl:"",dq:"1"})));
       } else {
-        // Migrate from old segment columns if areas is empty
+        // migrate old segment columns
         const migrated = [];
-        parseArr(fm.roof_segments).forEach(s=>{
-          migrated.push({id:uid(),type:"Roof Rafter w/ Strapping",measurements:s.length?[{id:uid(),h:s.height||0,l:s.length||0,q:1,sqft:(s.height||0)*(s.length||0)}]:[],dh:"",dl:"",dq:"1"});
-        });
-        parseArr(fm.wall_segments).forEach(s=>{
-          migrated.push({id:uid(),type:"Exterior Wall",measurements:s.length?[{id:uid(),h:s.height||0,l:s.length||0,q:1,sqft:(s.height||0)*(s.length||0)}]:[],dh:"",dl:"",dq:"1"});
-        });
-        parseArr(fm.rim_joist_segments).forEach(s=>{
-          migrated.push({id:uid(),type:"Rim Joist",measurements:s.length?[{id:uid(),h:s.height||0,l:s.length||0,q:1,sqft:(s.height||0)*(s.length||0)}]:[],dh:"",dl:"",dq:"1"});
-        });
+        parseArr(fm.roof_segments).forEach(s=>{ migrated.push({id:uid(),type:"Roof Rafter w/ Strapping",measurements:s.length?[{id:uid(),h:s.height||0,l:s.length||0,q:1,sqft:(s.height||0)*(s.length||0)}]:[],dh:"",dl:"",dq:"1"}); });
+        parseArr(fm.wall_segments).forEach(s=>{ migrated.push({id:uid(),type:"Exterior Wall",measurements:s.length?[{id:uid(),h:s.height||0,l:s.length||0,q:1,sqft:(s.height||0)*(s.length||0)}]:[],dh:"",dl:"",dq:"1"}); });
+        parseArr(fm.rim_joist_segments).forEach(s=>{ migrated.push({id:uid(),type:"Rim Joist",measurements:s.length?[{id:uid(),h:s.height||0,l:s.length||0,q:1,sqft:(s.height||0)*(s.length||0)}]:[],dh:"",dl:"",dq:"1"}); });
         if(migrated.length) setAreas(migrated);
       }
       setBedrooms(String(fm.bedrooms||0));
@@ -408,103 +398,107 @@ export default function HersFieldMeasurements() {
     const { data:docData } = await supabase.from("job_photos").select("*").eq("hers_invoice_id",invoiceId).eq("doc_type","document").order("created_at",{ascending:false});
     setDocs(docData||[]);
     setLoading(false);
-  }
+  },[invoiceId]);
 
-  // Area helpers
+  useEffect(()=>{ loadData(); },[loadData]);
+
   function addArea(){
     const t = showCustomArea ? customArea.trim() : newAreaType;
     if(!t) return;
-    setAreas(p=>[...p, {id:uid(),type:t,measurements:[],dh:"",dl:"",dq:"1"}]);
+    setAreas(p=>[...p,{id:uid(),type:t,customLabel:"",measurements:[],dh:"",dl:"",dq:"1",material:"",thickness:"",r_value:""}]);
     setNewAreaType(""); setCustomArea(""); setShowCustomArea(false); setShowAddArea(false);
   }
   function removeArea(idx){ setAreas(p=>p.filter((_,i)=>i!==idx)); }
-  function changeArea(idx, field, val){ setAreas(p=>p.map((a,i)=>i===idx?{...a,[field]:val}:a)); }
+  function changeArea(idx,field,val){ setAreas(p=>p.map((a,i)=>i===idx?{...a,[field]:val}:a)); }
 
-  // Summary stats
-  const totalSqft = areas.reduce((s,a)=>s+(a.measurements||[]).reduce((ss,m)=>ss+(m.sqft||0),0),0);
-
-  // ── Import from insulation project ──
+  // ── Import from insulation ──
   async function importFromInsulation() {
     if(!invoice?.customer_id) return;
-    if(!window.confirm("Import measurements from the insulation project for this customer? New areas will be added without overwriting existing ones.")) return;
+    if(!window.confirm("Import measurements from the insulation project for this customer?")) return;
     setImporting(true);
     try {
       const { data:projs } = await supabase.from("projects").select("id,name,address").eq("lead_id",invoice.customer_id).order("created_at",{ascending:false}).limit(5);
-      if(!projs?.length){ alert("No insulation project found for this customer."); setImporting(false); return; }
+      if(!projs?.length){ alert("No insulation project found."); setImporting(false); return; }
       const proj = projs.find(p=>(p.address||"").toLowerCase().includes((invoice.address||"").split(",")[0].toLowerCase()))||projs[0];
-
       const { data:projFloors } = await supabase.from("floors").select("*").eq("project_id",proj.id).order("order_index");
-      const { data:projAreas }  = await supabase.from("areas").select("*").eq("project_id",proj.id).order("order_index");
+      const { data:projAreas  } = await supabase.from("areas").select("*").eq("project_id",proj.id).order("order_index");
       const areaIds = (projAreas||[]).map(a=>a.id);
       let segs = [];
       if(areaIds.length){ const { data:s } = await supabase.from("segments").select("*").in("area_id",areaIds); segs=s||[]; }
-
       const floorMap = {};
       (projFloors||[]).forEach(f=>{ floorMap[f.id]=f.name; });
-
       const newAreas = [];
       for(const a of (projAreas||[])){
         if(!a.area_type) continue;
         const areaSegs = segs.filter(s=>s.area_id===a.id);
         const stored = parseArr(a.measurements)||[];
-
         let meas = [];
         if(areaSegs.length){
-          meas = areaSegs.map(s=>({ id:uid(), h:Number(s.height)||0, l:Number(s.length)||0, q:1, sqft:Math.round((Number(s.height)||0)*(Number(s.length)||0)*100)/100 }));
+          meas = areaSegs.map(s=>({id:uid(),h:Number(s.height)||0,l:Number(s.length)||0,q:1,sqft:Math.round((Number(s.height)||0)*(Number(s.length)||0)*100)/100}));
         } else if(stored.length){
           meas = stored.map(m=>({...m,id:uid()}));
         } else if(a.sqft>0){
-          meas = [{id:uid(), h:Math.round(Math.sqrt(a.sqft)*10)/10, l:Math.round(Math.sqrt(a.sqft)*10)/10, q:1, sqft:a.sqft}];
+          meas = [{id:uid(),h:Math.round(Math.sqrt(a.sqft)*10)/10,l:Math.round(Math.sqrt(a.sqft)*10)/10,q:1,sqft:a.sqft}];
         }
         if(meas.length){
-          newAreas.push({id:uid(), type:a.area_type, measurements:meas, dh:"",dl:"",dq:"1"});
+          newAreas.push({
+            id:uid(), type:a.area_type,
+            customLabel: floorMap[a.floor_id]||"",
+            measurements:meas, dh:"",dl:"",dq:"1",
+            material:a.material||"", thickness:a.thickness_in||"", r_value:a.r_value||"",
+          });
         }
       }
       setAreas(p=>[...p,...newAreas]);
-      alert(`✅ Imported ${newAreas.length} area(s) from "${proj.name||proj.address||"insulation project"}".\nReview values — wall/rim joist segments import as height×length.`);
+      alert(`✅ Imported ${newAreas.length} area(s) from "${proj.name||proj.address||"insulation project"}" — including material specs where available.`);
     } catch(err){ alert("Import error: "+(err.message||JSON.stringify(err))); }
     setImporting(false);
   }
 
-  // ── Push to insulation project ──
+  // ── Push to insulation ──
   async function pushToInsulation() {
     if(!invoice?.customer_id) return;
-    if(!areas.length){ alert("No areas to push. Add some measurements first."); return; }
-    if(!window.confirm("Push HERS measurements to the insulation project for this customer? This will add/update area sqft values in the insulation estimate.")) return;
+    if(!areas.length){ alert("No areas to push."); return; }
+    if(!window.confirm("Push measurements to the insulation project for this customer?")) return;
     setPushing(true);
     try {
       const { data:projs } = await supabase.from("projects").select("id,name,address").eq("lead_id",invoice.customer_id).order("created_at",{ascending:false}).limit(5);
-      if(!projs?.length){ alert("No insulation project found for this customer."); setPushing(false); return; }
+      if(!projs?.length){ alert("No insulation project found."); setPushing(false); return; }
       const proj = projs.find(p=>(p.address||"").toLowerCase().includes((invoice.address||"").split(",")[0].toLowerCase()))||projs[0];
-
-      const { data:projFloors } = await supabase.from("floors").select("*").eq("project_id",proj.id).order("order_index").limit(1);
-      if(!projFloors?.length){ alert("Insulation project has no floors set up yet — open the estimate first to create floors."); setPushing(false); return; }
-      const targetFloor = projFloors[0];
-
-      // Copy address from HERS invoice to insulation project if it's missing or different
-      if(invoice.address && (!proj.address || proj.address !== invoice.address)){
-        await supabase.from("projects").update({ address: invoice.address }).eq("id", proj.id);
+      if(invoice.address && (!proj.address||proj.address!==invoice.address)){
+        await supabase.from("projects").update({address:invoice.address}).eq("id",proj.id);
       }
-
+      const { data:projFloors } = await supabase.from("floors").select("*").eq("project_id",proj.id).order("order_index").limit(1);
+      if(!projFloors?.length){ alert("Open the insulation estimate first to create floors."); setPushing(false); return; }
+      const targetFloor = projFloors[0];
       const { data:existing } = await supabase.from("areas").select("id,area_type,sqft,floor_id").eq("project_id",proj.id);
       const existingMap = {};
       (existing||[]).forEach(a=>{ existingMap[a.area_type]=a; });
-
       let updated=0, created=0;
       for(const area of areas){
-        const totalSqftArea = (area.measurements||[]).reduce((s,m)=>s+(m.sqft||0),0);
-        if(totalSqftArea<=0) continue;
+        const sqft = (area.measurements||[]).reduce((s,m)=>s+(m.sqft||0),0);
+        if(sqft<=0) continue;
         const meas = (area.measurements||[]).map(m=>({h:m.h,l:m.l,q:m.q||1,sqft:m.sqft}));
+        const specs = {
+          material: area.material||"",
+          thickness_in: area.thickness||"",
+          r_value: area.r_value||"",
+        };
         if(existingMap[area.type]){
-          await supabase.from("areas").update({sqft:Math.round(totalSqftArea*100)/100,measurements:meas}).eq("id",existingMap[area.type].id);
+          await supabase.from("areas").update({sqft:Math.round(sqft*100)/100,measurements:meas,...specs}).eq("id",existingMap[area.type].id);
           updated++;
         } else {
-          const orderIdx = (existing||[]).length*10+created*10;
-          await supabase.from("areas").insert([{project_id:proj.id,floor_id:targetFloor.id,area_type:area.type,sqft:Math.round(totalSqftArea*100)/100,measurements:meas,material:"",thickness_in:"",r_value:"",oc:"",qty:1,unit:"sqft",unit_price:0,line_total:0,order_index:orderIdx,company_id:invoice.company_id}]);
+          await supabase.from("areas").insert([{
+            project_id:proj.id, floor_id:targetFloor.id, area_type:area.type,
+            sqft:Math.round(sqft*100)/100, measurements:meas, ...specs,
+            qty:1, unit:"sqft", unit_price:0, line_total:0,
+            order_index:(existing||[]).length*10+created*10,
+            company_id:invoice.company_id,
+          }]);
           created++;
         }
       }
-      alert(`✅ Pushed to "${proj.name||proj.address}".\n${updated} updated, ${created} created.\nOpen the insulation estimate to fill in materials and pricing.`);
+      alert(`✅ Pushed to "${proj.name||proj.address}".\n${updated} updated, ${created} created — including insulation specs.\nOpen the estimate to add materials and pricing.`);
     } catch(err){ alert("Push error: "+(err.message||JSON.stringify(err))); }
     setPushing(false);
   }
@@ -527,11 +521,14 @@ export default function HersFieldMeasurements() {
         hers_invoice_id: invoiceId,
         company_id: invoice.company_id,
         floors: floors.map(f=>({id:f.id,label:f.label||"",width:Number(f.width)||0,length:Number(f.length)||0,height:Number(f.height)||0})),
-        areas: areas.map(a=>({id:a.id,type:a.type,measurements:(a.measurements||[]).map(m=>({id:m.id,h:m.h,l:m.l,q:m.q||1,sqft:m.sqft}))})),
-        // Keep segment columns empty (migrated to areas)
+        areas: areas.map(a=>({
+          id:a.id, type:a.type, customLabel:a.customLabel||"",
+          measurements:(a.measurements||[]).map(m=>({id:m.id,h:m.h,l:m.l,q:m.q||1,sqft:m.sqft})),
+          material:a.material||"", thickness:a.thickness||"", r_value:a.r_value||"",
+        })),
         roof_segments:[], wall_segments:[], rim_joist_segments:[],
-        bedrooms: Number(bedrooms)||0,
-        windows: windows.map(w=>({id:w.id,label:w.label||"",orientation:w.orientation||"N",width:Number(w.width)||0,height:Number(w.height)||0,top_to_overhang:w.top_to_overhang!==""?Number(w.top_to_overhang):null,bottom_to_overhang:w.bottom_to_overhang!==""?Number(w.bottom_to_overhang):null,overhang_depth:w.overhang_depth!==""?Number(w.overhang_depth):null})),
+        bedrooms:Number(bedrooms)||0,
+        windows:windows.map(w=>({id:w.id,label:w.label||"",orientation:w.orientation||"N",width:Number(w.width)||0,height:Number(w.height)||0,top_to_overhang:w.top_to_overhang!==""?Number(w.top_to_overhang):null,bottom_to_overhang:w.bottom_to_overhang!==""?Number(w.bottom_to_overhang):null,overhang_depth:w.overhang_depth!==""?Number(w.overhang_depth):null})),
         notes,
         updated_at: new Date().toISOString(),
       };
@@ -545,7 +542,7 @@ export default function HersFieldMeasurements() {
   async function uploadPhotos(files){
     if(!files?.length) return;
     setUploading(true);
-    let errors=[];
+    const errors=[];
     for(const file of Array.from(files)){
       const ext=file.name.split('.').pop();
       const path=`${invoice.company_id}/hers/${invoiceId}/${Date.now()}.${ext}`;
@@ -555,7 +552,7 @@ export default function HersFieldMeasurements() {
       await supabase.from("job_photos").insert([{hers_invoice_id:invoiceId,url:urlData.publicUrl,company_id:invoice.company_id}]);
     }
     if(errors.length) alert("Upload failed:\n"+errors.join("\n"));
-    await load(); setUploading(false);
+    await loadData(); setUploading(false);
   }
 
   async function uploadDocs(files){
@@ -568,7 +565,7 @@ export default function HersFieldMeasurements() {
       const { data:urlData } = supabase.storage.from("job-photos").getPublicUrl(path);
       await supabase.from("job_photos").insert([{hers_invoice_id:invoiceId,url:urlData.publicUrl,caption:file.name,company_id:invoice.company_id,doc_type:"document"}]);
     }
-    await load(); setUploadingDoc(false);
+    await loadData(); setUploadingDoc(false);
   }
 
   return (
@@ -617,19 +614,19 @@ export default function HersFieldMeasurements() {
         </div>
 
         {/* Ekotrope Summary */}
-        {(areas.length>0 || floors.length>0 || windows.length>0 || Number(bedrooms)>0) && (
-          <EkotropeSummary floors={floors} areas={areas} windows={windows} bedrooms={bedrooms} />
-        )}
+        <EkotropeSummary floors={floors} areas={areas} bedrooms={bedrooms} />
 
         <FloorsEditor floors={floors} onChange={setFloors} />
 
-        {/* measurement areas */}
+        {/* Measurement areas */}
         <div style={CARD}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
             <div style={{fontSize:11,fontWeight:700,color:C.faint,textTransform:"uppercase",letterSpacing:0.4}}>
               Measurements
             </div>
-            <span style={{fontSize:12,fontWeight:700,color:C.green}}>{fmt(totalSqft)} ft² total</span>
+            <span style={{fontSize:12,fontWeight:700,color:C.green}}>
+              {fmt(areas.reduce((s,a)=>s+(a.measurements||[]).reduce((ss,m)=>ss+(m.sqft||0),0),0),0)} ft² total
+            </span>
           </div>
 
           {areas.map((a,idx)=>(
@@ -638,21 +635,20 @@ export default function HersFieldMeasurements() {
               onRemove={()=>removeArea(idx)} />
           ))}
 
-          {/* add area section */}
           {!showAddArea ? (
             <button onClick={()=>setShowAddArea(true)}
               style={{...Btn,width:"100%",justifyContent:"center",borderStyle:"dashed",color:C.muted}}>
               + Add Area
             </button>
           ) : (
-            <div style={{border:`1px dashed ${C.border}`,borderRadius:8,padding:"10px 12px",background:"#f8fafc"}}>
+            <div style={{border:"1px dashed #e2e8f0",borderRadius:8,padding:"10px 12px",background:"#f8fafc"}}>
               <div style={{fontSize:11,fontWeight:700,color:C.faint,textTransform:"uppercase",marginBottom:8}}>Select Area Type</div>
               {!showCustomArea ? (
                 <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
                   <select value={newAreaType} onChange={e=>{
                     if(e.target.value==="__custom__"){ setShowCustomArea(true); setNewAreaType(""); }
                     else setNewAreaType(e.target.value);
-                  }} style={{...I,flex:1,fontSize:12,height:32}}>
+                  }} style={{...I,flex:1,height:34}}>
                     <option value="">Select type…</option>
                     {AREA_TYPES.map(t=><option key={t} value={t}>{t}</option>)}
                     <option value="__custom__">✏️ Custom…</option>
@@ -663,7 +659,7 @@ export default function HersFieldMeasurements() {
               ) : (
                 <div style={{display:"flex",gap:8}}>
                   <input value={customArea} onChange={e=>setCustomArea(e.target.value)} placeholder="Custom area name…"
-                    style={{...I,flex:1,height:32,fontSize:12}} />
+                    style={{...I,flex:1,height:34}} />
                   <button onClick={addArea} disabled={!customArea.trim()} style={{...BtnD,opacity:!customArea.trim()?0.4:1}}>Add</button>
                   <button onClick={()=>setShowCustomArea(false)} style={Btn}>Back</button>
                 </div>
