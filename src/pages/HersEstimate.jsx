@@ -231,7 +231,6 @@ export default function HersEstimate() {
   const navigate = useNavigate();
   const { id: estimateId } = useParams();
   const isEditing = !!estimateId;
-  const locked = !!existingInvoiceId;
 
   const [loading, setLoading]   = useState(isEditing);
   const [saving, setSaving]     = useState(false);
@@ -239,6 +238,8 @@ export default function HersEstimate() {
   const [companyId, setCompanyId] = useState(null);
   const [ownerEmail, setOwnerEmail] = useState("");
   const [existingInvoiceId, setExistingInvoiceId] = useState(null);
+
+  const locked = !!existingInvoiceId;
 
   // customer
   const [leads, setLeads]       = useState([]);
