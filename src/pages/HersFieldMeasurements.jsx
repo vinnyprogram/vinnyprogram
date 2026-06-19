@@ -146,7 +146,7 @@ function FloorsEditor({ floors, onChange }) {
 }
 
 // ── Single area row — mirrors AreaRow from insulation estimate, no pricing ──
-function AreaRow({ area, onChange, onDelete }) {
+function AreaRow({ area, materials, onChange, onDelete }) {
   const [expanded, setExpanded] = useState(!area.sqft);
   const meas = area.measurements||[];
   const sqft = area.sqft||0;
@@ -154,6 +154,38 @@ function AreaRow({ area, onChange, onDelete }) {
   const liveL = parseFloat(area.ml)||0;
   const liveQ = parseFloat(area.mq)||1;
   const preview = liveH&&liveL ? Math.round(liveH*liveL*liveQ*100)/100 : 0;
+
+  // mat_lines: [{id, material, thickness_in, r_value}] — supports combo
+  const matLines = (area.mat_lines&&area.mat_lines.length>0)
+    ? area.mat_lines
+    : [{id:1, material:area.material||"", thickness_in:area.thickness_in||"", r_value:area.r_value||""}];
+  const isComboMode = matLines.length>1 || matLines[0]?.material==="__combo__";
+
+  function updateMatLine(idx, field, val){
+    const lines = matLines.map((l,i)=>i===idx?{...l,[field]:val}:l);
+    onChange("mat_lines", lines);
+    if(idx===0&&!isComboMode) onChange(field, val);
+  }
+  function addMatLine(){
+    const last = matLines[matLines.length-1];
+    onChange("mat_lines",[...matLines,{id:Date.now(),material:last.material||"",thickness_in:last.thickness_in||"",r_value:last.r_value||""}]);
+  }
+  function removeMatLine(idx){
+    if(matLines.length<=2) return;
+    const lines = matLines.filter((_,i)=>i!==idx);
+    onChange("mat_lines",lines);
+  }
+
+  const totalR = matLines.reduce((s,ml)=>{
+    const r = parseInt((ml.r_value||"").replace(/\D/g,""))||0;
+    return s+r;
+  },0);
+
+  const GS = {
+    height:32, fontSize:13, borderRadius:6, border:`1px solid ${C.border}`,
+    background:C.white, padding:"0 6px", boxSizing:"border-box",
+    color:C.ink, outline:"none", cursor:"pointer",
+  };
 
   function commit(){
     if(!liveH||!liveL) return;
@@ -171,7 +203,7 @@ function AreaRow({ area, onChange, onDelete }) {
 
   const isComplete = !!(area.area_type && sqft>0);
 
-  // Collapsed view
+  // Collapsed
   if(isComplete && !expanded) return (
     <div style={{background:"#f0fdf4",border:"1px solid #86efac",borderLeft:"3px solid #059669",
         borderRadius:7,padding:"5px 10px",marginBottom:4}}>
@@ -183,36 +215,134 @@ function AreaRow({ area, onChange, onDelete }) {
         </div>
       </div>
       <div style={{fontSize:10,color:C.muted}}>
-        {[area.material,area.thickness_in,area.r_value].filter(Boolean).join(" · ")}
+        {matLines.map((ml,i)=>[ml.material,ml.thickness_in,ml.r_value].filter(Boolean).join(" · ")||(i===0?"—":"")).join(" + ")}
         {meas.length>0 && <span style={{marginLeft:6,color:C.faint}}>({meas.map(m=>`${m.h}×${m.l}${m.q>1?`×${m.q}`:""}`).join("  ")})</span>}
+        {totalR>0 && isComboMode && <span style={{marginLeft:8,color:"#059669",fontWeight:700}}>Total R-{totalR}</span>}
       </div>
     </div>
   );
 
-  // Expanded view
+  // Expanded
   return (
     <div style={{background:"#f0fdf4",border:"1px solid #86efac",borderLeft:"3px solid #059669",
-        borderRadius:8,padding:"10px 12px",marginBottom:6}}>
+        borderRadius:8,padding:"8px 10px",marginBottom:6}}>
 
-      {/* Type + label + delete */}
-      <div style={{display:"flex",gap:6,marginBottom:8,alignItems:"flex-start"}}>
-        <div style={{flex:1}}>
-          <select value={area.area_type||""} onChange={e=>onChange("area_type",e.target.value)}
-            style={{...I,height:32,fontSize:13}}>
-            <option value="">Select area type…</option>
-            {AREA_TYPES.map(t=><option key={t} value={t}>{t}</option>)}
-          </select>
-          <input value={area.customLabel||""} onChange={e=>onChange("customLabel",e.target.value)}
-            placeholder="Optional label (e.g. Garage, North side)"
-            style={{...I,marginTop:4,height:28,fontSize:11,color:C.muted,
-              background:"transparent",border:"none",borderBottom:`1px dashed ${C.border}`,
-              borderRadius:0,paddingLeft:0}} />
+      {/* Done / Delete row */}
+      {isComplete && (
+        <div style={{display:"flex",gap:6,marginBottom:8}}>
+          <button onClick={()=>setExpanded(false)}
+            style={{...BtnD,flex:1,justifyContent:"center",background:"#059669"}}>✓ Done</button>
+          <button onClick={onDelete}
+            style={{...Btn,color:"#dc2626",borderColor:"#dc2626"}}>🗑 Delete</button>
         </div>
-        <div style={{display:"flex",gap:4,flexShrink:0}}>
-          {isComplete && <button onClick={()=>setExpanded(false)} style={{...Btn,fontSize:11,padding:"0 8px",height:32}}>Done</button>}
-          <button onClick={onDelete} style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:16,padding:"0 4px",lineHeight:"32px"}}>✕</button>
-        </div>
+      )}
+
+      {/* Area type + label */}
+      <div style={{display:"flex",gap:6,marginBottom:6,alignItems:"center",borderBottom:`1px solid ${C.border}`,paddingBottom:6}}>
+        <select value={area.area_type||""} onChange={e=>onChange("area_type",e.target.value)}
+          style={{...GS,flex:1}}>
+          <option value="">Area type…</option>
+          {AREA_TYPES.map(t=><option key={t} value={t}>{t}</option>)}
+        </select>
+        {!isComplete && (
+          <button onClick={onDelete} style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:18,padding:"0 4px",lineHeight:1,flexShrink:0}}>✕</button>
+        )}
       </div>
+      <input value={area.customLabel||""} onChange={e=>onChange("customLabel",e.target.value)}
+        placeholder="Optional label (e.g. Garage, North side)"
+        style={{...I,height:28,fontSize:11,marginBottom:8,color:C.muted,
+          background:"transparent",border:"none",borderBottom:`1px dashed ${C.border}`,
+          borderRadius:0,paddingLeft:0}} />
+
+      {/* MATERIAL — single mode */}
+      {!isComboMode && (
+        <div style={{marginBottom:6,borderBottom:`1px solid ${C.border}`,paddingBottom:6}}>
+          <div style={{display:"flex",gap:4,marginBottom:4}}>
+            <select style={{...GS,flex:2}}
+              value={area.material==="__custom_mat__"?"__custom_mat__":(matLines[0].material||"")}
+              onChange={e=>{
+                const val=e.target.value;
+                if(val==="__combo__"){
+                  onChange("mat_lines",[{id:1,material:"",thickness_in:"",r_value:""},{id:2,material:"",thickness_in:"",r_value:""}]);
+                  onChange("material","__combo__");
+                } else if(val==="__custom_mat__"){
+                  onChange("mat_lines",[{id:1,material:"__custom_mat__",thickness_in:matLines[0].thickness_in||"",r_value:matLines[0].r_value||""}]);
+                  onChange("material","__custom_mat__"); onChange("custom_material","");
+                } else {
+                  updateMatLine(0,"material",val);
+                }
+              }}>
+              <option value="">Material</option>
+              {materials.map(m=><option key={m.id}>{m.name}</option>)}
+              <option value="__combo__">⚡ Combo</option>
+              <option value="__custom_mat__">✏️ Other</option>
+            </select>
+            <select style={{...GS,width:80,flexShrink:0}}
+              value={matLines[0].thickness_in||""}
+              onChange={e=>updateMatLine(0,"thickness_in",e.target.value)}>
+              <option value="">Thick</option>
+              {THICK_OPTS.map(t=><option key={t}>{t}</option>)}
+            </select>
+            <select style={{...GS,width:80,flexShrink:0}}
+              value={matLines[0].r_value||""}
+              onChange={e=>updateMatLine(0,"r_value",e.target.value)}>
+              <option value="">R-Val</option>
+              {R_VALS.map(r=><option key={r}>{r}</option>)}
+            </select>
+          </div>
+          {area.material==="__custom_mat__" && (
+            <input autoFocus placeholder="Type material name…"
+              style={{...I,height:32,marginBottom:4,border:"2px solid #059669",borderRadius:6,fontSize:13}}
+              value={area.custom_material||""}
+              onChange={e=>onChange("custom_material",e.target.value)}
+              onBlur={()=>{ const v=(area.custom_material||"").trim(); if(v){ updateMatLine(0,"material",v); onChange("material",v); }}}
+              onKeyDown={e=>{ if(e.key==="Enter"){ const v=(area.custom_material||"").trim(); if(v){ updateMatLine(0,"material",v); onChange("material",v); e.target.blur(); }}}} />
+          )}
+        </div>
+      )}
+
+      {/* MATERIAL — combo mode */}
+      {isComboMode && (
+        <div style={{background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:8,padding:"8px 10px",marginBottom:6}}>
+          <div style={{fontSize:10,fontWeight:700,color:"#0369a1",marginBottom:6,textTransform:"uppercase",letterSpacing:0.4,
+              display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <span>⚡ Combo</span>
+            {totalR>0 && <span style={{color:"#059669",fontWeight:800}}>Total R-{totalR}</span>}
+            <button onClick={()=>{ onChange("mat_lines",[{id:1,material:"",thickness_in:"",r_value:""}]); onChange("material",""); }}
+              style={{border:"none",background:"none",color:"#94a3b8",cursor:"pointer",fontSize:11,padding:0}}>× remove combo</button>
+          </div>
+          {matLines.map((ml,idx)=>(
+            <div key={ml.id||idx} style={{marginBottom:8,paddingBottom:8,borderBottom:idx<matLines.length-1?"1px solid #e0f2fe":"none"}}>
+              <div style={{display:"flex",gap:4,marginBottom:4,alignItems:"center"}}>
+                <select style={{...GS,flex:1}}
+                  value={ml.material||""}
+                  onChange={e=>updateMatLine(idx,"material",e.target.value)}>
+                  <option value="">Material {idx+1}</option>
+                  {materials.map(m=><option key={m.id}>{m.name}</option>)}
+                  <option value="__custom__">✏️ Other</option>
+                </select>
+                {matLines.length>2 && (
+                  <button onClick={()=>removeMatLine(idx)}
+                    style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:14,padding:"0 2px",flexShrink:0}}>✕</button>
+                )}
+              </div>
+              <div style={{display:"flex",gap:4}}>
+                <select style={{...GS,flex:1}} value={ml.thickness_in||""} onChange={e=>updateMatLine(idx,"thickness_in",e.target.value)}>
+                  <option value="">Thick</option>{THICK_OPTS.map(t=><option key={t}>{t}</option>)}
+                </select>
+                <select style={{...GS,flex:1}} value={ml.r_value||""} onChange={e=>updateMatLine(idx,"r_value",e.target.value)}>
+                  <option value="">R-Val</option>{R_VALS.map(r=><option key={r}>{r}</option>)}
+                </select>
+              </div>
+            </div>
+          ))}
+          <button onClick={addMatLine}
+            style={{width:"100%",padding:"6px",borderRadius:6,border:"1px dashed #7dd3fc",
+              background:"none",color:"#0369a1",cursor:"pointer",fontSize:11,fontWeight:600,height:"auto"}}>
+            + Add material to combo
+          </button>
+        </div>
+      )}
 
       {/* Measurement chips */}
       {meas.length>0 && (
@@ -227,8 +357,8 @@ function AreaRow({ area, onChange, onDelete }) {
         </div>
       )}
 
-      {/* Measurement input row — exactly like insulation estimate */}
-      <div style={{display:"flex",gap:6,alignItems:"center",marginBottom:10}}>
+      {/* H × L × Qty input */}
+      <div style={{display:"flex",gap:6,alignItems:"center"}}>
         <div style={{flex:1,minWidth:0}}>
           <div style={lbl}>Height / Width (ft)</div>
           <input type="number" inputMode="decimal" value={area.mh||""} onChange={e=>onChange("mh",e.target.value)}
@@ -252,40 +382,17 @@ function AreaRow({ area, onChange, onDelete }) {
           <button onClick={commit} disabled={!liveH||!liveL}
             style={{...BtnD,height:36,fontSize:12,
               background:liveH&&liveL?"#059669":"#e2e8f0",color:liveH&&liveL?"#fff":C.faint,
-              border:"none",opacity:1}}>
+              border:"none"}}>
             {preview>0?`+${fmt(preview,0)}`:"Add"}
           </button>
         </div>
       </div>
 
       {sqft>0 && (
-        <div style={{display:"flex",justifyContent:"flex-end",fontSize:11,color:C.green,fontWeight:700,marginBottom:8}}>
+        <div style={{display:"flex",justifyContent:"flex-end",fontSize:11,color:C.green,fontWeight:700,marginTop:6}}>
           Total: {fmt(sqft,0)} ft²
         </div>
       )}
-
-      {/* Material / Thickness / R-value — same dropdowns as insulation estimate */}
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:6}}>
-        <div>
-          <div style={lbl}>Material</div>
-          <input value={area.material||""} onChange={e=>onChange("material",e.target.value)}
-            placeholder="e.g. Open cell" style={{...I,height:30,fontSize:12}} />
-        </div>
-        <div>
-          <div style={lbl}>Thickness</div>
-          <select value={area.thickness_in||""} onChange={e=>onChange("thickness_in",e.target.value)} style={{...I,height:30,fontSize:12}}>
-            <option value="">—</option>
-            {THICK_OPTS.map(t=><option key={t} value={t}>{t}</option>)}
-          </select>
-        </div>
-        <div>
-          <div style={lbl}>R-Value</div>
-          <select value={area.r_value||""} onChange={e=>onChange("r_value",e.target.value)} style={{...I,height:30,fontSize:12}}>
-            <option value="">—</option>
-            {R_VALS.map(r=><option key={r} value={r}>{r}</option>)}
-          </select>
-        </div>
-      </div>
     </div>
   );
 }
@@ -354,6 +461,7 @@ export default function HersFieldMeasurements() {
   const [windows, setWindows]   = useState([]);
   const [bedrooms, setBedrooms] = useState("0");
   const [notes, setNotes]       = useState("");
+  const [materials, setMaterials] = useState([]);
 
   const [photos, setPhotos]             = useState([]);
   const [docs, setDocs]                 = useState([]);
@@ -427,6 +535,9 @@ export default function HersFieldMeasurements() {
   },[invoiceId, estimateId, mode]);
 
   useEffect(()=>{ loadData(); },[loadData]);
+  useEffect(()=>{
+    supabase.from("materials").select("*").then(({data})=>{ if(data) setMaterials(data); });
+  },[]);
 
   // Area helpers
   function addArea(floor){
@@ -462,8 +573,10 @@ export default function HersFieldMeasurements() {
         areas: (areas[f]||[]).map(a=>({
           id:a.id, area_type:a.area_type||"", customLabel:a.customLabel||"",
           measurements:(a.measurements||[]).map(m=>({h:m.h,l:m.l,q:m.q||1,sqft:m.sqft})),
-          sqft:a.sqft||0, material:a.material||"",
-          thickness_in:a.thickness_in||"", r_value:a.r_value||"",
+          sqft:a.sqft||0,
+          mat_lines: (a.mat_lines||[{material:a.material||"",thickness_in:a.thickness_in||"",r_value:a.r_value||""}])
+            .map(ml=>({material:ml.material||"",thickness_in:ml.thickness_in||"",r_value:ml.r_value||""})),
+          material:a.material||"", thickness_in:a.thickness_in||"", r_value:a.r_value||"",
         })),
       }));
 
@@ -719,7 +832,7 @@ export default function HersFieldMeasurements() {
           ) : (
             <>
               {currentAreas.filter(a=>!(a.area_type&&a.sqft>0)).map((area,idx)=>(
-                <AreaRow key={area.id} area={area}
+                <AreaRow key={area.id} area={area} materials={materials}
                   onChange={(f,v)=>updateArea(activeFloor,idx,f,v)}
                   onDelete={()=>deleteArea(activeFloor,idx)} />
               ))}
@@ -731,7 +844,7 @@ export default function HersFieldMeasurements() {
               {currentAreas.filter(a=>a.area_type&&a.sqft>0).map((area)=>{
                 const realIdx = currentAreas.indexOf(area);
                 return (
-                  <AreaRow key={area.id} area={area}
+                  <AreaRow key={area.id} area={area} materials={materials}
                     onChange={(f,v)=>updateArea(activeFloor,realIdx,f,v)}
                     onDelete={()=>deleteArea(activeFloor,realIdx)} />
                 );
