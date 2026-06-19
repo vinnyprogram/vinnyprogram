@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
+import { useAuth } from "../context/AuthContext";
+import AddressInput from "./AddressInput";
 
 const C = {
   bg:"#f4f5f7", white:"#fff", ink:"#0f172a",
@@ -15,6 +17,11 @@ const I = {
 
 export default function JobStart() {
   const navigate = useNavigate();
+  const { company } = useAuth();
+
+  // Trade prefs from company settings (defaults to true if not yet set)
+  const offersInsulation = company?.offers_insulation !== false;
+  const offersHers       = company?.offers_hers       !== false;
 
   const [query, setQuery]       = useState("");
   const [leads, setLeads]       = useState([]);
@@ -203,8 +210,8 @@ export default function JobStart() {
             <div style={{fontSize:11,fontWeight:700,color:C.faint,textTransform:"uppercase",letterSpacing:0.5,marginBottom:10}}>
               2 — Job Address
             </div>
-            <input value={address} onChange={e=>setAddress(e.target.value)}
-              placeholder="Enter the job site address…" style={I} />
+            <AddressInput value={address} onChange={setAddress}
+              placeholder="Search job site address…" />
           </div>
         )}
 
@@ -216,73 +223,79 @@ export default function JobStart() {
               3 — Estimates
             </div>
 
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+            <div style={{display:"grid",
+                gridTemplateColumns: offersInsulation && offersHers ? "1fr 1fr" : "1fr",
+                gap:12}}>
 
-              {/* Insulation */}
-              <div style={{border:`2px solid ${C.border}`,borderRadius:10,padding:"14px",
-                  display:"flex",flexDirection:"column",gap:8}}>
-                <div style={{display:"flex",alignItems:"center",gap:8}}>
-                  <span style={{fontSize:22}}>🏠</span>
-                  <div>
-                    <div style={{fontWeight:700,fontSize:13,color:C.ink}}>Insulation</div>
-                    <div style={{fontSize:11,color:C.muted}}>Estimate + proposal</div>
+              {/* Insulation — only if enabled */}
+              {offersInsulation && (
+                <div style={{border:`2px solid ${C.border}`,borderRadius:10,padding:"14px",
+                    display:"flex",flexDirection:"column",gap:8}}>
+                  <div style={{display:"flex",alignItems:"center",gap:8}}>
+                    <span style={{fontSize:22}}>🏠</span>
+                    <div>
+                      <div style={{fontWeight:700,fontSize:13,color:C.ink}}>Insulation</div>
+                      <div style={{fontSize:11,color:C.muted}}>Estimate + proposal</div>
+                    </div>
                   </div>
+                  {loadingLinks ? <div style={{fontSize:11,color:C.faint}}>Loading…</div>
+                    : insulationJobs.map(j=>(
+                      <button key={j.id} onClick={()=>launchInsulation(j.id)}
+                        style={{border:`1px solid ${C.border}`,background:"#f8fafc",
+                          borderRadius:6,padding:"6px 10px",cursor:"pointer",textAlign:"left",fontSize:11}}>
+                        <span style={{fontWeight:600,color:C.ink,display:"block",
+                            overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                          {j.address||j.name||"Estimate"}
+                        </span>
+                        <span style={{color:C.muted}}>{j.pipeline_status||"Active"} · {new Date(j.created_at).toLocaleDateString("en-US",{month:"short",day:"numeric"})}</span>
+                      </button>
+                    ))
+                  }
+                  <button onClick={()=>launchInsulation(null)}
+                    style={{border:"1.5px dashed #e2e8f0",background:"transparent",
+                      borderRadius:8,padding:"8px",cursor:"pointer",
+                      fontSize:12,fontWeight:700,color:C.muted}}>
+                    + New Estimate
+                  </button>
                 </div>
-                {loadingLinks ? <div style={{fontSize:11,color:C.faint}}>Loading…</div>
-                  : insulationJobs.map(j=>(
-                    <button key={j.id} onClick={()=>launchInsulation(j.id)}
-                      style={{border:`1px solid ${C.border}`,background:"#f8fafc",
-                        borderRadius:6,padding:"6px 10px",cursor:"pointer",textAlign:"left",fontSize:11}}>
-                      <span style={{fontWeight:600,color:C.ink,display:"block",
-                          overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-                        {j.address||j.name||"Estimate"}
-                      </span>
-                      <span style={{color:C.muted}}>{j.pipeline_status||"Active"} · {new Date(j.created_at).toLocaleDateString("en-US",{month:"short",day:"numeric"})}</span>
-                    </button>
-                  ))
-                }
-                <button onClick={()=>launchInsulation(null)}
-                  style={{border:"1.5px dashed #e2e8f0",background:"transparent",
-                    borderRadius:8,padding:"8px",cursor:"pointer",
-                    fontSize:12,fontWeight:700,color:C.muted}}>
-                  + New Estimate
-                </button>
-              </div>
+              )}
 
-              {/* HERS */}
-              <div style={{border:`2px solid ${C.border}`,borderRadius:10,padding:"14px",
-                  display:"flex",flexDirection:"column",gap:8}}>
-                <div style={{display:"flex",alignItems:"center",gap:8}}>
-                  <span style={{fontSize:22}}>⭐</span>
-                  <div>
-                    <div style={{fontWeight:700,fontSize:13,color:C.ink}}>HERS Rating</div>
-                    <div style={{fontSize:11,color:C.muted}}>Estimate + Ekotrope data</div>
+              {/* HERS — only if enabled */}
+              {offersHers && (
+                <div style={{border:`2px solid ${C.border}`,borderRadius:10,padding:"14px",
+                    display:"flex",flexDirection:"column",gap:8}}>
+                  <div style={{display:"flex",alignItems:"center",gap:8}}>
+                    <span style={{fontSize:22}}>⭐</span>
+                    <div>
+                      <div style={{fontWeight:700,fontSize:13,color:C.ink}}>HERS Rating</div>
+                      <div style={{fontSize:11,color:C.muted}}>Estimate + Ekotrope data</div>
+                    </div>
                   </div>
+                  {loadingLinks ? <div style={{fontSize:11,color:C.faint}}>Loading…</div>
+                    : hersEstimates.map(e=>(
+                      <button key={e.id} onClick={()=>launchHersEstimate(e.id)}
+                        style={{border:`1px solid ${C.border}`,background:"#f8fafc",
+                          borderRadius:6,padding:"6px 10px",cursor:"pointer",textAlign:"left",fontSize:11}}>
+                        <span style={{fontWeight:600,color:C.ink,display:"block",
+                            overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                          {e.address||"HERS Estimate"}
+                        </span>
+                        <span style={{color:C.muted}}>{e.status||"Draft"} · {new Date(e.created_at).toLocaleDateString("en-US",{month:"short",day:"numeric"})}</span>
+                      </button>
+                    ))
+                  }
+                  <button onClick={()=>launchHersEstimate(null)}
+                    style={{border:"1.5px dashed #e2e8f0",background:"transparent",
+                      borderRadius:8,padding:"8px",cursor:"pointer",
+                      fontSize:12,fontWeight:700,color:C.muted}}>
+                    + New Estimate
+                  </button>
                 </div>
-                {loadingLinks ? <div style={{fontSize:11,color:C.faint}}>Loading…</div>
-                  : hersEstimates.map(e=>(
-                    <button key={e.id} onClick={()=>launchHersEstimate(e.id)}
-                      style={{border:`1px solid ${C.border}`,background:"#f8fafc",
-                        borderRadius:6,padding:"6px 10px",cursor:"pointer",textAlign:"left",fontSize:11}}>
-                      <span style={{fontWeight:600,color:C.ink,display:"block",
-                          overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-                        {e.address||"HERS Estimate"}
-                      </span>
-                      <span style={{color:C.muted}}>{e.status||"Draft"} · {new Date(e.created_at).toLocaleDateString("en-US",{month:"short",day:"numeric"})}</span>
-                    </button>
-                  ))
-                }
-                <button onClick={()=>launchHersEstimate(null)}
-                  style={{border:"1.5px dashed #e2e8f0",background:"transparent",
-                    borderRadius:8,padding:"8px",cursor:"pointer",
-                    fontSize:12,fontWeight:700,color:C.muted}}>
-                  + New Estimate
-                </button>
-              </div>
+              )}
             </div>
 
-            {/* Field Measurements — Ekotrope data, not printed */}
-            {hersInvoices.length>0 && (
+            {/* Field Measurements — only for HERS users */}
+            {offersHers && hersInvoices.length>0 && (
               <div style={{marginTop:12,borderTop:`1px solid ${C.border}`,paddingTop:12}}>
                 <div style={{fontSize:11,fontWeight:700,color:C.faint,textTransform:"uppercase",letterSpacing:0.5,marginBottom:8}}>
                   Field Measurements — Ekotrope data
@@ -294,9 +307,7 @@ export default function JobStart() {
                         borderRadius:6,padding:"8px 12px",cursor:"pointer",textAlign:"left",
                         display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                       <div>
-                        <span style={{fontSize:12,fontWeight:600,color:C.ink}}>
-                          📐 {inv.address||"Job site"}
-                        </span>
+                        <span style={{fontSize:12,fontWeight:600,color:C.ink}}>📐 {inv.address||"Job site"}</span>
                         <div style={{fontSize:11,color:C.muted,marginTop:1}}>
                           {inv.status} · ${Number(inv.grand_total||0).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})}
                         </div>

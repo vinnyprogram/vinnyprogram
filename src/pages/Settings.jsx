@@ -81,6 +81,10 @@ export default function Settings() {
   // Margin
   const [margin, setMargin] = useState(30);
 
+  // Trade configuration
+  const [offersInsulation, setOffersInsulation] = useState(true);
+  const [offersHers, setOffersHers] = useState(true);
+
   useEffect(()=>{ if(company) load(); },[company]);
 
   async function load() {
@@ -130,6 +134,14 @@ export default function Settings() {
       .select("*").eq("company_id", company.id);
     if(m?.length) setMatCosts(m);
     else seedMaterials();
+
+    // load trade configuration
+    const { data:co } = await supabase.from("companies")
+      .select("offers_insulation,offers_hers").eq("id",company.id).maybeSingle();
+    if(co){
+      setOffersInsulation(co.offers_insulation !== false); // default true
+      setOffersHers(co.offers_hers !== false);             // default true
+    }
   }
 
   function seedOverhead() {
@@ -407,6 +419,11 @@ export default function Settings() {
         );
       }
 
+      // save trade configuration
+      await supabase.from("companies")
+        .update({ offers_insulation: offersInsulation, offers_hers: offersHers })
+        .eq("id", company.id);
+
       setSaved(true);
       setTimeout(()=>setSaved(false), 2000);
       await load();
@@ -417,15 +434,16 @@ export default function Settings() {
   }
 
   const TABS = [
-    { id:"overhead", label:"Overhead" },
-    { id:"materials", label:"Materials" },
-    { id:"labor", label:"Labor & Margin" },
-    { id:"laboroles", label:"Labor Roles" },
-    { id:"assets", label:"Assets" },
-    { id:"fuel", label:"Fuel" },
-    { id:"salesreps", label:"Sales Reps" },
-    { id:"consumables", label:"Consumables" },
-    { id:"summary", label:"Summary" },
+    { id:"trades",     label:"Trades" },
+    { id:"overhead",   label:"Overhead" },
+    { id:"materials",  label:"Materials" },
+    { id:"labor",      label:"Labor & Margin" },
+    { id:"laboroles",  label:"Labor Roles" },
+    { id:"assets",     label:"Assets" },
+    { id:"fuel",       label:"Fuel" },
+    { id:"salesreps",  label:"Sales Reps" },
+    { id:"consumables",label:"Consumables" },
+    { id:"summary",    label:"Summary" },
   ];
 
   return (
@@ -473,6 +491,54 @@ export default function Settings() {
       </div>
 
       <div style={{ maxWidth:700, margin:"0 auto", padding:"16px 14px" }}>
+
+        {/* ── TRADES TAB ── */}
+        {tab==="trades" && (
+          <div>
+            <div style={{background:C.white,borderRadius:10,border:`1px solid ${C.border}`,padding:"20px 20px",marginBottom:12}}>
+              <div style={{fontSize:13,fontWeight:700,color:C.ink,marginBottom:4}}>Which trades does your company offer?</div>
+              <div style={{fontSize:12,color:C.muted,marginBottom:20,lineHeight:1.5}}>
+                This controls which sections appear on the New Job screen and throughout the app.
+                You can change this at any time.
+              </div>
+
+              <label style={{display:"flex",alignItems:"flex-start",gap:14,padding:"14px 16px",
+                  border:`1px solid ${C.border}`,borderRadius:8,marginBottom:10,cursor:"pointer",
+                  background:offersInsulation?"#f0fdf4":"#fafafa"}}>
+                <input type="checkbox" checked={offersInsulation}
+                  onChange={e=>setOffersInsulation(e.target.checked)}
+                  style={{width:18,height:18,marginTop:1,accentColor:C.green,flexShrink:0}} />
+                <div>
+                  <div style={{fontWeight:700,fontSize:14,color:C.ink}}>🏠 Insulation</div>
+                  <div style={{fontSize:12,color:C.muted,marginTop:2}}>
+                    Estimates, proposals, job costing, and field measurements for insulation work.
+                  </div>
+                </div>
+              </label>
+
+              <label style={{display:"flex",alignItems:"flex-start",gap:14,padding:"14px 16px",
+                  border:`1px solid ${C.border}`,borderRadius:8,cursor:"pointer",
+                  background:offersHers?"#f0fdf4":"#fafafa"}}>
+                <input type="checkbox" checked={offersHers}
+                  onChange={e=>setOffersHers(e.target.checked)}
+                  style={{width:18,height:18,marginTop:1,accentColor:C.green,flexShrink:0}} />
+                <div>
+                  <div style={{fontWeight:700,fontSize:14,color:C.ink}}>⭐ HERS Rating</div>
+                  <div style={{fontSize:12,color:C.muted,marginTop:2}}>
+                    HERS estimates, invoices, Ekotrope field measurements, and energy modeling data.
+                  </div>
+                </div>
+              </label>
+
+              {!offersInsulation && !offersHers && (
+                <div style={{marginTop:12,padding:"10px 14px",background:"#fef2f2",border:"1px solid #fecaca",
+                    borderRadius:8,fontSize:12,color:"#dc2626"}}>
+                  ⚠️ At least one trade must be enabled.
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* ── OVERHEAD TAB ── */}
         {tab==="overhead" && (

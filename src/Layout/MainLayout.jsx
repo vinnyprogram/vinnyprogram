@@ -9,6 +9,9 @@ export default function MainLayout() {
   const [hersOpen, setHersOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
 
+  const offersInsulation = company?.offers_insulation !== false;
+  const offersHers       = company?.offers_hers       !== false;
+
   const isActive = (path) =>
     location.pathname === path ||
     (path === "/estimates" && (
@@ -97,8 +100,8 @@ export default function MainLayout() {
             Jobs
           </Link>
 
-          {/* Insulation module */}
-          <div>
+          {/* Insulation module — only shown when offers_insulation is enabled */}
+          {offersInsulation && <div>
             <button
               onClick={()=>setEstimateOpen(p=>!p)}
               style={{
@@ -152,10 +155,10 @@ export default function MainLayout() {
 
               </div>
             )}
-          </div>
+          </div>}
 
-          {/* HERS Rating module */}
-          <div>
+          {/* HERS Rating module — only shown when offers_hers is enabled */}
+          {offersHers && <div>
             <button
               onClick={()=>setHersOpen(p=>!p)}
               style={{
@@ -201,7 +204,7 @@ export default function MainLayout() {
 
               </div>
             )}
-          </div>
+          </div>}
         </nav>
 
         {/* settings link */}
