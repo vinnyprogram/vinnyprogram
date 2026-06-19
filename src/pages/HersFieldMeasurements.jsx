@@ -906,11 +906,14 @@ export default function HersFieldMeasurements() {
             </div>
           ) : (
             <>
-              {currentAreas.filter(a=>!(a.area_type&&a.sqft>0)).map((area,idx)=>(
-                <AreaRow key={area.id} area={area} materials={materials}
-                  onChange={(f,v)=>updateArea(activeFloor,idx,f,v)}
-                  onDelete={()=>deleteArea(activeFloor,idx)} />
-              ))}
+              {currentAreas.filter(a=>!(a.area_type&&a.sqft>0)).map((area)=>{
+                const realIdx = currentAreas.indexOf(area);
+                return (
+                  <AreaRow key={area.id} area={area} materials={materials}
+                    onChange={(f,v)=>updateArea(activeFloor,realIdx,f,v)}
+                    onDelete={()=>deleteArea(activeFloor,realIdx)} />
+                );
+              })}
               {currentAreas.some(a=>a.area_type&&a.sqft>0) && (
                 <div style={{fontSize:9,fontWeight:700,color:C.green,textTransform:"uppercase",letterSpacing:0.5,margin:"4px 0 4px 2px"}}>
                   ✓ Completed areas
