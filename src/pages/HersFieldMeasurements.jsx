@@ -633,6 +633,10 @@ export default function HersFieldMeasurements() {
             style={{...Btn,color:"#0369a1",borderColor:"#0369a1",opacity:pushing?0.6:1,fontSize:11}}>
             {pushing?"…":"⬆ To Insulation"}
           </button>
+          <button onClick={()=>navigate(mode==="estimate"?`/hers/ekotrope/estimate/${estimateId}`:`/hers/ekotrope/${invoiceId}`)}
+            style={{...Btn,color:"#1d4ed8",borderColor:"#1d4ed8",fontSize:11}}>
+            🟦 Ekotrope Report
+          </button>
           <button onClick={save} disabled={saving} style={{...BtnD,opacity:saving?0.6:1}}>
             {saving?"Saving…":"Save"}
           </button>

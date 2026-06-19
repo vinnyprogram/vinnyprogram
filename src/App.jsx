@@ -20,6 +20,7 @@ import HersSearch from "./pages/HersSearch";
 import HersInvoice from "./pages/HersInvoice";
 import HersInvoiceSearch from "./pages/HersInvoiceSearch";
 import HersFieldMeasurements from "./pages/HersFieldMeasurements";
+import EkotropeReport from "./pages/EkotropeReport";
 import JobStart from "./pages/JobStart";
 import Projects from "./pages/Projects";
 
@@ -86,6 +87,8 @@ function ProtectedApp() {
         <Route path="/hers/invoice/:id" element={<HersInvoice />} />
         <Route path="/hers/measurements/:invoiceId" element={<HersFieldMeasurements />} />
         <Route path="/hers/measurements/estimate/:estimateId" element={<HersFieldMeasurements />} />
+        <Route path="/hers/ekotrope/:invoiceId" element={<EkotropeReport />} />
+        <Route path="/hers/ekotrope/estimate/:estimateId" element={<EkotropeReport />} />
         <Route path="/hers/new" element={<HersEstimate />} />
         <Route path="/hers/:id" element={<HersEstimate />} />
       </Route>
