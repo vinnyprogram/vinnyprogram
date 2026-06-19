@@ -19,9 +19,9 @@ export default function JobStart() {
   const navigate = useNavigate();
   const { company } = useAuth();
 
-  // Trade prefs from company settings (defaults to true if not yet set)
-  const offersInsulation = company?.offers_insulation !== false;
-  const offersHers       = company?.offers_hers       !== false;
+  // Trade prefs: use company settings if column exists, otherwise detect from data loaded later
+  const [offersInsulation, setOffersInsulation] = useState(null); // null = loading
+  const [offersHers, setOffersHers] = useState(null);
 
   const [query, setQuery]       = useState("");
   const [leads, setLeads]       = useState([]);
@@ -42,6 +42,30 @@ export default function JobStart() {
       .order("name").limit(1000)
       .then(({data})=>{ if(data) setLeads(data); });
   },[]);
+
+  // Detect which trades this company actually uses
+  useEffect(()=>{
+    if(!company) return;
+    async function detectTrades(){
+      // If the migration has been run, use the explicit settings
+      if(company.offers_insulation !== undefined && company.offers_insulation !== null){
+        setOffersInsulation(company.offers_insulation !== false);
+        setOffersHers(company.offers_hers !== false);
+        return;
+      }
+      // Migration not yet run — detect from actual data in the database
+      const [r1, r2] = await Promise.all([
+        supabase.from("projects").select("id",{count:"exact",head:true}).eq("company_id", company.id),
+        supabase.from("hers_estimates").select("id",{count:"exact",head:true}).eq("company_id", company.id),
+      ]);
+      const hasInsulation = (r1.count||0) > 0;
+      const hasHers       = (r2.count||0) > 0;
+      // If the company has neither yet (brand new), show both so they can pick
+      setOffersInsulation(hasInsulation || (!hasInsulation && !hasHers));
+      setOffersHers(hasHers || (!hasInsulation && !hasHers));
+    }
+    detectTrades();
+  },[company]);
 
   useEffect(()=>{
     if(!query.trim()){ setResults([]); return; }
