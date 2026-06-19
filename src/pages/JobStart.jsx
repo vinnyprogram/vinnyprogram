@@ -102,7 +102,7 @@ export default function JobStart() {
     setSelected(lead);
     setQuery("");
     setResults([]);
-    setAddress(lead.address||"");
+    setAddress(""); // keep blank — job address is different from customer's home address
   }
 
   function clear(){
@@ -207,11 +207,11 @@ export default function JobStart() {
                 + New
               </button>
               {results.length>0 && (
-                <div style={{position:"absolute",top:"100%",left:0,right:0,zIndex:50,
+                <div style={{position:"absolute",top:"100%",left:0,right:0,zIndex:9999,
                     background:C.white,border:`1px solid ${C.border}`,borderRadius:8,
-                    boxShadow:"0 4px 16px rgba(0,0,0,.1)",marginTop:2,overflow:"hidden"}}>
+                    boxShadow:"0 8px 24px rgba(0,0,0,.15)",marginTop:2,overflow:"hidden"}}>
                   {results.map(l=>(
-                    <button key={l.id} onClick={()=>pick(l)}
+                    <button key={l.id} onMouseDown={()=>pick(l)}
                       style={{display:"flex",flexDirection:"column",gap:1,width:"100%",
                         padding:"10px 14px",border:"none",background:"transparent",
                         cursor:"pointer",textAlign:"left",borderBottom:`1px solid ${C.border}`}}

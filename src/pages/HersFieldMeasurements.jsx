@@ -148,6 +148,8 @@ function FloorsEditor({ floors, onChange }) {
 // ── Single area row — mirrors AreaRow from insulation estimate, no pricing ──
 function AreaRow({ area, materials, onChange, onDelete }) {
   const [expanded, setExpanded] = useState(!area.sqft);
+  const [calcOpen, setCalcOpen] = useState(false);
+  const [calcExpr, setCalcExpr] = useState("");
   const meas = area.measurements||[];
   const sqft = area.sqft||0;
   const liveH = parseFloat(area.mh)||0;
@@ -200,6 +202,25 @@ function AreaRow({ area, materials, onChange, onDelete }) {
     onChange("measurements", newMeas);
     onChange("sqft", Math.round(newMeas.reduce((acc,m)=>acc+m.sqft,0)*100)/100);
   }
+  function calcPress(val){
+    if(val==="C"){ setCalcExpr(""); return; }
+    if(val==="⌫"){ setCalcExpr(p=>p.slice(0,-1)); return; }
+    if(val==="="){
+      try {
+        const safe = calcExpr.replace(/[^0-9+\-*/.()]/g,"");
+        const result = Function(`"use strict";return (${safe||0})`)();
+        setCalcExpr(String(Math.round(result*100)/100));
+      } catch{ setCalcExpr("Err"); }
+      return;
+    }
+    setCalcExpr(p=>p+val);
+  }
+  function applyCalc(field){
+    const n = parseFloat(calcExpr);
+    if(!isNaN(n)) onChange(field, String(n));
+    setCalcOpen(false); setCalcExpr("");
+  }
+  const CALC_BTNS = ["7","8","9","⌫","4","5","6","C","1","2","3","+","0",".","×","-"];
 
   const isComplete = !!(area.area_type && sqft>0);
 
@@ -357,35 +378,84 @@ function AreaRow({ area, materials, onChange, onDelete }) {
         </div>
       )}
 
-      {/* H × L × Qty input */}
-      <div style={{display:"flex",gap:6,alignItems:"center"}}>
-        <div style={{flex:1,minWidth:0}}>
-          <div style={lbl}>Height / Width (ft)</div>
-          <input type="number" inputMode="decimal" value={area.mh||""} onChange={e=>onChange("mh",e.target.value)}
-            onKeyDown={e=>e.key==="Enter"&&commit()} placeholder="0"
-            style={{...I,height:36,textAlign:"right",fontSize:14}} />
-        </div>
-        <span style={{color:C.faint,fontSize:16,flexShrink:0,paddingTop:16}}>×</span>
-        <div style={{flex:1,minWidth:0}}>
-          <div style={lbl}>Length (ft)</div>
-          <input type="number" inputMode="decimal" value={area.ml||""} onChange={e=>onChange("ml",e.target.value)}
-            onKeyDown={e=>e.key==="Enter"&&commit()} placeholder="0"
-            style={{...I,height:36,textAlign:"right",fontSize:14}} />
-        </div>
-        <div style={{width:50,flexShrink:0}}>
-          <div style={lbl}>Qty</div>
-          <input type="number" inputMode="decimal" value={area.mq||""} onChange={e=>onChange("mq",e.target.value)}
-            onKeyDown={e=>e.key==="Enter"&&commit()} placeholder="1"
-            style={{...I,height:36,textAlign:"center",fontSize:14}} />
-        </div>
-        <div style={{flexShrink:0,paddingTop:16}}>
-          <button onClick={commit} disabled={!liveH||!liveL}
-            style={{...BtnD,height:36,fontSize:12,
-              background:liveH&&liveL?"#059669":"#e2e8f0",color:liveH&&liveL?"#fff":C.faint,
-              border:"none"}}>
-            {preview>0?`+${fmt(preview,0)}`:"Add"}
+      {/* H × L × Qty input row + calculator */}
+      <div style={{position:"relative"}}>
+        <div style={{display:"flex",gap:6,alignItems:"center"}}>
+          {/* Calculator icon button */}
+          <button onClick={()=>setCalcOpen(p=>!p)} title="Calculator"
+            style={{border:`1px solid ${C.border}`,background:calcOpen?"#f0fdf4":C.white,
+              color:calcOpen?C.green:C.faint,borderRadius:6,width:32,height:36,
+              cursor:"pointer",fontSize:16,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}>
+            🖩
           </button>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={lbl}>H / W</div>
+            <input type="number" inputMode="decimal" value={area.mh||""}
+              onChange={e=>onChange("mh",e.target.value)}
+              onKeyDown={e=>e.key==="Enter"&&commit()} placeholder="0"
+              style={{...I,height:36,textAlign:"right",fontSize:14}} />
+          </div>
+          <span style={{color:C.faint,fontSize:16,flexShrink:0,paddingTop:16}}>×</span>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={lbl}>L</div>
+            <input type="number" inputMode="decimal" value={area.ml||""}
+              onChange={e=>onChange("ml",e.target.value)}
+              onKeyDown={e=>e.key==="Enter"&&commit()} placeholder="0"
+              style={{...I,height:36,textAlign:"right",fontSize:14}} />
+          </div>
+          <div style={{width:46,flexShrink:0}}>
+            <div style={lbl}>Qty</div>
+            <input type="number" inputMode="decimal" value={area.mq||""}
+              onChange={e=>onChange("mq",e.target.value)}
+              onKeyDown={e=>e.key==="Enter"&&commit()} placeholder="1"
+              style={{...I,height:36,textAlign:"center",fontSize:13}} />
+          </div>
+          <div style={{flexShrink:0,paddingTop:16}}>
+            <button onClick={commit} disabled={!liveH||!liveL}
+              style={{...BtnD,height:36,fontSize:12,
+                background:liveH&&liveL?"#059669":"#e2e8f0",color:liveH&&liveL?"#fff":C.faint,border:"none"}}>
+              {preview>0?`+${fmt(preview,0)}`:"Add"}
+            </button>
+          </div>
         </div>
+
+        {/* Calculator popup */}
+        {calcOpen && (
+          <div style={{position:"absolute",top:"100%",left:0,zIndex:200,
+              background:C.white,border:`1px solid ${C.border}`,borderRadius:10,
+              boxShadow:"0 8px 24px rgba(0,0,0,.15)",padding:10,marginTop:4,width:220}}>
+            <div style={{fontFamily:"monospace",fontSize:15,fontWeight:700,textAlign:"right",
+                padding:"6px 10px",background:"#f8fafc",borderRadius:6,marginBottom:8,
+                color:C.ink,minHeight:32,border:`1px solid ${C.border}`}}>
+              {calcExpr||"0"}
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:4,marginBottom:8}}>
+              {CALC_BTNS.map(v=>(
+                <button key={v} onClick={()=>calcPress(v==="×"?"*":v)}
+                  style={{height:34,borderRadius:6,border:`1px solid ${C.border}`,
+                    background:v==="C"?"#fee2e2":v==="⌫"?"#fef9c3":C.white,
+                    color:v==="C"?"#dc2626":v==="⌫"?"#92400e":C.ink,
+                    cursor:"pointer",fontWeight:700,fontSize:14}}>
+                  {v}
+                </button>
+              ))}
+            </div>
+            <button onClick={()=>calcPress("=")}
+              style={{...BtnD,width:"100%",justifyContent:"center",marginBottom:6,background:"#059669"}}>
+              =
+            </button>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
+              <button onClick={()=>applyCalc("mh")}
+                style={{...Btn,fontSize:11,justifyContent:"center",color:"#059669",borderColor:"#059669"}}>
+                → Use as H
+              </button>
+              <button onClick={()=>applyCalc("ml")}
+                style={{...Btn,fontSize:11,justifyContent:"center",color:"#059669",borderColor:"#059669"}}>
+                → Use as L
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {sqft>0 && (
