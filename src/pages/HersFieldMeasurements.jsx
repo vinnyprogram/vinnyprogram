@@ -147,7 +147,6 @@ function FloorsEditor({ floors, onChange }) {
 
 // ── Single area row — mirrors AreaRow from insulation estimate, no pricing ──
 function AreaRow({ area, materials, onChange, onDelete }) {
-  const [expanded, setExpanded] = useState(!area.sqft);
   const [calcOpen, setCalcOpen] = useState(false);
   const [calcExpr, setCalcExpr] = useState("");
   const meas = area.measurements||[];
@@ -156,6 +155,12 @@ function AreaRow({ area, materials, onChange, onDelete }) {
   const liveL = parseFloat(area.ml)||0;
   const liveQ = parseFloat(area.mq)||1;
   const preview = liveH&&liveL ? Math.round(liveH*liveL*liveQ*100)/100 : 0;
+
+  // expanded lives on the area object itself, not local component state,
+  // so it survives the component remounting when the area moves between
+  // the "in progress" and "completed" filtered lists in the parent.
+  const expanded = area._expanded !== false; // default true (open) unless explicitly closed
+  function setExpanded(v){ onChange("_expanded", v); }
 
   // mat_lines: [{id, material, thickness_in, r_value}] — supports combo
   const matLines = (area.mat_lines&&area.mat_lines.length>0)
