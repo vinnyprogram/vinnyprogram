@@ -146,7 +146,7 @@ function FloorsEditor({ floors, onChange }) {
 }
 
 // ── Single area row — mirrors AreaRow from insulation estimate, no pricing ──
-function AreaRow({ area, materials, onChange, onDelete }) {
+function AreaRow({ area, materials, onChange, onDelete, onCommit }) {
   const [calcOpen, setCalcOpen] = useState(false);
   const [calcExpr, setCalcExpr] = useState("");
   const meas = area.measurements||[];
@@ -201,6 +201,7 @@ function AreaRow({ area, materials, onChange, onDelete }) {
     onChange("measurements", newMeas);
     onChange("sqft", Math.round(newMeas.reduce((acc,m)=>acc+m.sqft,0)*100)/100);
     onChange("mh",""); onChange("ml",""); onChange("mq","1");
+    if(onCommit) onCommit();
   }
   function delMeas(i){
     const newMeas = meas.filter((_,j)=>j!==i);
@@ -578,6 +579,7 @@ export default function HersFieldMeasurements() {
   const [saving, setSaving]       = useState(false);
   const [saved, setSaved]         = useState(false);
   const [skipNote, setSkipNote]   = useState(null);
+  const [autoSaveTick, setAutoSaveTick] = useState(0);
   const [importing, setImporting] = useState(false);
   const [pushing, setPushing]     = useState(false);
 
@@ -672,6 +674,15 @@ export default function HersFieldMeasurements() {
   },[invoiceId, estimateId, mode]);
 
   useEffect(()=>{ loadData(); },[loadData]);
+
+  // Auto-save in the background whenever a measurement chip is added
+  // (triggered via AreaRow's onCommit), so a completed measurement
+  // shows up on the Ekotrope Report right away without needing to
+  // tap the top Save button.
+  useEffect(()=>{
+    if(autoSaveTick>0) save();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[autoSaveTick]);
   useEffect(()=>{
     supabase.from("materials").select("*").then(({data})=>{ if(data) setMaterials(data); });
   },[]);
@@ -1023,7 +1034,8 @@ export default function HersFieldMeasurements() {
                 return (
                   <AreaRow key={area.id} area={area} materials={materials}
                     onChange={(f,v)=>updateArea(activeFloor,realIdx,f,v)}
-                    onDelete={()=>deleteArea(activeFloor,realIdx)} />
+                    onDelete={()=>deleteArea(activeFloor,realIdx)}
+                    onCommit={()=>setAutoSaveTick(t=>t+1)} />
                 );
               })}
               {currentAreas.some(a=>a.area_type&&a.sqft>0) && (
@@ -1036,7 +1048,8 @@ export default function HersFieldMeasurements() {
                 return (
                   <AreaRow key={area.id} area={area} materials={materials}
                     onChange={(f,v)=>updateArea(activeFloor,realIdx,f,v)}
-                    onDelete={()=>deleteArea(activeFloor,realIdx)} />
+                    onDelete={()=>deleteArea(activeFloor,realIdx)}
+                    onCommit={()=>setAutoSaveTick(t=>t+1)} />
                 );
               })}
             </>
