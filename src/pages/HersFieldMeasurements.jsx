@@ -548,6 +548,7 @@ export default function HersFieldMeasurements() {
   const [bedrooms, setBedrooms] = useState("0");
   const [notes, setNotes]       = useState("");
   const [materials, setMaterials] = useState([]);
+  const [section, setSection]   = useState("overview"); // overview | measurements | windows
 
   const [photos, setPhotos]             = useState([]);
   const [docs, setDocs]                 = useState([]);
@@ -842,27 +843,52 @@ export default function HersFieldMeasurements() {
         </div>
       </div>
 
+      {/* section tabs */}
+      <div style={{background:C.white,borderBottom:`1px solid ${C.border}`,
+          padding:"8px 16px",display:"flex",gap:6,justifyContent:"center",flexWrap:"wrap"}}>
+        {[
+          {key:"overview",     label:"📊 Overview",  desc:"Ekotrope, CFA/Volume, Photos & Docs"},
+          {key:"measurements", label:"🏗 Insulation", desc:"Area measurements"},
+          {key:"windows",      label:"🪟 Windows",    desc:"Window shading"},
+        ].map(t=>(
+          <button key={t.key} onClick={()=>setSection(t.key)} title={t.desc}
+            style={{padding:"7px 16px",borderRadius:8,
+              border: section===t.key ? "2px solid #059669" : "2px solid transparent",
+              background: section===t.key ? "#dcfce7" : "#f8fafc",
+              color: section===t.key ? "#059669" : C.muted,
+              cursor:"pointer",fontSize:13,fontWeight:700,whiteSpace:"nowrap"}}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
       <div style={{maxWidth:760,margin:"0 auto",padding:"12px 14px"}}>
 
-        {/* reference */}
+        {/* reference — always visible */}
         <div style={{...CARD,background:"#f8fafc"}}>
           <div style={{fontSize:13,fontWeight:700,color:C.ink}}>{customer?.name||"Unknown"}</div>
           {invoice.address && <div style={{fontSize:12,color:C.muted,marginTop:2}}>📍 {invoice.address}</div>}
         </div>
 
-        {/* bedrooms */}
-        <div style={{...CARD,display:"flex",gap:12,alignItems:"center"}}>
-          <span style={{fontSize:12,color:C.muted,whiteSpace:"nowrap"}}>Bedrooms</span>
-          <input type="number" value={bedrooms} onChange={e=>setBedrooms(e.target.value)} style={{...I,width:80,height:32}} />
-        </div>
+        {/* ══════════ OVERVIEW TAB ══════════ */}
+        {section==="overview" && (
+          <>
+            {/* bedrooms */}
+            <div style={{...CARD,display:"flex",gap:12,alignItems:"center"}}>
+              <span style={{fontSize:12,color:C.muted,whiteSpace:"nowrap"}}>Bedrooms</span>
+              <input type="number" value={bedrooms} onChange={e=>setBedrooms(e.target.value)} style={{...I,width:80,height:32}} />
+            </div>
 
-        {/* Ekotrope Summary */}
-        <EkotropeSummary floors={cfaFloors} areas={areas} bedrooms={bedrooms} />
+            {/* Ekotrope Summary */}
+            <EkotropeSummary floors={cfaFloors} areas={areas} bedrooms={bedrooms} />
 
-        {/* CFA / Volume */}
-        <FloorsEditor floors={cfaFloors} onChange={setCfaFloors} />
+            {/* CFA / Volume */}
+            <FloorsEditor floors={cfaFloors} onChange={setCfaFloors} />
+          </>
+        )}
 
-        {/* ── MEASUREMENTS — same floor tabs as insulation estimate ── */}
+        {/* ══════════ INSULATION MEASUREMENTS TAB ══════════ */}
+        {section==="measurements" && (
         <div style={CARD}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
             <div style={{fontSize:11,fontWeight:700,color:C.faint,textTransform:"uppercase",letterSpacing:0.4}}>Measurements</div>
@@ -949,10 +975,16 @@ export default function HersFieldMeasurements() {
             </div>
           )}
         </div>
+        )}
 
-        <WindowsEditor windows={windows} onChange={setWindows} />
+        {/* ══════════ WINDOWS TAB ══════════ */}
+        {section==="windows" && (
+          <WindowsEditor windows={windows} onChange={setWindows} />
+        )}
 
-        {/* Notes */}
+        {/* ══════════ OVERVIEW TAB (continued) — Notes, Photos, Documents ══════════ */}
+        {section==="overview" && (
+        <>
         <div style={CARD}>
           <div style={{fontSize:11,fontWeight:700,color:C.faint,textTransform:"uppercase",letterSpacing:0.4,marginBottom:8}}>Notes</div>
           <textarea placeholder="Notes from the field…" value={notes} onChange={e=>setNotes(e.target.value)}
@@ -1007,6 +1039,8 @@ export default function HersFieldMeasurements() {
               </div>
           }
         </div>
+        </>
+        )}
       </div>
     </div>
   );
