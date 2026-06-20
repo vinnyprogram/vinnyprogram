@@ -51,7 +51,7 @@ export default function EkotropeReport() {
 
   // Parse measurement data
   const cfaFloors = parseArr(fm?.floors||[]);
-  const totalCFA = cfaFloors.reduce((s,f)=>s+(Number(f.width)||0)*(Number(f.length)||0),0);
+  const totalCFA = cfaFloors.reduce((s,f)=>f.cfaInclude===false?s:s+(Number(f.width)||0)*(Number(f.length)||0),0);
   const totalVol = cfaFloors.reduce((s,f)=>s+(Number(f.width)||0)*(Number(f.length)||0)*(Number(f.height)||0),0);
   const bedrooms = Number(fm?.bedrooms||0);
   const windows  = parseArr(fm?.windows||[]);
@@ -148,16 +148,20 @@ export default function EkotropeReport() {
                 {cfaFloors.map((f,i)=>{
                   const cfa = (Number(f.width)||0)*(Number(f.length)||0);
                   const vol = cfa*(Number(f.height)||0);
+                  const counted = f.cfaInclude!==false;
                   return (
                     <div key={f.id||i} style={{...ROW,borderBottom:i<cfaFloors.length-1?"1px solid #f1f5f9":"none"}}>
                       <div>
-                        <div style={{fontSize:13,color:"#0f172a",fontWeight:600}}>{f.label||`Floor ${i+1}`}</div>
+                        <div style={{fontSize:13,color:"#0f172a",fontWeight:600}}>
+                          {f.label||`Floor ${i+1}`}
+                          {!counted && <span style={{fontSize:10,color:"#b45309",fontWeight:700,marginLeft:6}}>VOLUME ONLY</span>}
+                        </div>
                         <div style={{fontSize:11,color:"#94a3b8"}}>
                           {f.width||"?"} × {f.length||"?"} × {f.height||"?"}ft
                         </div>
                       </div>
                       <div style={{textAlign:"right"}}>
-                        <div style={{...VAL,fontSize:13}}>{fmt(cfa,0)} ft²</div>
+                        <div style={{...VAL,fontSize:13,color:counted?"#0f172a":"#cbd5e1",textDecoration:counted?"none":"line-through"}}>{fmt(cfa,0)} ft²</div>
                         <div style={{fontSize:11,color:"#94a3b8"}}>{fmt(vol,0)} ft³</div>
                       </div>
                     </div>

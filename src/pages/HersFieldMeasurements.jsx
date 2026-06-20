@@ -47,7 +47,7 @@ function withId(x){ return {...x, id:x.id||uid()}; }
 // ── Ekotrope Summary panel (live) ──
 function EkotropeSummary({ floors, areas, bedrooms }) {
   const [open, setOpen] = useState(true);
-  const totalCFA = floors.reduce((s,f)=>s+(Number(f.width)||0)*(Number(f.length)||0),0);
+  const totalCFA = floors.reduce((s,f)=>f.cfaInclude===false?s:s+(Number(f.width)||0)*(Number(f.length)||0),0);
   const totalVol = floors.reduce((s,f)=>s+(Number(f.width)||0)*(Number(f.length)||0)*(Number(f.height)||0),0);
 
   // Aggregate sqft by area type across all floors
@@ -101,10 +101,13 @@ function EkotropeSummary({ floors, areas, bedrooms }) {
 
 // ── CFA / Volume floors editor ──
 function FloorsEditor({ floors, onChange }) {
-  function add(){ onChange([...floors,{id:uid(),label:`Floor ${floors.length+1}`,width:"",length:"",height:""}]); }
+  function add(){ onChange([...floors,{id:uid(),label:`Floor ${floors.length+1}`,width:"",length:"",height:"",cfaInclude:true}]); }
   function upd(idx,f,v){ onChange(floors.map((fl,i)=>i===idx?{...fl,[f]:v}:fl)); }
   function rem(idx){ onChange(floors.filter((_,i)=>i!==idx)); }
-  const totalCFA = floors.reduce((s,f)=>s+(Number(f.width)||0)*(Number(f.length)||0),0);
+  // Volume always counts every floor/space. CFA only counts floors marked
+  // as conditioned — lets you record volume for a garage/vented attic/etc.
+  // without it inflating the conditioned floor area total.
+  const totalCFA = floors.reduce((s,f)=>f.cfaInclude===false?s:s+(Number(f.width)||0)*(Number(f.length)||0),0);
   const totalVol = floors.reduce((s,f)=>s+(Number(f.width)||0)*(Number(f.length)||0)*(Number(f.height)||0),0);
   return (
     <div style={CARD}>
@@ -114,6 +117,7 @@ function FloorsEditor({ floors, onChange }) {
       {floors.map((f,idx)=>{
         const cfa=(Number(f.width)||0)*(Number(f.length)||0);
         const vol=cfa*(Number(f.height)||0);
+        const counted = f.cfaInclude!==false;
         return (
           <div key={f.id} style={{border:`1px solid ${C.border}`,borderRadius:8,padding:"8px 10px",marginBottom:8}}>
             <div style={{display:"flex",gap:6,marginBottom:6,alignItems:"center"}}>
@@ -121,13 +125,20 @@ function FloorsEditor({ floors, onChange }) {
                 style={{...I,flex:1,height:30,fontSize:12}} />
               <button onClick={()=>rem(idx)} style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:16,flexShrink:0}}>✕</button>
             </div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:6,marginBottom:4}}>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:6,marginBottom:6}}>
               <div><div style={lbl}>Width (ft)</div><input type="number" value={f.width} onChange={e=>upd(idx,"width",e.target.value)} style={{...I,height:30,fontSize:12,textAlign:"right"}} /></div>
               <div><div style={lbl}>Length (ft)</div><input type="number" value={f.length} onChange={e=>upd(idx,"length",e.target.value)} style={{...I,height:30,fontSize:12,textAlign:"right"}} /></div>
               <div><div style={lbl}>Height (ft)</div><input type="number" value={f.height} onChange={e=>upd(idx,"height",e.target.value)} style={{...I,height:30,fontSize:12,textAlign:"right"}} /></div>
             </div>
+            <label style={{display:"flex",alignItems:"center",gap:6,marginBottom:6,cursor:"pointer"}}>
+              <input type="checkbox" checked={counted} onChange={e=>upd(idx,"cfaInclude",e.target.checked)}
+                style={{width:14,height:14,accentColor:C.green}} />
+              <span style={{fontSize:11,color:counted?C.muted:"#b45309",fontWeight:counted?400:600}}>
+                Counts toward CFA{!counted&&" — volume only (e.g. garage, vented attic)"}
+              </span>
+            </label>
             <div style={{display:"flex",justifyContent:"space-between",fontSize:11,color:C.muted}}>
-              <span>CFA: <b style={{color:C.green}}>{fmt(cfa)} ft²</b></span>
+              <span>CFA: <b style={{color:counted?C.green:C.faint,textDecoration:counted?"none":"line-through"}}>{fmt(cfa)} ft²</b></span>
               <span>Volume: <b style={{color:C.green}}>{fmt(vol)} ft³</b></span>
             </div>
           </div>
@@ -743,7 +754,7 @@ export default function HersFieldMeasurements() {
 
       const payload = {
         company_id: invoice.company_id,
-        floors: cfaFloors.map(f=>({id:f.id,label:f.label||"",width:Number(f.width)||0,length:Number(f.length)||0,height:Number(f.height)||0})),
+        floors: cfaFloors.map(f=>({id:f.id,label:f.label||"",width:Number(f.width)||0,length:Number(f.length)||0,height:Number(f.height)||0,cfaInclude:f.cfaInclude!==false})),
         areas: areasV2,
         roof_segments:[], wall_segments:[], rim_joist_segments:[],
         bedrooms: Number(bedrooms)||0,
