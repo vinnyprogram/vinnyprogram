@@ -485,21 +485,50 @@ function AreaRow({ area, materials, onChange, onDelete }) {
 
 // ── Windows editor ──
 function WindowsEditor({ windows, onChange }) {
-  function add(){ onChange([...windows,{id:uid(),label:`Window ${windows.length+1}`,orientation:"N",width:"",height:"",top_to_overhang:"",bottom_to_overhang:"",overhang_depth:""}]); }
-  function upd(idx,f,v){ onChange(windows.map((w,i)=>i===idx?{...w,[f]:v}:w)); }
+  function add(){
+    onChange([...windows,{
+      id:uid(), label:`Window ${windows.length+1}`, orientation:"N", qty:"1",
+      width:"", height:"", top_to_overhang:"", bottom_to_overhang:"", overhang_depth:"",
+    }]);
+  }
+  function upd(idx,f,v){
+    onChange(windows.map((w,i)=>{
+      if(i!==idx) return w;
+      const updated = {...w,[f]:v};
+      // auto-calc bottom-to-overhang = top-to-overhang + window height,
+      // whenever either of those two changes and both have a value
+      if(f==="top_to_overhang" || f==="height"){
+        if(updated.top_to_overhang!=="" && updated.height!==""){
+          const top = parseFloat(updated.top_to_overhang)||0;
+          const h   = parseFloat(updated.height)||0;
+          updated.bottom_to_overhang = String(Math.round((top+h)*100)/100);
+        }
+      }
+      return updated;
+    }));
+  }
   function rem(idx){ onChange(windows.filter((_,i)=>i!==idx)); }
+
+  const oI = { ...I, height:26, fontSize:11, textAlign:"right" };
+  const oLbl = { fontSize:8, color:C.faint, fontWeight:700, textTransform:"uppercase", marginBottom:2 };
+
   return (
     <div style={CARD}>
       <div style={{fontSize:11,fontWeight:700,color:C.faint,textTransform:"uppercase",letterSpacing:0.4,marginBottom:10}}>Windows</div>
       {windows.map((w,idx)=>(
         <div key={w.id} style={{border:`1px solid ${C.border}`,borderRadius:8,padding:"8px 10px",marginBottom:8}}>
-          <div style={{display:"flex",gap:6,marginBottom:6,alignItems:"center"}}>
+          <div style={{display:"flex",gap:6,marginBottom:8,alignItems:"center"}}>
             <input value={w.label} onChange={e=>upd(idx,"label",e.target.value)} placeholder="e.g. Living room"
-              style={{...I,flex:1,height:30,fontSize:12}} />
+              style={{...I,flex:1,height:28,fontSize:12}} />
             <select value={w.orientation} onChange={e=>upd(idx,"orientation",e.target.value)}
-              style={{...I,width:60,height:30,fontSize:12,flexShrink:0}}>
+              style={{...I,width:56,height:28,fontSize:12,flexShrink:0}}>
               {ORIENTATIONS.map(o=><option key={o} value={o}>{o}</option>)}
             </select>
+            <div style={{width:42,flexShrink:0}}>
+              <input type="number" value={w.qty||""} onChange={e=>upd(idx,"qty",e.target.value)}
+                placeholder="Qty" title="Quantity — how many identical windows"
+                style={{...I,height:28,fontSize:12,textAlign:"center"}} />
+            </div>
             <button onClick={()=>rem(idx)} style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:16,flexShrink:0}}>✕</button>
           </div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginBottom:8}}>
@@ -507,10 +536,20 @@ function WindowsEditor({ windows, onChange }) {
             <div><div style={lbl}>Height (ft)</div><input type="number" value={w.height} onChange={e=>upd(idx,"height",e.target.value)} style={{...I,height:30,fontSize:12,textAlign:"right"}} /></div>
           </div>
           <div style={{fontSize:9,color:C.faint,fontWeight:700,textTransform:"uppercase",marginBottom:4}}>Overhang shading (for Ekotrope)</div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:6}}>
-            <div><div style={lbl}>Top→overhang</div><input type="number" value={w.top_to_overhang} onChange={e=>upd(idx,"top_to_overhang",e.target.value)} style={{...I,height:30,fontSize:12,textAlign:"right"}} /></div>
-            <div><div style={lbl}>Bottom→overhang</div><input type="number" value={w.bottom_to_overhang} onChange={e=>upd(idx,"bottom_to_overhang",e.target.value)} style={{...I,height:30,fontSize:12,textAlign:"right"}} /></div>
-            <div><div style={lbl}>Overhang depth</div><input type="number" value={w.overhang_depth} onChange={e=>upd(idx,"overhang_depth",e.target.value)} style={{...I,height:30,fontSize:12,textAlign:"right"}} /></div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:5}}>
+            <div>
+              <div style={oLbl}>Overhang depth</div>
+              <input type="number" value={w.overhang_depth} onChange={e=>upd(idx,"overhang_depth",e.target.value)} style={oI} />
+            </div>
+            <div>
+              <div style={oLbl}>Top→overhang</div>
+              <input type="number" value={w.top_to_overhang} onChange={e=>upd(idx,"top_to_overhang",e.target.value)} style={oI} />
+            </div>
+            <div>
+              <div style={{...oLbl,color:"#059669"}}>Bottom→overhang ⚡auto</div>
+              <input type="number" value={w.bottom_to_overhang} onChange={e=>upd(idx,"bottom_to_overhang",e.target.value)}
+                style={{...oI,background:"#f0fdf4",borderColor:"#86efac"}} />
+            </div>
           </div>
         </div>
       ))}
@@ -673,7 +712,7 @@ export default function HersFieldMeasurements() {
         areas: areasV2,
         roof_segments:[], wall_segments:[], rim_joist_segments:[],
         bedrooms: Number(bedrooms)||0,
-        windows: windows.map(w=>({id:w.id,label:w.label||"",orientation:w.orientation||"N",width:Number(w.width)||0,height:Number(w.height)||0,top_to_overhang:w.top_to_overhang!==""?Number(w.top_to_overhang):null,bottom_to_overhang:w.bottom_to_overhang!==""?Number(w.bottom_to_overhang):null,overhang_depth:w.overhang_depth!==""?Number(w.overhang_depth):null})),
+        windows: windows.map(w=>({id:w.id,label:w.label||"",orientation:w.orientation||"N",qty:Number(w.qty)||1,width:Number(w.width)||0,height:Number(w.height)||0,top_to_overhang:w.top_to_overhang!==""?Number(w.top_to_overhang):null,bottom_to_overhang:w.bottom_to_overhang!==""?Number(w.bottom_to_overhang):null,overhang_depth:w.overhang_depth!==""?Number(w.overhang_depth):null})),
         notes,
         updated_at: new Date().toISOString(),
       };

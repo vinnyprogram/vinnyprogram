@@ -203,28 +203,31 @@ export default function EkotropeReport() {
               <div style={CARD_S}>
                 <div style={SEC}>Windows — By Orientation</div>
                 {Object.entries(windowsByOrientation).map(([orientation,wins],oi,oarr)=>{
-                  const totalWinArea = wins.reduce((s,w)=>(s+(Number(w.width)||0)*(Number(w.height)||0)),0);
+                  const totalWinArea = wins.reduce((s,w)=>(s+(Number(w.width)||0)*(Number(w.height)||0)*(Number(w.qty)||1)),0);
+                  const totalCount = wins.reduce((s,w)=>s+(Number(w.qty)||1),0);
                   return (
                     <div key={orientation} style={{borderBottom:oi<oarr.length-1?"1px solid #e2e8f0":"none"}}>
                       <div style={{...SEC,background:"#eff6ff",color:"#1d4ed8",fontSize:11}}>
-                        {orientation} — {wins.length} window{wins.length!==1?"s":""} · {fmt(totalWinArea,1)} ft² total
+                        {orientation} — {totalCount} window{totalCount!==1?"s":""} · {fmt(totalWinArea,1)} ft² total
                       </div>
                       {wins.map((w,wi)=>{
-                        const area = (Number(w.width)||0)*(Number(w.height)||0);
+                        const qty = Number(w.qty)||1;
+                        const eachArea = (Number(w.width)||0)*(Number(w.height)||0);
+                        const area = eachArea*qty;
                         return (
                           <div key={w.id||wi} style={{...ROW,borderBottom:wi<wins.length-1?"1px solid #f1f5f9":"none",alignItems:"flex-start"}}>
                             <div>
                               <div style={{fontSize:13,fontWeight:600,color:"#0f172a",marginBottom:4}}>
-                                {w.label||`Window ${wi+1}`}
+                                {w.label||`Window ${wi+1}`}{qty>1?` (×${qty})`:""}
                               </div>
                               <div style={{fontSize:12,color:"#64748b"}}>
-                                {w.width||"?"} × {w.height||"?"} ft = {fmt(area,1)} ft²
+                                {w.width||"?"} × {w.height||"?"} ft{qty>1?` × ${qty}`:""} = {fmt(area,1)} ft²
                               </div>
                               {(w.top_to_overhang||w.bottom_to_overhang||w.overhang_depth) && (
                                 <div style={{marginTop:4,fontSize:11,color:"#7c3aed",lineHeight:1.8}}>
+                                  {w.overhang_depth && <div>Overhang depth: <b>{w.overhang_depth} ft</b></div>}
                                   <div>Top→overhang: <b>{w.top_to_overhang||"—"} ft</b></div>
                                   <div>Bottom→overhang: <b>{w.bottom_to_overhang||"—"} ft</b></div>
-                                  {w.overhang_depth && <div>Overhang depth: <b>{w.overhang_depth} ft</b></div>}
                                 </div>
                               )}
                             </div>
