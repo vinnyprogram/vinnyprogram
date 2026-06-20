@@ -219,7 +219,6 @@ export default function EkotropeReport() {
                             <div>
                               <div style={{fontSize:13,fontWeight:600,color:"#0f172a",marginBottom:4}}>
                                 {w.label||`Window ${wi+1}`}{qty>1?` (×${qty})`:""}
-                                {w.elevation && <span style={{fontSize:10,color:"#94a3b8",fontWeight:500,marginLeft:6}}>· {w.elevation}</span>}
                               </div>
                               <div style={{fontSize:12,color:"#64748b"}}>
                                 {w.width||"?"} × {w.height||"?"} ft{qty>1?` × ${qty}`:""} = {fmt(area,1)} ft²
@@ -235,7 +234,9 @@ export default function EkotropeReport() {
                             <div style={{textAlign:"right",paddingLeft:16,flexShrink:0}}>
                               <div style={{fontSize:18,fontWeight:800,color:"#3b82f6"}}>{fmt(area,1)}</div>
                               <div style={{fontSize:10,color:"#94a3b8"}}>ft²</div>
-                              <div style={{fontSize:11,fontWeight:700,color:"#1d4ed8",marginTop:2}}>{w.orientation}</div>
+                              <div style={{fontSize:11,fontWeight:700,color:"#1d4ed8",marginTop:2,whiteSpace:"nowrap"}}>
+                                {w.orientation}{w.elevation?` · ${w.elevation}`:""}
+                              </div>
                             </div>
                           </div>
                         );
