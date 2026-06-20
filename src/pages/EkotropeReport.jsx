@@ -252,7 +252,7 @@ export default function EkotropeReport() {
                               <div style={{fontSize:18,fontWeight:800,color:"#3b82f6"}}>{fmt(area,1)}</div>
                               <div style={{fontSize:10,color:"#94a3b8"}}>ft²</div>
                               <div style={{fontSize:11,fontWeight:700,color:"#1d4ed8",marginTop:2,whiteSpace:"nowrap"}}>
-                                {w.orientation}{w.elevation?` · ${w.elevation}`:""}
+                                {w.orientation} · {w.elevation||"—"}
                               </div>
                             </div>
                           </div>

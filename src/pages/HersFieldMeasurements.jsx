@@ -546,19 +546,26 @@ function WindowsEditor({ windows, onChange, onCommit, floorOptions }) {
 
   // Picking a Side: if we already know the building's facing, auto-fill
   // this window's Orientation from it. Always still editable afterward.
+  // Both fields are written in ONE state update — calling upd() twice in a
+  // row here would have each computed from the same stale 'windows' closure,
+  // so the second call's array would silently overwrite the first's change.
   function pickSide(idx, side){
-    upd(idx,"elevation",side);
+    let newOrientation = null;
     if(frontIndex!==null && SIDE_OFFSET[side]!==undefined){
       const oi = (frontIndex + SIDE_OFFSET[side]) % 8;
-      upd(idx,"orientation",ORIENTATIONS[oi]);
+      newOrientation = ORIENTATIONS[oi];
     }
+    onChange(windows.map((w,i)=>{
+      if(i!==idx) return w;
+      return newOrientation ? {...w, elevation:side, orientation:newOrientation} : {...w, elevation:side};
+    }));
     if(onCommit) onCommit();
   }
 
   // Manually picking an Orientation while a Side is set teaches/corrects
   // the building's facing for every window going forward.
   function pickOrientation(idx, orientation, currentSide){
-    upd(idx,"orientation",orientation);
+    onChange(windows.map((w,i)=> i===idx ? {...w, orientation} : w));
     if(currentSide && SIDE_OFFSET[currentSide]!==undefined){
       const oi = ORIENTATIONS.indexOf(orientation);
       if(oi>=0) setFrontIndex((oi - SIDE_OFFSET[currentSide] + 8) % 8);
