@@ -100,7 +100,7 @@ function EkotropeSummary({ floors, areas, bedrooms }) {
 }
 
 // ── CFA / Volume floors editor ──
-function FloorsEditor({ floors, onChange }) {
+function FloorsEditor({ floors, onChange, onCommit }) {
   function add(){ onChange([...floors,{id:uid(),label:`Floor ${floors.length+1}`,width:"",length:"",height:"",cfaInclude:true}]); }
   function upd(idx,f,v){ onChange(floors.map((fl,i)=>i===idx?{...fl,[f]:v}:fl)); }
   function rem(idx){ onChange(floors.filter((_,i)=>i!==idx)); }
@@ -121,17 +121,17 @@ function FloorsEditor({ floors, onChange }) {
         return (
           <div key={f.id} style={{border:`1px solid ${C.border}`,borderRadius:8,padding:"8px 10px",marginBottom:8}}>
             <div style={{display:"flex",gap:6,marginBottom:6,alignItems:"center"}}>
-              <input value={f.label} onChange={e=>upd(idx,"label",e.target.value)} placeholder="e.g. 1st Floor"
+              <input value={f.label} onChange={e=>upd(idx,"label",e.target.value)} onBlur={onCommit} placeholder="e.g. 1st Floor"
                 style={{...I,flex:1,height:30,fontSize:12}} />
               <button onClick={()=>rem(idx)} style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:16,flexShrink:0}}>✕</button>
             </div>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:6,marginBottom:6}}>
-              <div><div style={lbl}>Width (ft)</div><input type="number" value={f.width} onChange={e=>upd(idx,"width",e.target.value)} style={{...I,height:30,fontSize:12,textAlign:"right"}} /></div>
-              <div><div style={lbl}>Length (ft)</div><input type="number" value={f.length} onChange={e=>upd(idx,"length",e.target.value)} style={{...I,height:30,fontSize:12,textAlign:"right"}} /></div>
-              <div><div style={lbl}>Height (ft)</div><input type="number" value={f.height} onChange={e=>upd(idx,"height",e.target.value)} style={{...I,height:30,fontSize:12,textAlign:"right"}} /></div>
+              <div><div style={lbl}>Width (ft)</div><input type="number" value={f.width} onChange={e=>upd(idx,"width",e.target.value)} onBlur={onCommit} style={{...I,height:30,fontSize:12,textAlign:"right"}} /></div>
+              <div><div style={lbl}>Length (ft)</div><input type="number" value={f.length} onChange={e=>upd(idx,"length",e.target.value)} onBlur={onCommit} style={{...I,height:30,fontSize:12,textAlign:"right"}} /></div>
+              <div><div style={lbl}>Height (ft)</div><input type="number" value={f.height} onChange={e=>upd(idx,"height",e.target.value)} onBlur={onCommit} style={{...I,height:30,fontSize:12,textAlign:"right"}} /></div>
             </div>
             <label style={{display:"flex",alignItems:"center",gap:6,marginBottom:6,cursor:"pointer"}}>
-              <input type="checkbox" checked={counted} onChange={e=>upd(idx,"cfaInclude",e.target.checked)}
+              <input type="checkbox" checked={counted} onChange={e=>{ upd(idx,"cfaInclude",e.target.checked); if(onCommit) onCommit(); }}
                 style={{width:14,height:14,accentColor:C.green}} />
               <span style={{fontSize:11,color:counted?C.muted:"#b45309",fontWeight:counted?400:600}}>
                 Counts toward CFA{!counted&&" — volume only (e.g. garage, vented attic)"}
@@ -726,31 +726,22 @@ export default function HersFieldMeasurements() {
     if(saving) return;
     setSaving(true);
     try {
-      // Serialize floor-structured areas as v2 format — only keep
-      // areas that are actually complete (a type chosen and at least
-      // one measurement entered), so half-started rows never get
-      // persisted or show up blank on the Ekotrope Report.
+      // Save everything exactly as entered, including half-finished
+      // rows — nothing should ever be silently lost just because a
+      // measurement or window isn't finished yet. Filtering blank
+      // entries out of the printed Ekotrope Report happens on that
+      // page instead, not here.
       const areasV2 = floors.map(f=>({
         floor_name: f,
-        areas: (areas[f]||[])
-          .filter(a=>a.area_type && a.sqft>0)
-          .map(a=>({
-            id:a.id, area_type:a.area_type||"", customLabel:a.customLabel||"",
-            measurements:(a.measurements||[]).map(m=>({h:m.h,l:m.l,q:m.q||1,sqft:m.sqft})),
-            sqft:a.sqft||0,
-            mat_lines: (a.mat_lines||[{material:a.material||"",thickness_in:a.thickness_in||"",r_value:a.r_value||""}])
-              .map(ml=>({material:ml.material||"",thickness_in:ml.thickness_in||"",r_value:ml.r_value||""})),
-            material:a.material||"", thickness_in:a.thickness_in||"", r_value:a.r_value||"",
-          })),
+        areas: (areas[f]||[]).map(a=>({
+          id:a.id, area_type:a.area_type||"", customLabel:a.customLabel||"",
+          measurements:(a.measurements||[]).map(m=>({h:m.h,l:m.l,q:m.q||1,sqft:m.sqft})),
+          sqft:a.sqft||0,
+          mat_lines: (a.mat_lines||[{material:a.material||"",thickness_in:a.thickness_in||"",r_value:a.r_value||""}])
+            .map(ml=>({material:ml.material||"",thickness_in:ml.thickness_in||"",r_value:ml.r_value||""})),
+          material:a.material||"", thickness_in:a.thickness_in||"", r_value:a.r_value||"",
+        })),
       }));
-
-      // Same idea for windows — only keep ones with width, height, AND
-      // top-to-overhang filled in. A window missing those is exactly
-      // the kind of half-entered row that showed up blank on the
-      // Ekotrope Report.
-      const completeWindows = windows.filter(w=>
-        Number(w.width)>0 && Number(w.height)>0 && w.top_to_overhang!==""
-      );
 
       const payload = {
         company_id: invoice.company_id,
@@ -758,7 +749,7 @@ export default function HersFieldMeasurements() {
         areas: areasV2,
         roof_segments:[], wall_segments:[], rim_joist_segments:[],
         bedrooms: Number(bedrooms)||0,
-        windows: completeWindows.map(w=>({id:w.id,label:w.label||"",orientation:w.orientation||"N",elevation:w.elevation||"",qty:Number(w.qty)||1,width:Number(w.width)||0,height:Number(w.height)||0,top_to_overhang:Number(w.top_to_overhang),bottom_to_overhang:w.bottom_to_overhang!==""?Number(w.bottom_to_overhang):null,overhang_depth:w.overhang_depth!==""?Number(w.overhang_depth):null})),
+        windows: windows.map(w=>({id:w.id,label:w.label||"",orientation:w.orientation||"N",elevation:w.elevation||"",qty:Number(w.qty)||1,width:Number(w.width)||0,height:Number(w.height)||0,top_to_overhang:w.top_to_overhang!==""?Number(w.top_to_overhang):null,bottom_to_overhang:w.bottom_to_overhang!==""?Number(w.bottom_to_overhang):null,overhang_depth:w.overhang_depth!==""?Number(w.overhang_depth):null})),
         notes,
         updated_at: new Date().toISOString(),
       };
@@ -773,13 +764,11 @@ export default function HersFieldMeasurements() {
         if(error) throw error;
       }
 
-      const totalAreasEntered = floors.reduce((s,f)=>s+(areas[f]||[]).length,0);
-      const totalAreasComplete = areasV2.reduce((s,f)=>s+f.areas.length,0);
-      const skippedAreas = totalAreasEntered - totalAreasComplete;
-      const skippedWindows = windows.length - completeWindows.length;
+      const incompleteAreas = floors.reduce((s,f)=>s+(areas[f]||[]).filter(a=>!(a.area_type&&a.sqft>0)).length,0);
+      const incompleteWindows = windows.filter(w=>!(Number(w.width)>0&&Number(w.height)>0&&w.top_to_overhang!=="")).length;
       setSkipNote(
-        (skippedAreas>0||skippedWindows>0)
-          ? `Saved (skipped ${skippedAreas>0?`${skippedAreas} incomplete area${skippedAreas!==1?"s":""}`:""}${skippedAreas>0&&skippedWindows>0?", ":""}${skippedWindows>0?`${skippedWindows} incomplete window${skippedWindows!==1?"s":""}`:""})`
+        (incompleteAreas>0||incompleteWindows>0)
+          ? `Saved (${incompleteAreas>0?`${incompleteAreas} area${incompleteAreas!==1?"s":""}`:""}${incompleteAreas>0&&incompleteWindows>0?" & ":""}${incompleteWindows>0?`${incompleteWindows} window${incompleteWindows!==1?"s":""}`:""} still incomplete — won't show on Ekotrope Report yet)`
           : null
       );
       setSaved(true); setTimeout(()=>{ setSaved(false); setSkipNote(null); },3500);
@@ -980,7 +969,7 @@ export default function HersFieldMeasurements() {
             <EkotropeSummary floors={cfaFloors} areas={areas} bedrooms={bedrooms} />
 
             {/* CFA / Volume */}
-            <FloorsEditor floors={cfaFloors} onChange={setCfaFloors} />
+            <FloorsEditor floors={cfaFloors} onChange={setCfaFloors} onCommit={()=>setAutoSaveTick(t=>t+1)} />
           </>
         )}
 

@@ -54,7 +54,12 @@ export default function EkotropeReport() {
   const totalCFA = cfaFloors.reduce((s,f)=>f.cfaInclude===false?s:s+(Number(f.width)||0)*(Number(f.length)||0),0);
   const totalVol = cfaFloors.reduce((s,f)=>s+(Number(f.width)||0)*(Number(f.length)||0)*(Number(f.height)||0),0);
   const bedrooms = Number(fm?.bedrooms||0);
-  const windows  = parseArr(fm?.windows||[]);
+  const allWindows  = parseArr(fm?.windows||[]);
+  // Only print windows that are actually finished — width, height, and
+  // top-to-overhang all filled in — so a half-started row never shows
+  // up as a blank entry on the printed report. Incomplete ones are
+  // still saved in the data, just not shown here until complete.
+  const windows = allWindows.filter(w=>Number(w.width)>0 && Number(w.height)>0 && w.top_to_overhang!=="" && w.top_to_overhang!=null);
 
   // Parse floor-structured areas (v2 format) or flat areas
   const savedAreas = parseArr(fm?.areas||[]);
