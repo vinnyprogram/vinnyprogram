@@ -498,9 +498,11 @@ function AreaRow({ area, materials, onChange, onDelete, onCommit }) {
 // ── Windows editor ──
 function WindowsEditor({ windows, onChange, onCommit, floorOptions }) {
   function add(){
+    const last = windows[windows.length-1];
     onChange([...windows,{
       id:uid(), label:`Window ${windows.length+1}`, orientation:"N", elevation:"", floor:"", qty:"1",
-      width:"", height:"", u_factor:"", shgc:"",
+      width:"", height:"",
+      u_factor:last?.u_factor||"", shgc:last?.shgc||"",
       top_to_overhang:"", bottom_to_overhang:"", overhang_depth:"",
     }]);
   }
@@ -540,27 +542,35 @@ function WindowsEditor({ windows, onChange, onCommit, floorOptions }) {
       {windows.map((w,idx)=>(
         <div key={w.id} style={{border:`1px solid ${C.border}`,borderRadius:8,padding:"8px 10px",marginBottom:8}}>
 
-          {/* Row 1: Floor, Qty, Compass orientation, Elevation */}
-          <div style={{display:"flex",gap:6,marginBottom:6,alignItems:"center"}}>
+          {/* Row 1: U-Factor, SHGC, Floor, Qty, Compass orientation, Elevation */}
+          <div style={{display:"flex",gap:5,marginBottom:6,alignItems:"center",flexWrap:"wrap"}}>
+            <div style={{width:46,flexShrink:0}}>
+              <input {...noSpin} type="number" step="0.01" value={w.u_factor||""} onChange={e=>upd(idx,"u_factor",e.target.value)} onBlur={onCommit}
+                placeholder="U-Fac" title="U-Factor" style={{...I,height:28,fontSize:11,textAlign:"center"}} />
+            </div>
+            <div style={{width:46,flexShrink:0}}>
+              <input {...noSpin} type="number" step="0.01" value={w.shgc||""} onChange={e=>upd(idx,"shgc",e.target.value)} onBlur={onCommit}
+                placeholder="SHGC" title="SHGC" style={{...I,height:28,fontSize:11,textAlign:"center"}} />
+            </div>
             <select value={w.floor||""} onChange={e=>updAndCommit(idx,"floor",e.target.value)}
               title="Which floor/level this window is on"
-              style={{...I,flex:1,height:28,fontSize:12,minWidth:0}}>
+              style={{...I,flex:1,height:28,fontSize:12,minWidth:60}}>
               <option value="">Floor…</option>
               {(floorOptions||[]).map(fl=><option key={fl} value={fl}>{fl}</option>)}
             </select>
-            <div style={{width:38,flexShrink:0}}>
+            <div style={{width:34,flexShrink:0}}>
               <input {...noSpin} type="number" value={w.qty||""} onChange={e=>upd(idx,"qty",e.target.value)} onBlur={onCommit}
                 placeholder="Qty" title="Quantity — how many identical windows"
                 style={{...I,height:28,fontSize:12,textAlign:"center"}} />
             </div>
             <select value={w.orientation} onChange={e=>updAndCommit(idx,"orientation",e.target.value)}
               title="Compass orientation (for Ekotrope)"
-              style={{...I,width:52,height:28,fontSize:12,flexShrink:0}}>
+              style={{...I,width:48,height:28,fontSize:12,flexShrink:0}}>
               {ORIENTATIONS.map(o=><option key={o} value={o}>{o}</option>)}
             </select>
             <select value={w.elevation||""} onChange={e=>updAndCommit(idx,"elevation",e.target.value)}
               title="Building side / elevation"
-              style={{...I,width:62,height:28,fontSize:11,flexShrink:0}}>
+              style={{...I,width:58,height:28,fontSize:11,flexShrink:0}}>
               <option value="">Side…</option>
               <option value="Front">Front</option>
               <option value="Right">Right</option>
@@ -574,14 +584,9 @@ function WindowsEditor({ windows, onChange, onCommit, floorOptions }) {
           <input value={w.label} onChange={e=>upd(idx,"label",e.target.value)} onBlur={onCommit} placeholder="e.g. Living room"
             style={{...I,width:"100%",height:28,fontSize:12,marginBottom:8}} />
 
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginBottom:6}}>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginBottom:8}}>
             <div><div style={lbl}>Width (ft)</div><input {...noSpin} type="number" value={w.width} onChange={e=>upd(idx,"width",e.target.value)} onBlur={onCommit} style={{...I,height:30,fontSize:12,textAlign:"right"}} /></div>
             <div><div style={lbl}>Height (ft)</div><input {...noSpin} type="number" value={w.height} onChange={e=>upd(idx,"height",e.target.value)} onBlur={onCommit} style={{...I,height:30,fontSize:12,textAlign:"right"}} /></div>
-          </div>
-
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginBottom:8}}>
-            <div><div style={lbl}>U-Factor</div><input {...noSpin} type="number" step="0.01" value={w.u_factor||""} onChange={e=>upd(idx,"u_factor",e.target.value)} onBlur={onCommit} placeholder="e.g. 0.30" style={{...I,height:30,fontSize:12,textAlign:"right"}} /></div>
-            <div><div style={lbl}>SHGC</div><input {...noSpin} type="number" step="0.01" value={w.shgc||""} onChange={e=>upd(idx,"shgc",e.target.value)} onBlur={onCommit} placeholder="e.g. 0.25" style={{...I,height:30,fontSize:12,textAlign:"right"}} /></div>
           </div>
 
           <div style={{fontSize:9,color:C.faint,fontWeight:700,textTransform:"uppercase",marginBottom:4}}>Overhang shading (for Ekotrope)</div>
