@@ -387,17 +387,36 @@ function AreaRow({ area, materials, onChange, onDelete }) {
       <div style={{position:"relative"}}>
         <div style={{display:"flex",gap:6,alignItems:"center"}}>
           {/* Calculator icon button */}
-          <button onClick={()=>setCalcOpen(p=>!p)} title="Calculator"
-            style={{border:`1px solid ${C.border}`,background:calcOpen?"#f0fdf4":C.white,
-              color:calcOpen?C.green:C.faint,borderRadius:6,width:32,height:36,
-              cursor:"pointer",fontSize:16,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}>
-            🖩
+          <button onClick={()=>setCalcOpen(p=>!p)} title="Calculator" type="button"
+            style={{border:`1px solid ${calcOpen?C.green:C.border}`,background:calcOpen?C.green:"#f8fafc",
+              borderRadius:6,width:36,height:36,
+              cursor:"pointer",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={calcOpen?"#fff":"#475569"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="4" y="2" width="16" height="20" rx="2" />
+              <line x1="8" y1="6" x2="16" y2="6" />
+              <line x1="8" y1="11" x2="8" y2="11.01" />
+              <line x1="12" y1="11" x2="12" y2="11.01" />
+              <line x1="16" y1="11" x2="16" y2="11.01" />
+              <line x1="8" y1="15" x2="8" y2="15.01" />
+              <line x1="12" y1="15" x2="12" y2="15.01" />
+              <line x1="16" y1="15" x2="16" y2="15.01" />
+              <line x1="8" y1="19" x2="8" y2="19.01" />
+              <line x1="12" y1="19" x2="12" y2="19.01" />
+              <line x1="16" y1="19" x2="16" y2="19.01" />
+            </svg>
           </button>
+          <div style={{width:46,flexShrink:0}}>
+            <div style={lbl}>Qty</div>
+            <input type="number" inputMode="decimal" value={area.mq||""}
+              onChange={e=>onChange("mq",e.target.value)}
+              placeholder="1"
+              style={{...I,height:36,textAlign:"center",fontSize:13}} />
+          </div>
           <div style={{flex:1,minWidth:0}}>
             <div style={lbl}>H / W</div>
             <input type="number" inputMode="decimal" value={area.mh||""}
               onChange={e=>onChange("mh",e.target.value)}
-              onKeyDown={e=>e.key==="Enter"&&commit()} placeholder="0"
+              placeholder="0"
               style={{...I,height:36,textAlign:"right",fontSize:14}} />
           </div>
           <span style={{color:C.faint,fontSize:16,flexShrink:0,paddingTop:16}}>×</span>
@@ -405,24 +424,16 @@ function AreaRow({ area, materials, onChange, onDelete }) {
             <div style={lbl}>L</div>
             <input type="number" inputMode="decimal" value={area.ml||""}
               onChange={e=>onChange("ml",e.target.value)}
+              onBlur={()=>commit()}
               onKeyDown={e=>e.key==="Enter"&&commit()} placeholder="0"
               style={{...I,height:36,textAlign:"right",fontSize:14}} />
           </div>
-          <div style={{width:46,flexShrink:0}}>
-            <div style={lbl}>Qty</div>
-            <input type="number" inputMode="decimal" value={area.mq||""}
-              onChange={e=>onChange("mq",e.target.value)}
-              onKeyDown={e=>e.key==="Enter"&&commit()} placeholder="1"
-              style={{...I,height:36,textAlign:"center",fontSize:13}} />
-          </div>
-          <div style={{flexShrink:0,paddingTop:16}}>
-            <button onClick={commit} disabled={!liveH||!liveL}
-              style={{...BtnD,height:36,fontSize:12,
-                background:liveH&&liveL?"#059669":"#e2e8f0",color:liveH&&liveL?"#fff":C.faint,border:"none"}}>
-              {preview>0?`+${fmt(preview,0)}`:"Add"}
-            </button>
-          </div>
         </div>
+        {preview>0 && (
+          <div style={{fontSize:11,color:C.green,fontWeight:700,textAlign:"right",marginTop:4}}>
+            = {fmt(preview,0)} ft² — saves automatically when you leave the L field
+          </div>
+        )}
 
         {/* Calculator popup */}
         {calcOpen && (
