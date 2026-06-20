@@ -955,7 +955,7 @@ export default function ProjectEstimate() {
   const {id:projectId}=useParams();
   const leadId=searchParams.get("leadId");
   const resumeMode=searchParams.get("resume")==="1";
-  const addressParam=decodeURIComponent(searchParams.get("address")||"");
+  const addressParam=searchParams.get("address")||"";
   const isEditing=!!projectId;
 
   const [floors,setFloors]=useState(["Attic","3rd","2nd","1st","Basement"]);

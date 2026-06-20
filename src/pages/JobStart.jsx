@@ -130,7 +130,7 @@ export default function JobStart() {
     if(projectId){ navigate(`/project/${projectId}`); return; }
     const p = new URLSearchParams();
     if(selected) p.set("leadId", String(selected.id));
-    if(address) p.set("address", encodeURIComponent(address));
+    if(address) p.set("address", address);
     navigate(`/project/new?type=onsite&${p.toString()}`);
   }
 
@@ -138,7 +138,7 @@ export default function JobStart() {
     if(estimateId){ navigate(`/hers/${estimateId}`); return; }
     const p = new URLSearchParams();
     if(selected) p.set("leadId", String(selected.id));
-    if(address) p.set("address", encodeURIComponent(address));
+    if(address) p.set("address", address);
     navigate(`/hers/new?${p.toString()}`);
   }
 

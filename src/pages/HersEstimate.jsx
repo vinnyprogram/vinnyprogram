@@ -234,7 +234,7 @@ export default function HersEstimate() {
   const isEditing = !!estimateId;
 
   const paramLeadId  = searchParams.get("leadId")||"";
-  const paramAddress = decodeURIComponent(searchParams.get("address")||"");
+  const paramAddress = searchParams.get("address")||"";
 
   const [loading, setLoading]   = useState(isEditing);
   const [saving, setSaving]     = useState(false);
