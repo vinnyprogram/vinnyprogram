@@ -496,11 +496,12 @@ function AreaRow({ area, materials, onChange, onDelete, onCommit }) {
 }
 
 // ── Windows editor ──
-function WindowsEditor({ windows, onChange }) {
+function WindowsEditor({ windows, onChange, onCommit, floorOptions }) {
   function add(){
     onChange([...windows,{
-      id:uid(), label:`Window ${windows.length+1}`, orientation:"N", elevation:"", qty:"1",
-      width:"", height:"", top_to_overhang:"", bottom_to_overhang:"", overhang_depth:"",
+      id:uid(), label:`Window ${windows.length+1}`, orientation:"N", elevation:"", floor:"", qty:"1",
+      width:"", height:"", u_factor:"", shgc:"",
+      top_to_overhang:"", bottom_to_overhang:"", overhang_depth:"",
     }]);
   }
   function upd(idx,f,v){
@@ -520,56 +521,82 @@ function WindowsEditor({ windows, onChange }) {
     }));
   }
   function rem(idx){ onChange(windows.filter((_,i)=>i!==idx)); }
+  // selects commit immediately on change (no separate blur needed);
+  // text/number inputs autosave on blur, same pattern as areas/floors
+  function updAndCommit(idx,f,v){ upd(idx,f,v); if(onCommit) onCommit(); }
 
   const oI = { ...I, height:26, fontSize:11, textAlign:"right" };
   const oLbl = { fontSize:8, color:C.faint, fontWeight:700, textTransform:"uppercase", marginBottom:2 };
+  const noSpin = { className:"no-spinner" };
 
   return (
     <div style={CARD}>
+      <style>{`
+        .no-spinner::-webkit-outer-spin-button,
+        .no-spinner::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+        .no-spinner { -moz-appearance: textfield; }
+      `}</style>
       <div style={{fontSize:11,fontWeight:700,color:C.faint,textTransform:"uppercase",letterSpacing:0.4,marginBottom:10}}>Windows</div>
       {windows.map((w,idx)=>(
         <div key={w.id} style={{border:`1px solid ${C.border}`,borderRadius:8,padding:"8px 10px",marginBottom:8}}>
-          <div style={{display:"flex",gap:6,marginBottom:8,alignItems:"center"}}>
+
+          {/* Row 1: Floor, Qty, Compass orientation, Elevation */}
+          <div style={{display:"flex",gap:6,marginBottom:6,alignItems:"center"}}>
+            <select value={w.floor||""} onChange={e=>updAndCommit(idx,"floor",e.target.value)}
+              title="Which floor/level this window is on"
+              style={{...I,flex:1,height:28,fontSize:12,minWidth:0}}>
+              <option value="">Floor…</option>
+              {(floorOptions||[]).map(fl=><option key={fl} value={fl}>{fl}</option>)}
+            </select>
             <div style={{width:38,flexShrink:0}}>
-              <input type="number" value={w.qty||""} onChange={e=>upd(idx,"qty",e.target.value)}
+              <input {...noSpin} type="number" value={w.qty||""} onChange={e=>upd(idx,"qty",e.target.value)} onBlur={onCommit}
                 placeholder="Qty" title="Quantity — how many identical windows"
                 style={{...I,height:28,fontSize:12,textAlign:"center"}} />
             </div>
-            <select value={w.orientation} onChange={e=>upd(idx,"orientation",e.target.value)}
+            <select value={w.orientation} onChange={e=>updAndCommit(idx,"orientation",e.target.value)}
               title="Compass orientation (for Ekotrope)"
               style={{...I,width:52,height:28,fontSize:12,flexShrink:0}}>
               {ORIENTATIONS.map(o=><option key={o} value={o}>{o}</option>)}
             </select>
-            <select value={w.elevation||""} onChange={e=>upd(idx,"elevation",e.target.value)}
+            <select value={w.elevation||""} onChange={e=>updAndCommit(idx,"elevation",e.target.value)}
               title="Building side / elevation"
-              style={{...I,width:66,height:28,fontSize:11,flexShrink:0}}>
+              style={{...I,width:62,height:28,fontSize:11,flexShrink:0}}>
               <option value="">Side…</option>
               <option value="Front">Front</option>
               <option value="Right">Right</option>
               <option value="Left">Left</option>
               <option value="Rear">Rear</option>
             </select>
-            <input value={w.label} onChange={e=>upd(idx,"label",e.target.value)} placeholder="e.g. Living room"
-              style={{...I,flex:1,height:28,fontSize:12,minWidth:0}} />
             <button onClick={()=>rem(idx)} style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:16,flexShrink:0}}>✕</button>
           </div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginBottom:8}}>
-            <div><div style={lbl}>Width (ft)</div><input type="number" value={w.width} onChange={e=>upd(idx,"width",e.target.value)} style={{...I,height:30,fontSize:12,textAlign:"right"}} /></div>
-            <div><div style={lbl}>Height (ft)</div><input type="number" value={w.height} onChange={e=>upd(idx,"height",e.target.value)} style={{...I,height:30,fontSize:12,textAlign:"right"}} /></div>
+
+          {/* Row 2: Label */}
+          <input value={w.label} onChange={e=>upd(idx,"label",e.target.value)} onBlur={onCommit} placeholder="e.g. Living room"
+            style={{...I,width:"100%",height:28,fontSize:12,marginBottom:8}} />
+
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginBottom:6}}>
+            <div><div style={lbl}>Width (ft)</div><input {...noSpin} type="number" value={w.width} onChange={e=>upd(idx,"width",e.target.value)} onBlur={onCommit} style={{...I,height:30,fontSize:12,textAlign:"right"}} /></div>
+            <div><div style={lbl}>Height (ft)</div><input {...noSpin} type="number" value={w.height} onChange={e=>upd(idx,"height",e.target.value)} onBlur={onCommit} style={{...I,height:30,fontSize:12,textAlign:"right"}} /></div>
           </div>
+
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginBottom:8}}>
+            <div><div style={lbl}>U-Factor</div><input {...noSpin} type="number" step="0.01" value={w.u_factor||""} onChange={e=>upd(idx,"u_factor",e.target.value)} onBlur={onCommit} placeholder="e.g. 0.30" style={{...I,height:30,fontSize:12,textAlign:"right"}} /></div>
+            <div><div style={lbl}>SHGC</div><input {...noSpin} type="number" step="0.01" value={w.shgc||""} onChange={e=>upd(idx,"shgc",e.target.value)} onBlur={onCommit} placeholder="e.g. 0.25" style={{...I,height:30,fontSize:12,textAlign:"right"}} /></div>
+          </div>
+
           <div style={{fontSize:9,color:C.faint,fontWeight:700,textTransform:"uppercase",marginBottom:4}}>Overhang shading (for Ekotrope)</div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:5}}>
             <div>
               <div style={oLbl}>Overhang depth</div>
-              <input type="number" value={w.overhang_depth} onChange={e=>upd(idx,"overhang_depth",e.target.value)} style={oI} />
+              <input {...noSpin} type="number" value={w.overhang_depth} onChange={e=>upd(idx,"overhang_depth",e.target.value)} onBlur={onCommit} style={oI} />
             </div>
             <div>
               <div style={oLbl}>Top→overhang</div>
-              <input type="number" value={w.top_to_overhang} onChange={e=>upd(idx,"top_to_overhang",e.target.value)} style={oI} />
+              <input {...noSpin} type="number" value={w.top_to_overhang} onChange={e=>upd(idx,"top_to_overhang",e.target.value)} onBlur={onCommit} style={oI} />
             </div>
             <div>
               <div style={{...oLbl,color:"#059669"}}>Bottom→overhang ⚡auto</div>
-              <input type="number" value={w.bottom_to_overhang} onChange={e=>upd(idx,"bottom_to_overhang",e.target.value)}
+              <input {...noSpin} type="number" value={w.bottom_to_overhang} onChange={e=>upd(idx,"bottom_to_overhang",e.target.value)} onBlur={onCommit}
                 style={{...oI,background:"#f0fdf4",borderColor:"#86efac"}} />
             </div>
           </div>
@@ -749,7 +776,7 @@ export default function HersFieldMeasurements() {
         areas: areasV2,
         roof_segments:[], wall_segments:[], rim_joist_segments:[],
         bedrooms: Number(bedrooms)||0,
-        windows: windows.map(w=>({id:w.id,label:w.label||"",orientation:w.orientation||"N",elevation:w.elevation||"",qty:Number(w.qty)||1,width:Number(w.width)||0,height:Number(w.height)||0,top_to_overhang:w.top_to_overhang!==""?Number(w.top_to_overhang):null,bottom_to_overhang:w.bottom_to_overhang!==""?Number(w.bottom_to_overhang):null,overhang_depth:w.overhang_depth!==""?Number(w.overhang_depth):null})),
+        windows: windows.map(w=>({id:w.id,label:w.label||"",orientation:w.orientation||"N",elevation:w.elevation||"",floor:w.floor||"",qty:Number(w.qty)||1,width:Number(w.width)||0,height:Number(w.height)||0,u_factor:w.u_factor!==""?Number(w.u_factor):null,shgc:w.shgc!==""?Number(w.shgc):null,top_to_overhang:w.top_to_overhang!==""?Number(w.top_to_overhang):null,bottom_to_overhang:w.bottom_to_overhang!==""?Number(w.bottom_to_overhang):null,overhang_depth:w.overhang_depth!==""?Number(w.overhang_depth):null})),
         notes,
         updated_at: new Date().toISOString(),
       };
@@ -1067,7 +1094,7 @@ export default function HersFieldMeasurements() {
 
         {/* ══════════ WINDOWS TAB ══════════ */}
         {section==="windows" && (
-          <WindowsEditor windows={windows} onChange={setWindows} />
+          <WindowsEditor windows={windows} onChange={setWindows} floorOptions={floors} onCommit={()=>setAutoSaveTick(t=>t+1)} />
         )}
 
         {/* ══════════ OVERVIEW TAB (continued) — Notes, Photos, Documents ══════════ */}

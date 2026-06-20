@@ -228,10 +228,18 @@ export default function EkotropeReport() {
                             <div>
                               <div style={{fontSize:13,fontWeight:600,color:"#0f172a",marginBottom:4}}>
                                 {w.label||`Window ${wi+1}`}{qty>1?` (×${qty})`:""}
+                                {w.floor && <span style={{fontSize:10,color:"#94a3b8",fontWeight:500,marginLeft:6}}>· {w.floor}</span>}
                               </div>
                               <div style={{fontSize:12,color:"#64748b"}}>
                                 {w.width||"?"} × {w.height||"?"} ft{qty>1?` × ${qty}`:""} = {fmt(area,1)} ft²
                               </div>
+                              {(w.u_factor||w.shgc) && (
+                                <div style={{marginTop:3,fontSize:11,color:"#0369a1"}}>
+                                  {w.u_factor && <span>U-Factor: <b>{w.u_factor}</b></span>}
+                                  {w.u_factor && w.shgc && <span style={{margin:"0 6px"}}>·</span>}
+                                  {w.shgc && <span>SHGC: <b>{w.shgc}</b></span>}
+                                </div>
+                              )}
                               {(w.top_to_overhang||w.bottom_to_overhang||w.overhang_depth) && (
                                 <div style={{marginTop:4,fontSize:11,color:"#7c3aed",lineHeight:1.8}}>
                                   {w.overhang_depth && <div>Overhang depth: <b>{w.overhang_depth} ft</b></div>}
