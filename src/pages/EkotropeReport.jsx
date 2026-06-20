@@ -219,6 +219,7 @@ export default function EkotropeReport() {
                             <div>
                               <div style={{fontSize:13,fontWeight:600,color:"#0f172a",marginBottom:4}}>
                                 {w.label||`Window ${wi+1}`}{qty>1?` (×${qty})`:""}
+                                {w.elevation && <span style={{fontSize:10,color:"#94a3b8",fontWeight:500,marginLeft:6}}>· {w.elevation}</span>}
                               </div>
                               <div style={{fontSize:12,color:"#64748b"}}>
                                 {w.width||"?"} × {w.height||"?"} ft{qty>1?` × ${qty}`:""} = {fmt(area,1)} ft²

@@ -487,7 +487,7 @@ function AreaRow({ area, materials, onChange, onDelete }) {
 function WindowsEditor({ windows, onChange }) {
   function add(){
     onChange([...windows,{
-      id:uid(), label:`Window ${windows.length+1}`, orientation:"N", qty:"1",
+      id:uid(), label:`Window ${windows.length+1}`, orientation:"N", elevation:"", qty:"1",
       width:"", height:"", top_to_overhang:"", bottom_to_overhang:"", overhang_depth:"",
     }]);
   }
@@ -518,17 +518,27 @@ function WindowsEditor({ windows, onChange }) {
       {windows.map((w,idx)=>(
         <div key={w.id} style={{border:`1px solid ${C.border}`,borderRadius:8,padding:"8px 10px",marginBottom:8}}>
           <div style={{display:"flex",gap:6,marginBottom:8,alignItems:"center"}}>
-            <input value={w.label} onChange={e=>upd(idx,"label",e.target.value)} placeholder="e.g. Living room"
-              style={{...I,flex:1,height:28,fontSize:12}} />
-            <select value={w.orientation} onChange={e=>upd(idx,"orientation",e.target.value)}
-              style={{...I,width:56,height:28,fontSize:12,flexShrink:0}}>
-              {ORIENTATIONS.map(o=><option key={o} value={o}>{o}</option>)}
-            </select>
-            <div style={{width:42,flexShrink:0}}>
+            <div style={{width:38,flexShrink:0}}>
               <input type="number" value={w.qty||""} onChange={e=>upd(idx,"qty",e.target.value)}
                 placeholder="Qty" title="Quantity — how many identical windows"
                 style={{...I,height:28,fontSize:12,textAlign:"center"}} />
             </div>
+            <select value={w.orientation} onChange={e=>upd(idx,"orientation",e.target.value)}
+              title="Compass orientation (for Ekotrope)"
+              style={{...I,width:52,height:28,fontSize:12,flexShrink:0}}>
+              {ORIENTATIONS.map(o=><option key={o} value={o}>{o}</option>)}
+            </select>
+            <select value={w.elevation||""} onChange={e=>upd(idx,"elevation",e.target.value)}
+              title="Building side / elevation"
+              style={{...I,width:66,height:28,fontSize:11,flexShrink:0}}>
+              <option value="">Side…</option>
+              <option value="Front">Front</option>
+              <option value="Right">Right</option>
+              <option value="Left">Left</option>
+              <option value="Rear">Rear</option>
+            </select>
+            <input value={w.label} onChange={e=>upd(idx,"label",e.target.value)} placeholder="e.g. Living room"
+              style={{...I,flex:1,height:28,fontSize:12,minWidth:0}} />
             <button onClick={()=>rem(idx)} style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:16,flexShrink:0}}>✕</button>
           </div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginBottom:8}}>
@@ -567,6 +577,7 @@ export default function HersFieldMeasurements() {
   const [loading, setLoading]     = useState(true);
   const [saving, setSaving]       = useState(false);
   const [saved, setSaved]         = useState(false);
+  const [skipNote, setSkipNote]   = useState(null);
   const [importing, setImporting] = useState(false);
   const [pushing, setPushing]     = useState(false);
 
@@ -693,18 +704,31 @@ export default function HersFieldMeasurements() {
     if(saving) return;
     setSaving(true);
     try {
-      // Serialize floor-structured areas as v2 format
+      // Serialize floor-structured areas as v2 format — only keep
+      // areas that are actually complete (a type chosen and at least
+      // one measurement entered), so half-started rows never get
+      // persisted or show up blank on the Ekotrope Report.
       const areasV2 = floors.map(f=>({
         floor_name: f,
-        areas: (areas[f]||[]).map(a=>({
-          id:a.id, area_type:a.area_type||"", customLabel:a.customLabel||"",
-          measurements:(a.measurements||[]).map(m=>({h:m.h,l:m.l,q:m.q||1,sqft:m.sqft})),
-          sqft:a.sqft||0,
-          mat_lines: (a.mat_lines||[{material:a.material||"",thickness_in:a.thickness_in||"",r_value:a.r_value||""}])
-            .map(ml=>({material:ml.material||"",thickness_in:ml.thickness_in||"",r_value:ml.r_value||""})),
-          material:a.material||"", thickness_in:a.thickness_in||"", r_value:a.r_value||"",
-        })),
+        areas: (areas[f]||[])
+          .filter(a=>a.area_type && a.sqft>0)
+          .map(a=>({
+            id:a.id, area_type:a.area_type||"", customLabel:a.customLabel||"",
+            measurements:(a.measurements||[]).map(m=>({h:m.h,l:m.l,q:m.q||1,sqft:m.sqft})),
+            sqft:a.sqft||0,
+            mat_lines: (a.mat_lines||[{material:a.material||"",thickness_in:a.thickness_in||"",r_value:a.r_value||""}])
+              .map(ml=>({material:ml.material||"",thickness_in:ml.thickness_in||"",r_value:ml.r_value||""})),
+            material:a.material||"", thickness_in:a.thickness_in||"", r_value:a.r_value||"",
+          })),
       }));
+
+      // Same idea for windows — only keep ones with width, height, AND
+      // top-to-overhang filled in. A window missing those is exactly
+      // the kind of half-entered row that showed up blank on the
+      // Ekotrope Report.
+      const completeWindows = windows.filter(w=>
+        Number(w.width)>0 && Number(w.height)>0 && w.top_to_overhang!==""
+      );
 
       const payload = {
         company_id: invoice.company_id,
@@ -712,7 +736,7 @@ export default function HersFieldMeasurements() {
         areas: areasV2,
         roof_segments:[], wall_segments:[], rim_joist_segments:[],
         bedrooms: Number(bedrooms)||0,
-        windows: windows.map(w=>({id:w.id,label:w.label||"",orientation:w.orientation||"N",qty:Number(w.qty)||1,width:Number(w.width)||0,height:Number(w.height)||0,top_to_overhang:w.top_to_overhang!==""?Number(w.top_to_overhang):null,bottom_to_overhang:w.bottom_to_overhang!==""?Number(w.bottom_to_overhang):null,overhang_depth:w.overhang_depth!==""?Number(w.overhang_depth):null})),
+        windows: completeWindows.map(w=>({id:w.id,label:w.label||"",orientation:w.orientation||"N",elevation:w.elevation||"",qty:Number(w.qty)||1,width:Number(w.width)||0,height:Number(w.height)||0,top_to_overhang:Number(w.top_to_overhang),bottom_to_overhang:w.bottom_to_overhang!==""?Number(w.bottom_to_overhang):null,overhang_depth:w.overhang_depth!==""?Number(w.overhang_depth):null})),
         notes,
         updated_at: new Date().toISOString(),
       };
@@ -726,7 +750,17 @@ export default function HersFieldMeasurements() {
         const { error } = await supabase.from("hers_field_measurements").upsert(payload,{onConflict:"hers_invoice_id"});
         if(error) throw error;
       }
-      setSaved(true); setTimeout(()=>setSaved(false),2500);
+
+      const totalAreasEntered = floors.reduce((s,f)=>s+(areas[f]||[]).length,0);
+      const totalAreasComplete = areasV2.reduce((s,f)=>s+f.areas.length,0);
+      const skippedAreas = totalAreasEntered - totalAreasComplete;
+      const skippedWindows = windows.length - completeWindows.length;
+      setSkipNote(
+        (skippedAreas>0||skippedWindows>0)
+          ? `Saved (skipped ${skippedAreas>0?`${skippedAreas} incomplete area${skippedAreas!==1?"s":""}`:""}${skippedAreas>0&&skippedWindows>0?", ":""}${skippedWindows>0?`${skippedWindows} incomplete window${skippedWindows!==1?"s":""}`:""})`
+          : null
+      );
+      setSaved(true); setTimeout(()=>{ setSaved(false); setSkipNote(null); },3500);
     } catch(err){ alert("Error saving: "+(err.message||JSON.stringify(err))); }
     setSaving(false);
   }
@@ -855,7 +889,9 @@ export default function HersFieldMeasurements() {
       {saved && (
         <div style={{position:"fixed",top:12,left:"50%",transform:"translateX(-50%)",zIndex:300,
             background:"#059669",color:"#fff",padding:"8px 16px",borderRadius:20,fontSize:12,fontWeight:700,
-            boxShadow:"0 4px 16px rgba(0,0,0,.15)"}}>✅ Saved!</div>
+            boxShadow:"0 4px 16px rgba(0,0,0,.15)",textAlign:"center",maxWidth:"90vw"}}>
+          ✅ {skipNote||"Saved!"}
+        </div>
       )}
 
       {/* header */}
