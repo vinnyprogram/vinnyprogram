@@ -12,6 +12,10 @@ const AREA_TYPES = [
 const THICK_OPTS = ["2x3","2x4","2x6","2x8","2x10","2x12","I-joist 14in","I-joist 16in","I-joist 18in"];
 const R_VALS     = ["R-11","R-13","R-15","R-19","R-21","R-28","R-30","R-38","R-49","R-60"];
 const ORIENTATIONS = ["N","NE","E","SE","S","SW","W","NW"];
+// Standard architectural convention: walking clockwise around the building
+// from the front, you hit Right, then Rear (opposite the front), then Left.
+// Each step is 90° = 2 positions in the 8-point compass array above.
+const SIDE_OFFSET = { Front:0, Right:2, Rear:4, Left:6 };
 
 const C = {
   bg:"#f4f5f7", white:"#fff", ink:"#0f172a",
@@ -497,6 +501,19 @@ function AreaRow({ area, materials, onChange, onDelete, onCommit }) {
 
 // ── Windows editor ──
 function WindowsEditor({ windows, onChange, onCommit, floorOptions }) {
+  // Learns the building's facing the first time a Side (Front/Right/Rear/Left)
+  // and Orientation (N/NE/E/etc) are paired together on any window, then
+  // auto-fills Orientation on every subsequent window the moment a Side is
+  // picked. Stored as "what orientation is Front", everything else derives
+  // from the 90°-per-side rotation in SIDE_OFFSET.
+  const [frontIndex, setFrontIndex] = useState(()=>{
+    const learned = windows.find(w=>w.elevation && SIDE_OFFSET[w.elevation]!==undefined && w.orientation);
+    if(!learned) return null;
+    const oi = ORIENTATIONS.indexOf(learned.orientation);
+    if(oi<0) return null;
+    return (oi - SIDE_OFFSET[learned.elevation] + 8) % 8;
+  });
+
   function add(){
     const last = windows[windows.length-1];
     onChange([...windows,{
@@ -526,6 +543,28 @@ function WindowsEditor({ windows, onChange, onCommit, floorOptions }) {
   // selects commit immediately on change (no separate blur needed);
   // text/number inputs autosave on blur, same pattern as areas/floors
   function updAndCommit(idx,f,v){ upd(idx,f,v); if(onCommit) onCommit(); }
+
+  // Picking a Side: if we already know the building's facing, auto-fill
+  // this window's Orientation from it. Always still editable afterward.
+  function pickSide(idx, side){
+    upd(idx,"elevation",side);
+    if(frontIndex!==null && SIDE_OFFSET[side]!==undefined){
+      const oi = (frontIndex + SIDE_OFFSET[side]) % 8;
+      upd(idx,"orientation",ORIENTATIONS[oi]);
+    }
+    if(onCommit) onCommit();
+  }
+
+  // Manually picking an Orientation while a Side is set teaches/corrects
+  // the building's facing for every window going forward.
+  function pickOrientation(idx, orientation, currentSide){
+    upd(idx,"orientation",orientation);
+    if(currentSide && SIDE_OFFSET[currentSide]!==undefined){
+      const oi = ORIENTATIONS.indexOf(orientation);
+      if(oi>=0) setFrontIndex((oi - SIDE_OFFSET[currentSide] + 8) % 8);
+    }
+    if(onCommit) onCommit();
+  }
 
   const oI = { ...I, height:26, fontSize:11, textAlign:"right" };
   const oLbl = { fontSize:8, color:C.faint, fontWeight:700, textTransform:"uppercase", marginBottom:2 };
@@ -563,19 +602,19 @@ function WindowsEditor({ windows, onChange, onCommit, floorOptions }) {
                 placeholder="Qty" title="Quantity — how many identical windows"
                 style={{...I,height:28,fontSize:12,textAlign:"center"}} />
             </div>
-            <select value={w.orientation} onChange={e=>updAndCommit(idx,"orientation",e.target.value)}
-              title="Compass orientation (for Ekotrope)"
-              style={{...I,width:48,height:28,fontSize:12,flexShrink:0}}>
-              {ORIENTATIONS.map(o=><option key={o} value={o}>{o}</option>)}
-            </select>
-            <select value={w.elevation||""} onChange={e=>updAndCommit(idx,"elevation",e.target.value)}
-              title="Building side / elevation"
+            <select value={w.elevation||""} onChange={e=>pickSide(idx,e.target.value)}
+              title="Building side / elevation — picking this fills in Orientation automatically once the building's facing is known"
               style={{...I,width:58,height:28,fontSize:11,flexShrink:0}}>
               <option value="">Side…</option>
               <option value="Front">Front</option>
               <option value="Right">Right</option>
               <option value="Left">Left</option>
               <option value="Rear">Rear</option>
+            </select>
+            <select value={w.orientation} onChange={e=>pickOrientation(idx,e.target.value,w.elevation)}
+              title="Compass orientation (for Ekotrope)"
+              style={{...I,width:48,height:28,fontSize:12,flexShrink:0}}>
+              {ORIENTATIONS.map(o=><option key={o} value={o}>{o}</option>)}
             </select>
             <button onClick={()=>rem(idx)} style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:16,flexShrink:0}}>✕</button>
           </div>
