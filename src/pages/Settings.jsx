@@ -52,6 +52,10 @@ export default function Settings() {
 
   // Materials
   const [matCosts, setMatCosts] = useState([]);
+  // Per-thickness/R-value/facing pricing for batts & rigid foam
+  const [materialVariants, setMaterialVariants] = useState([]);
+  const [importing, setImporting] = useState(false);
+  const [importSummary, setImportSummary] = useState(null);
 
   // Assets depreciation
   const [assets, setAssets] = useState([]);
@@ -135,6 +139,11 @@ export default function Settings() {
     if(m?.length) setMatCosts(m);
     else seedMaterials();
 
+    // load material variants (per thickness/R-value pricing)
+    const { data:mv } = await supabase.from("material_variants")
+      .select("*").eq("company_id", company.id).order("sort_order");
+    if(mv?.length) setMaterialVariants(mv);
+
     // load trade configuration
     const { data:co } = await supabase.from("companies")
       .select("offers_insulation,offers_hers").eq("id",company.id).maybeSingle();
@@ -211,10 +220,238 @@ export default function Settings() {
     setMatCosts(p=>p.map((m,i)=> i===idx ? {...m,[field]:value} : m));
   }
   function addMat() {
-    setMatCosts(p=>[...p,{id:null,material_name:"",unit:"board_ft",cost_per_unit:0,markup_pct:25}]);
+    setMatCosts(p=>[...p,{id:null,material_name:"",unit:"board_ft",cost_per_unit:0,markup_pct:25,coverage_factor:1}]);
   }
   function removeMat(idx) {
     setMatCosts(p=>p.filter((_,i)=>i!==idx));
+  }
+
+  function updateVariant(idx, field, value) {
+    setMaterialVariants(p=>p.map((v,i)=> i===idx ? {...v,[field]:value} : v));
+  }
+  function addVariant() {
+    setMaterialVariants(p=>[...p,{id:null,material_name:"",thickness_in:"",r_value:"",facing:"",cost_per_sqft:0,markup_pct:20,sort_order:p.length}]);
+  }
+  function removeVariant(idx) {
+    setMaterialVariants(p=>p.filter((_,i)=>i!==idx));
+  }
+
+  async function handleImportWorkbook(file) {
+    setImporting(true);
+    setImportSummary(null);
+    try {
+      const XLSX = await import("xlsx");
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf, { type:"array", cellDates:true });
+
+      function rows(sheetName){
+        const ws = wb.Sheets[sheetName];
+        if(!ws) return null;
+        return XLSX.utils.sheet_to_json(ws, { header:1, defval:"", raw:true });
+      }
+      const isDate = v => v instanceof Date;
+      const num = v => { const n = Number(v); return isNaN(n) ? 0 : n; };
+      const str = v => (v===null||v===undefined) ? "" : String(v).trim();
+
+      const newMatCosts = [...matCosts];
+      function upsertMatCost(material_name, unit, cost_per_unit, markup_pct, coverage_factor){
+        const idx = newMatCosts.findIndex(m=>(m.material_name||"").toLowerCase()===material_name.toLowerCase());
+        const row = { id: idx>=0?newMatCosts[idx].id:null, material_name, unit, cost_per_unit, markup_pct, coverage_factor };
+        if(idx>=0) newMatCosts[idx]=row; else newMatCosts.push(row);
+      }
+
+      // Spray Foam (Sets) — continuous board-ft pricing
+      let sprayCount=0;
+      const sprayRows = rows("Spray Foam (Sets)");
+      if(sprayRows){
+        for(let i=3;i<sprayRows.length;i++){
+          const r = sprayRows[i];
+          const name = str(r[0]); if(!name) continue;
+          const pricePerBoardFt = num(r[4]);
+          if(pricePerBoardFt<=0) continue;
+          upsertMatCost(name, "board_ft", Math.round(pricePerBoardFt*10000)/10000, 25, 1);
+          sprayCount++;
+        }
+      }
+
+      // Cellulose (Bags) — continuous sqft-inch pricing via coverage_factor
+      let celCount=0;
+      const celRows = rows("Cellulose (Bags)");
+      if(celRows){
+        for(let i=3;i<celRows.length;i++){
+          const r = celRows[i];
+          const name = str(r[0]); if(!name) continue;
+          const pricePerBag = num(r[2]);
+          const coverageFactor = num(r[3]);
+          if(pricePerBag<=0) continue;
+          upsertMatCost(name, "bag", Math.round(pricePerBag*100)/100, 20, coverageFactor||1);
+          celCount++;
+        }
+      }
+
+      const newVariants = [...materialVariants];
+      function upsertVariant(material_name, thickness_in, r_value, facing, cost_per_sqft, markup_pct){
+        const key = v => `${v.material_name}|${v.thickness_in}|${v.r_value}|${v.facing||""}`.toLowerCase();
+        const targetKey = `${material_name}|${thickness_in}|${r_value}|${facing||""}`.toLowerCase();
+        const idx = newVariants.findIndex(v=>key(v)===targetKey);
+        const row = { id: idx>=0?newVariants[idx].id:null, material_name, thickness_in, r_value, facing,
+          cost_per_sqft, markup_pct, sort_order: idx>=0?newVariants[idx].sort_order:newVariants.length };
+        if(idx>=0) newVariants[idx]=row; else newVariants.push(row);
+      }
+
+      // Batts — discrete per thickness/R-value/facing pricing
+      let battCount=0, battSkipped=0;
+      const battRows = rows("Batts (Fiberglass-MineralWool)");
+      if(battRows){
+        for(let i=3;i<battRows.length;i++){
+          const r = battRows[i];
+          const name = str(r[0]); if(!name) continue;
+          const thickness = str(r[1]).replace(/X/g,"x");
+          const rvalue = str(r[2]);
+          const facing = str(r[3]);
+          const priceSqft = num(r[8]); // auto-calc Price per Sqft column
+          if(priceSqft<=0){ battSkipped++; continue; }
+          upsertVariant(name, thickness, rvalue, facing, Math.round(priceSqft*10000)/10000, 20);
+          battCount++;
+        }
+      }
+
+      // Rigid Foam — discrete per thickness/R-value pricing (no facing)
+      let rigidCount=0, rigidSkipped=0;
+      const rigidRows = rows("Rigid Foam (Sheets)");
+      if(rigidRows){
+        for(let i=3;i<rigidRows.length;i++){
+          const r = rigidRows[i];
+          const name = str(r[0]); if(!name) continue;
+          const thicknessRaw = r[1];
+          // Excel sometimes mis-parses a typed fraction like "1/2" as a date —
+          // skip and flag rather than guess at the intended thickness
+          if(isDate(thicknessRaw)){ rigidSkipped++; continue; }
+          const thickness = str(thicknessRaw)+"in";
+          const rvalue = str(r[2]);
+          const priceSqft = num(r[7]); // auto-calc Price per Sqft column
+          if(priceSqft<=0){ rigidSkipped++; continue; }
+          upsertVariant(name, thickness, rvalue, "", Math.round(priceSqft*10000)/10000, 20);
+          rigidCount++;
+        }
+      }
+
+      // Indirect Costs (Overhead)
+      const CATEGORY_MAP = {
+        facility:"Facilities", insurance:"Overhead & Administration",
+        vehicles:"Vehicles & Equipment", equipment:"Vehicles & Equipment",
+        software:"Overhead & Administration", marketing:"Overhead & Administration",
+        admin:"Overhead & Administration", licensing:"Overhead & Administration",
+        taxes:"Overhead & Administration", other:"Other",
+      };
+      const newCosts = [...costs];
+      let overheadCount=0;
+      let newJobsPerMonth = jobsPerMonth;
+      const ohRows = rows("Indirect Costs (Overhead)");
+      if(ohRows){
+        for(let i=3;i<ohRows.length;i++){
+          const r = ohRows[i];
+          const cat = str(r[0]);
+          const item = str(r[1]);
+          const amount = num(r[2]);
+          if(!item) continue;
+          const itemLower = item.toLowerCase();
+          if(itemLower.includes("total monthly overhead")) continue;
+          if(itemLower.includes("avg. jobs per month")){ if(amount>0) newJobsPerMonth=amount; continue; }
+          if(itemLower.includes("overhead allocation per job")) continue;
+          if(amount<=0) continue;
+          const mappedCat = CATEGORY_MAP[cat.toLowerCase()] || "Other";
+          const existIdx = newCosts.findIndex(c=>c.name===item);
+          const row = { id: existIdx>=0?newCosts[existIdx].id:null, category:mappedCat, name:item,
+            amount, period:"month", sort_order: existIdx>=0?newCosts[existIdx].sort_order:newCosts.length };
+          if(existIdx>=0) newCosts[existIdx]=row; else newCosts.push(row);
+          overheadCount++;
+        }
+      }
+
+      // Crew & Job-Site Costs — splits across consumables / labor roles / sales reps / overhead
+      const newConsumables = [...consumables];
+      const newLaborRoles = [...laborRoles];
+      const newSalesReps = [...salesReps];
+      let consumableCount=0, laborCount=0;
+      const salaryNotes=[];
+      const crewRows = rows("Crew & Job-Site Costs");
+      if(crewRows){
+        for(let i=3;i<crewRows.length;i++){
+          const r = crewRows[i];
+          const col0 = str(r[0]);
+          const col1 = str(r[1]);
+          const cost = num(r[2]);
+          const unitRaw = r[3];
+          const notes = str(r[4]);
+          if(!col0) continue;
+
+          if(col1.toLowerCase()==="employee"){
+            if(str(unitRaw).toLowerCase().includes("hour")){
+              const existIdx = newLaborRoles.findIndex(lr=>lr.role===col0);
+              if(existIdx>=0) newLaborRoles[existIdx] = {...newLaborRoles[existIdx], rate:cost};
+              else newLaborRoles.push({role:col0, rate:cost});
+              laborCount++;
+            } else if(str(unitRaw).toLowerCase().includes("week")){
+              // weekly salary doesn't fit the hourly labor-role model —
+              // converted to a monthly overhead line item instead
+              const monthlyEquiv = Math.round(cost*52/12*100)/100;
+              const ohName = `${col0} (weekly salary)`;
+              const existIdx = newCosts.findIndex(c=>c.name===ohName);
+              const row = { id: existIdx>=0?newCosts[existIdx].id:null, category:"Labor (Non-Job)",
+                name:ohName, amount:monthlyEquiv, period:"month",
+                sort_order: existIdx>=0?newCosts[existIdx].sort_order:newCosts.length };
+              if(existIdx>=0) newCosts[existIdx]=row; else newCosts.push(row);
+              overheadCount++;
+              salaryNotes.push(`${col0}: $${cost}/week → $${monthlyEquiv}/mo overhead`);
+              const commMatch = notes.match(/(\d+(\.\d+)?)\s*%/);
+              if(commMatch){
+                const pct = Number(commMatch[1]);
+                const repIdx = newSalesReps.findIndex(sr=>sr.name===col0);
+                if(repIdx>=0) newSalesReps[repIdx] = {...newSalesReps[repIdx], commission_pct:pct};
+                else newSalesReps.push({id:null, name:col0, commission_pct:pct, active:true});
+                salaryNotes.push(`${col0}: ${pct}% commission added to Sales Reps`);
+              }
+            }
+            continue;
+          }
+
+          if(cost<=0) continue;
+          const qty = (typeof unitRaw === "number") ? unitRaw : 1;
+          const unitLabel = (typeof unitRaw === "string" && unitRaw) ? unitRaw : "job";
+          const existIdx = newConsumables.findIndex(c=>c.name===col1);
+          const row = { id: existIdx>=0?newConsumables[existIdx].id:null, name:col1, unit:unitLabel,
+            unit_price:cost, qty_per_job:qty, sort_order: existIdx>=0?newConsumables[existIdx].sort_order:newConsumables.length };
+          if(existIdx>=0) newConsumables[existIdx]=row; else newConsumables.push(row);
+          consumableCount++;
+        }
+      }
+
+      setMatCosts(newMatCosts);
+      setMaterialVariants(newVariants);
+      setCosts(newCosts);
+      setJobsPerMonth(newJobsPerMonth);
+      setConsumables(newConsumables);
+      setLaborRoles(newLaborRoles);
+      setSalesReps(newSalesReps);
+
+      const lines = [
+        `✅ Imported — review the values below, then click Save All to persist them.`,
+        ``,
+        `• ${sprayCount} spray foam material${sprayCount!==1?"s":""}`,
+        `• ${celCount} cellulose material${celCount!==1?"s":""}`,
+        `• ${battCount} batt variant${battCount!==1?"s":""}${battSkipped>0?` (${battSkipped} skipped — blank price)`:""}`,
+        `• ${rigidCount} rigid foam variant${rigidCount!==1?"s":""}${rigidSkipped>0?` (${rigidSkipped} skipped — blank price or unreadable thickness, re-enter manually on the Batt/Rigid Pricing tab)`:""}`,
+        `• ${overheadCount} overhead line item${overheadCount!==1?"s":""}`,
+        `• ${consumableCount} consumable/job-cost item${consumableCount!==1?"s":""}`,
+        `• ${laborCount} hourly labor role${laborCount!==1?"s":""}`,
+      ];
+      if(salaryNotes.length) lines.push(``, `Weekly-salary roles (Sales person, Mechanic) don't fit the hourly labor model, so:`, ...salaryNotes.map(s=>`  - ${s}`));
+      setImportSummary(lines.join("\n"));
+    } catch(err){
+      alert("Import error: " + (err.message||JSON.stringify(err)));
+    }
+    setImporting(false);
   }
 
   async function recalculateAll() {
@@ -233,6 +470,12 @@ export default function Settings() {
         .select("*").eq("company_id", company.id);
       const matCostMap = {};
       (mCosts||[]).forEach(m=>{ matCostMap[m.material_name]=m; });
+
+      // load per-thickness/R-value variant pricing
+      const { data:mVariants } = await supabase.from("material_variants")
+        .select("*").eq("company_id", company.id);
+      const variantMap = {};
+      (mVariants||[]).forEach(v=>{ variantMap[`${v.material_name}|${v.thickness_in}|${v.r_value}`.toLowerCase()]=v; });
 
       // load overhead
       const { data:overheadCosts } = await supabase.from("cost_settings")
@@ -257,6 +500,11 @@ export default function Settings() {
         let totalSqft = 0;
         areas.forEach(a=>{
           totalSqft += Number(a.sqft||0);
+          const variant = variantMap[`${a.material}|${a.thickness_in}|${a.r_value}`.toLowerCase()];
+          if(variant){
+            materialCost += Number(a.sqft||0) * Number(variant.cost_per_sqft||0) * (1 + Number(variant.markup_pct||0)/100);
+            return;
+          }
           const mc = matCostMap[a.material];
           if(!mc) return;
           const thick = THICK_MAP_LOCAL[a.thickness_in]||0;
@@ -415,6 +663,24 @@ export default function Settings() {
             unit: m.unit,
             cost_per_unit: Number(m.cost_per_unit)||0,
             markup_pct: Number(m.markup_pct)||0,
+            coverage_factor: Number(m.coverage_factor)||1,
+          }))
+        );
+      }
+
+      // save material variants (per thickness/R-value pricing)
+      await supabase.from("material_variants").delete().eq("company_id", company.id);
+      if(materialVariants.length>0){
+        await supabase.from("material_variants").insert(
+          materialVariants.filter(v=>v.material_name).map((v,i)=>({
+            company_id: company.id,
+            material_name: v.material_name,
+            thickness_in: v.thickness_in||"",
+            r_value: v.r_value||"",
+            facing: v.facing||"",
+            cost_per_sqft: Number(v.cost_per_sqft)||0,
+            markup_pct: Number(v.markup_pct)||0,
+            sort_order: i,
           }))
         );
       }
@@ -437,6 +703,7 @@ export default function Settings() {
     { id:"trades",     label:"Trades" },
     { id:"overhead",   label:"Overhead" },
     { id:"materials",  label:"Materials" },
+    { id:"variants",   label:"Batt/Rigid Pricing" },
     { id:"labor",      label:"Labor & Margin" },
     { id:"laboroles",  label:"Labor Roles" },
     { id:"assets",     label:"Assets" },
@@ -643,22 +910,41 @@ export default function Settings() {
           <div>
             <div style={{ fontSize:12, color:C.muted, marginBottom:10 }}>
               Enter your actual cost per unit and desired markup percentage.
-              The sell price is calculated automatically.
+              The sell price is calculated automatically. Coverage applies
+              to "bag" materials only (sqft-inches one bag covers).
             </div>
+
+            <label style={{ display:"block", marginBottom:12 }}>
+              <input type="file" accept=".xlsx,.xls" style={{display:"none"}}
+                onChange={e=>{ const f=e.target.files?.[0]; if(f) handleImportWorkbook(f); e.target.value=""; }} />
+              <span style={{...BtnG, display:"inline-flex", alignItems:"center", gap:6,
+                  cursor: importing?"default":"pointer", opacity: importing?0.6:1}}
+                onClick={e=>{ if(importing) e.preventDefault(); }}>
+                {importing ? "Importing…" : "📥 Import Pricing Worksheet (.xlsx)"}
+              </span>
+            </label>
+
+            {importSummary && (
+              <div style={{ background:"#f0fdf4", border:"1px solid #86efac", borderRadius:8,
+                  padding:"12px 14px", marginBottom:12, fontSize:12, color:"#166534", whiteSpace:"pre-line" }}>
+                {importSummary}
+              </div>
+            )}
 
             <div style={{ background:C.white, borderRadius:10,
                 border:`1px solid ${C.border}`, overflow:"hidden", marginBottom:10 }}>
               {/* header */}
               <div style={{ display:"grid",
-                  gridTemplateColumns:"2fr 1fr 80px 70px 80px 28px",
-                  gap:6, padding:"8px 12px", background:"#f8fafc",
+                  gridTemplateColumns:"2fr 1fr 70px 60px 65px 70px 28px",
+                  gap:5, padding:"8px 12px", background:"#f8fafc",
                   borderBottom:`1px solid ${C.border}`,
                   fontSize:10, fontWeight:700, color:C.muted,
                   textTransform:"uppercase", letterSpacing:0.4 }}>
                 <span>Material</span>
                 <span>Unit</span>
                 <span>Cost</span>
-                <span>Markup</span>
+                <span>Mkup</span>
+                <span>Cover.</span>
                 <span>Sell Price</span>
                 <span></span>
               </div>
@@ -667,8 +953,8 @@ export default function Settings() {
                 const sellPrice = Number(m.cost_per_unit||0) * (1 + Number(m.markup_pct||0)/100);
                 return (
                   <div key={i} style={{ display:"grid",
-                      gridTemplateColumns:"2fr 1fr 80px 70px 80px 28px",
-                      gap:6, padding:"8px 12px",
+                      gridTemplateColumns:"2fr 1fr 70px 60px 65px 70px 28px",
+                      gap:5, padding:"8px 12px",
                       borderBottom: i<matCosts.length-1?`1px solid ${C.border}`:"none",
                       alignItems:"center", background:i%2===0?C.white:"#fafbfc" }}>
                     <input placeholder="Material name" value={m.material_name}
@@ -692,6 +978,12 @@ export default function Settings() {
                         style={{...I, height:28, fontSize:11, textAlign:"right"}} />
                       <span style={{ fontSize:11, color:C.muted }}>%</span>
                     </div>
+                    <input type="number" value={m.coverage_factor||1}
+                      disabled={m.unit!=="bag"}
+                      title="Sqft-inches one bag covers (bag materials only)"
+                      onChange={e=>updateMat(i,"coverage_factor",e.target.value)}
+                      style={{...I, height:28, fontSize:11, textAlign:"right",
+                        opacity:m.unit!=="bag"?0.4:1}} />
                     <div style={{ fontSize:12, fontWeight:700, color:C.green,
                         textAlign:"right" }}>
                       ${sellPrice.toFixed(2)}
@@ -707,6 +999,93 @@ export default function Settings() {
             <button onClick={addMat}
               style={{...BtnG, width:"100%", height:36, fontSize:13}}>
               + Add Material
+            </button>
+          </div>
+        )}
+
+        {/* ── BATT / RIGID FOAM VARIANT PRICING TAB ── */}
+        {tab==="variants" && (
+          <div>
+            <div style={{ fontSize:12, color:C.muted, marginBottom:10 }}>
+              Batts and rigid foam are priced per exact thickness + R-value
+              combo (a 2x4 R-11 batt costs differently than a 2x12 R-38 batt).
+              Add one row per product you stock. When an estimate's area
+              matches a material + thickness + R-value here, this price is
+              used instead of the flat Materials tab price.
+            </div>
+
+            <div style={{ background:C.white, borderRadius:10,
+                border:`1px solid ${C.border}`, overflow:"hidden", marginBottom:10 }}>
+              <div style={{ display:"grid",
+                  gridTemplateColumns:"1.6fr 80px 70px 80px 70px 60px 80px 28px",
+                  gap:5, padding:"8px 12px", background:"#f8fafc",
+                  borderBottom:`1px solid ${C.border}`,
+                  fontSize:9, fontWeight:700, color:C.muted,
+                  textTransform:"uppercase", letterSpacing:0.4 }}>
+                <span>Material</span>
+                <span>Thickness</span>
+                <span>R-Value</span>
+                <span>Facing</span>
+                <span>$/sqft</span>
+                <span>Mkup</span>
+                <span>Sell $/sqft</span>
+                <span></span>
+              </div>
+
+              {materialVariants.length===0 && (
+                <div style={{padding:"16px 12px",fontSize:12,color:C.faint,textAlign:"center"}}>
+                  No variant pricing yet — add rows below or import a pricing worksheet from the Materials tab.
+                </div>
+              )}
+
+              {materialVariants.map((v, i)=>{
+                const sellPrice = Number(v.cost_per_sqft||0) * (1 + Number(v.markup_pct||0)/100);
+                return (
+                  <div key={i} style={{ display:"grid",
+                      gridTemplateColumns:"1.6fr 80px 70px 80px 70px 60px 80px 28px",
+                      gap:5, padding:"8px 12px",
+                      borderBottom: i<materialVariants.length-1?`1px solid ${C.border}`:"none",
+                      alignItems:"center", background:i%2===0?C.white:"#fafbfc" }}>
+                    <input placeholder="e.g. Fiberglass Batt" value={v.material_name}
+                      onChange={e=>updateVariant(i,"material_name",e.target.value)}
+                      style={{...I, height:28, fontSize:11}} />
+                    <input placeholder="2x6" value={v.thickness_in}
+                      onChange={e=>updateVariant(i,"thickness_in",e.target.value)}
+                      style={{...I, height:28, fontSize:11}} />
+                    <input placeholder="R-19" value={v.r_value}
+                      onChange={e=>updateVariant(i,"r_value",e.target.value)}
+                      style={{...I, height:28, fontSize:11}} />
+                    <select value={v.facing||""} onChange={e=>updateVariant(i,"facing",e.target.value)}
+                      style={{...I, height:28, fontSize:11, padding:"0 4px"}}>
+                      <option value="">—</option>
+                      <option value="Faced">Faced</option>
+                      <option value="Unfaced">Unfaced</option>
+                    </select>
+                    <div style={{ display:"flex", alignItems:"center", gap:2 }}>
+                      <span style={{ fontSize:11, color:C.muted }}>$</span>
+                      <input type="number" value={v.cost_per_sqft}
+                        onChange={e=>updateVariant(i,"cost_per_sqft",e.target.value)}
+                        style={{...I, height:28, fontSize:11, textAlign:"right"}} />
+                    </div>
+                    <div style={{ display:"flex", alignItems:"center", gap:1 }}>
+                      <input type="number" value={v.markup_pct}
+                        onChange={e=>updateVariant(i,"markup_pct",e.target.value)}
+                        style={{...I, height:28, fontSize:11, textAlign:"right"}} />
+                      <span style={{ fontSize:11, color:C.muted }}>%</span>
+                    </div>
+                    <div style={{ fontSize:12, fontWeight:700, color:C.green, textAlign:"right" }}>
+                      ${sellPrice.toFixed(2)}
+                    </div>
+                    <button onClick={()=>removeVariant(i)}
+                      style={{...Btn, padding:"0 6px", height:26, color:C.faint, fontSize:13}}>✕</button>
+                  </div>
+                );
+              })}
+            </div>
+
+            <button onClick={addVariant}
+              style={{...BtnG, width:"100%", height:36, fontSize:13}}>
+              + Add Variant
             </button>
           </div>
         )}

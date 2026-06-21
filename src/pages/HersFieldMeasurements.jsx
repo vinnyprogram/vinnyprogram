@@ -9,7 +9,7 @@ const AREA_TYPES = [
   "Exterior Wall","Demising Wall","Rim Joist","Concrete Wall",
   "Ceiling","Interior Walls","Fire Blocking","Other",
 ];
-const THICK_OPTS = ["2x3","2x4","2x6","2x8","2x10","2x12","I-joist 14in","I-joist 16in","I-joist 18in"];
+const THICK_OPTS = ["2x3","2x4","2x6","2x8","2x10","2x12","I-joist 14in","I-joist 16in","I-joist 18in","1in","1.5in","2in","2.5in","3in","3.5in","4in"];
 const R_VALS     = ["R-11","R-13","R-15","R-19","R-21","R-28","R-30","R-38","R-49","R-60"];
 const ORIENTATIONS = ["N","NE","E","SE","S","SW","W","NW"];
 // Standard architectural convention: walking clockwise around the building

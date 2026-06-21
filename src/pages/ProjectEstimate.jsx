@@ -50,7 +50,7 @@ const AREA_TYPES = [
   "Exterior Wall","Demising Wall","Rim Joist","Concrete Wall",
   "Ceiling","Interior Walls","Fire Blocking","Other",
 ];
-const THICK_OPTS = ["2x3","2x4","2x6","2x8","2x10","2x12","I-joist 14in","I-joist 16in","I-joist 18in"];
+const THICK_OPTS = ["2x3","2x4","2x6","2x8","2x10","2x12","I-joist 14in","I-joist 16in","I-joist 18in","1in","1.5in","2in","2.5in","3in","3.5in","4in"];
 const THICK_MAP  = { "2x4":3.5,"2x6":5.5,"2x8":7.25,"2x10":9.25,"2x12":11.25,"I-joist":11.875 };
 const R_VALS     = ["R-11","R-13","R-15","R-19","R-21","R-28","R-30","R-38","R-49","R-60"];
 function loadCustomList(key, defaults) {
@@ -72,8 +72,18 @@ const OC_OPTS    = ['3"cc','7"oc','8"oc','12"oc','16"oc','24"oc','open cell'];
 const CONST_TYPES = ["New Construction","Remodeling","Addition","Existing Construction","Renovation","Commercial","Other"];
 const LADDER_OPTS = ["5ft","7ft","10ft","12ft","16ft","20ft","Lift","No ladder needed"];
 
-function calcArea(sqft, thick, mat) {
+function calcArea(sqft, thick, mat, rValue, variantMap) {
   if (!sqft || !mat) return { qty:0, unit:"-", line_total:0, unit_price:0 };
+  // Discrete per-thickness/R-value product (batt, rigid foam sheet) takes
+  // priority when a matching variant exists — priced flat per sqft.
+  if(variantMap && mat.name){
+    const variant = variantMap[`${mat.name}|${thick}|${rValue||""}`.toLowerCase()];
+    if(variant){
+      const sellPrice = Number(variant.cost_per_sqft||0)*(1+Number(variant.markup_pct||0)/100);
+      const q = Math.round(sqft);
+      return { qty:q, unit:"sqft", unit_price:sellPrice, line_total:Math.round(sqft*sellPrice*100)/100 };
+    }
+  }
   const t = THICK_MAP[thick] || 0;
   const u = mat.unit, p = mat.price_per_unit || 0;
   let q = u==="board_ft" ? sqft*t : u==="bag" ? Math.ceil((sqft*t)/(mat.coverage_factor||1)) : sqft;
@@ -282,7 +292,7 @@ async function saveNew() {
 }
 
 // ── AreaRow ───────────────────────────────────────────────────────────────────
-function AreaRow({ area, materials, onChange, onDelete, saveOptionsOnly, onMaterialAdded }) {
+function AreaRow({ area, materials, materialMap, variantMap, onChange, onDelete, saveOptionsOnly, onMaterialAdded }) {
   const [expanded, setExpanded] = useState(!area._collapsed);
 
   const [thickOpts, setThickOpts] = useState(()=>loadCustomList("custom_thick_opts", THICK_OPTS));
@@ -344,8 +354,8 @@ function AreaRow({ area, materials, onChange, onDelete, saveOptionsOnly, onMater
   }
 
   const totalCost = matLines.reduce((sum, ml) => {
-    const mat = materials.find(m=>m.name===ml.material);
-    return sum + calcArea(computedSqft, ml.thickness_in, mat).line_total;
+    const mat = materialMap ? materialMap[ml.material] : materials.find(m=>m.name===ml.material);
+    return sum + calcArea(computedSqft, ml.thickness_in, mat, ml.r_value, variantMap).line_total;
   }, 0);
 
   const firstMat = matLines[0].material;
@@ -549,8 +559,8 @@ function useCalcResult(field) {
               value={matLines[0].thickness_in||""} onChange={e=>updateMatLine(0,"thickness_in",e.target.value)} />
           )}
           {(()=>{
-            const mat=materials.find(m=>m.name===matLines[0].material);
-            const {qty,unit,unit_price,line_total}=calcArea(computedSqft,matLines[0].thickness_in,mat);
+            const mat=materialMap ? materialMap[matLines[0].material] : materials.find(m=>m.name===matLines[0].material);
+            const {qty,unit,unit_price,line_total}=calcArea(computedSqft,matLines[0].thickness_in,mat,matLines[0].r_value,variantMap);
             return line_total>0?(
               <div style={{display:"flex",justifyContent:"flex-end",gap:6,fontSize:10,color:C.muted,marginBottom:2}}>
                 <span>{fmt(qty)} {unit?.replace("_"," ")} × ${unit_price}</span>
@@ -639,8 +649,8 @@ function useCalcResult(field) {
                   value={ml.r_value||""} onChange={e=>updateMatLine(idx,"r_value",e.target.value)} />
               )}
               {(()=>{
-                const mat=materials.find(m=>m.name===ml.material);
-                const {qty,unit,unit_price,line_total}=calcArea(computedSqft,ml.thickness_in,mat);
+                const mat=materialMap ? materialMap[ml.material] : materials.find(m=>m.name===ml.material);
+                const {qty,unit,unit_price,line_total}=calcArea(computedSqft,ml.thickness_in,mat,ml.r_value,variantMap);
                 return line_total>0?(<div style={{display:"flex",justifyContent:"flex-end",gap:6,fontSize:10,color:"#0369a1"}}><span>{fmt(qty)} {unit?.replace("_"," ")} × ${unit_price}</span><span style={{fontWeight:700}}>${fmt(line_total)}</span></div>):null;
               })()}
             </div>
@@ -826,11 +836,13 @@ function useCalcResult(field) {
 }
 
 // ── EstimatePanel ─────────────────────────────────────────────────────────────
-function EstimatePanel({ floors, areas, materialMap, crewNotes, projectName, projectAddress, customer }) {
+function EstimatePanel({ floors, areas, materialMap, variantMap, crewNotes, projectName, projectAddress, customer, laborRoles }) {
   function floorTotal(floor) {
-    return (areas[floor]||[]).filter(a=>!a.is_optional).reduce((s,a)=>s+getAreaTotalCost(a,materialMap),0);
+    return (areas[floor]||[]).filter(a=>!a.is_optional).reduce((s,a)=>s+getAreaTotalCost(a,materialMap,variantMap),0);
   }
-  const total = floors.reduce((s,f)=>s+floorTotal(f),0);
+  const materialTotal = floors.reduce((s,f)=>s+floorTotal(f),0);
+  const laborTotal = (laborRoles||[]).reduce((s,r)=>s+Number(r.hours||0)*Number(r.days||1)*Number(r.people||1)*Number(r.rate||0),0);
+  const total = materialTotal + laborTotal;
   return (
     <div style={{ fontSize:11, lineHeight:1.55 }}>
       {customer && (
@@ -870,14 +882,14 @@ function EstimatePanel({ floors, areas, materialMap, crewNotes, projectName, pro
           if(!g.floors.includes(a.floor)) g.floors.push(a.floor);
           if(floors.indexOf(a.floor)<g.floorOrder) g.floorOrder=floors.indexOf(a.floor);
           g.totalSqft+=a.sqft||0;
-          g.totalCost+=getAreaTotalCost(a,materialMap);
+          g.totalCost+=getAreaTotalCost(a,materialMap,variantMap);
         });
         const groups=Object.values(groupMap).sort((a,b)=>a.floorOrder-b.floorOrder);
         return groups.map((g,i)=>{
           const thick=g.mat_lines[0]?.thickness_in||"";
           const floorLabel=g.floors.sort((a,b)=>floors.indexOf(a)-floors.indexOf(b)).map(f=>f.replace(" Floor","")).join(", ");
           const matLabel=g.mat_lines.length>1?g.mat_lines.map(ml=>((ml.material||"")+" "+(ml.r_value||"")).trim()).join(" · "):((g.mat_lines[0]?.material||"")+" "+(g.mat_lines[0]?.r_value||"")+" "+(g.mat_lines[0]?.oc||"")).trim();
-          const {qty,unit}=calcArea(g.totalSqft,thick,materialMap[g.mat_lines[0]?.material]);
+          const {qty,unit}=calcArea(g.totalSqft,thick,materialMap[g.mat_lines[0]?.material],g.mat_lines[0]?.r_value,variantMap);
           return (
             <div key={i} style={{paddingBottom:5,marginBottom:5,borderBottom:`1px solid ${C.chip}`}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
@@ -903,7 +915,7 @@ function EstimatePanel({ floors, areas, materialMap, crewNotes, projectName, pro
               ⭐ Optional Add-ons
             </div>
             {optionalAreas.map((a,i)=>{
-              const cost=getAreaTotalCost(a,materialMap);
+              const cost=getAreaTotalCost(a,materialMap,variantMap);
               const mls=(a.mat_lines&&a.mat_lines.length>0)?a.mat_lines:[{material:a.material||"",thickness_in:a.thickness_in||"",r_value:a.r_value||""}];
               const matLabel=mls.map(ml=>[ml.thickness_in,ml.material,ml.r_value].filter(Boolean).join(" ")).join(" + ");
               return (
@@ -921,6 +933,18 @@ function EstimatePanel({ floors, areas, materialMap, crewNotes, projectName, pro
           </div>
         );
       })()}
+      {laborTotal>0 && (
+        <div style={{marginTop:4,paddingTop:6,borderTop:`1px dashed ${C.border}`}}>
+          <div style={{display:"flex",justifyContent:"space-between",fontSize:11,color:C.muted,marginBottom:2}}>
+            <span>Materials</span>
+            <span>${fmt(materialTotal)}</span>
+          </div>
+          <div style={{display:"flex",justifyContent:"space-between",fontSize:11,color:C.muted}}>
+            <span>👷 Labor</span>
+            <span>${fmt(laborTotal)}</span>
+          </div>
+        </div>
+      )}
       <div style={{ display:"flex", justifyContent:"space-between", paddingTop:6, borderTop:`2px solid ${C.ink}`, fontWeight:700 }}>
         <span style={{fontSize:12}}>Total</span>
         <span style={{fontSize:17,color:C.green}}>${fmt(total)}</span>
@@ -937,14 +961,14 @@ function isAreaComplete(area) {
   return !!(area.area_type&&mat&&mat!=="__custom_mat__"&&area.sqft>0);
 }
 
-function getAreaTotalCost(area, materialMap) {
+function getAreaTotalCost(area, materialMap, variantMap) {
   const lines=area.mat_lines&&area.mat_lines.length>0?area.mat_lines:[{material:area.material||"",thickness_in:area.thickness_in||"",r_value:area.r_value||"",oc:area.oc||""}];
   const raw=(area.measurements||[]).reduce((s,m)=>s+(m.sqft||0),0);
   const d=parseFloat(area.deduct_sqft)||0;
   const safeSqft=raw>0?Math.max(0,Math.round(raw-d)):(area.sqft||0);
   return lines.reduce((sum,ml)=>{
     const mat=materialMap[ml.material];
-    return sum+calcArea(safeSqft,ml.thickness_in,mat).line_total;
+    return sum+calcArea(safeSqft,ml.thickness_in,mat,ml.r_value,variantMap).line_total;
   },0);
 }
 
@@ -963,6 +987,8 @@ export default function ProjectEstimate() {
   const [pendingFloor,setPendingFloor]=useState(null);
   const [areas,setAreas]=useState(()=>{const i={};DEFAULT_FLOORS.forEach(f=>{i[f]=[];});return i;});
   const [materials,setMaterials]=useState([]);
+  const [matCostsLive,setMatCostsLive]=useState([]);
+  const [variantsLive,setVariantsLive]=useState([]);
   const [leads,setLeads]=useState([]);
   const [selectedLeadId,setSelectedLeadId]=useState(leadId||"");
   const [projectName,setProjectName]=useState("");
@@ -1079,6 +1105,7 @@ export default function ProjectEstimate() {
       if(!user) return;
       const {data:cd}=await supabase.from("companies").select("id").eq("user_id",user.id).maybeSingle();
       if(!cd) return;
+      loadPricing(cd.id);
       const {data:roles}=await supabase.from("cost_settings").select("*").eq("company_id",cd.id).eq("period","labor_role").order("sort_order");
       if(roles?.length){
         const filled=roles.map(r=>({role:r.name,hours:"8",days:"1",people:1,rate:Number(r.amount||0)}));
@@ -1095,6 +1122,14 @@ export default function ProjectEstimate() {
   function loadMaterials(newMaterial){
     if(newMaterial) setMaterials(prev=>[...prev,newMaterial]);
     supabase.from("materials").select("*").then(({data})=>{if(data) setMaterials(data);});
+  }
+
+  function loadPricing(companyId){
+    if(!companyId) return;
+    supabase.from("material_costs").select("*").eq("company_id",companyId)
+      .then(({data})=>{if(data) setMatCostsLive(data);});
+    supabase.from("material_variants").select("*").eq("company_id",companyId)
+      .then(({data})=>{if(data) setVariantsLive(data);});
   }
 
   function loadLeads(){
@@ -1195,11 +1230,27 @@ export default function ProjectEstimate() {
     }
   },[leadId,leads]);
 
-  const materialMap=useMemo(()=>Object.fromEntries(materials.map(m=>[m.name,m])),[materials]);
+  // materialMap now sources actual pricing from material_costs (Settings),
+  // not materials.price_per_unit which is never populated by Settings and
+  // always defaulted to 0 — that disconnect meant the live on-screen total
+  // while editing could differ from the final saved quote total.
+  const materialMap=useMemo(()=>{
+    const costMap=Object.fromEntries(matCostsLive.map(m=>[m.material_name,m]));
+    return Object.fromEntries(materials.map(m=>{
+      const mc=costMap[m.name];
+      const sellPrice=mc ? Number(mc.cost_per_unit||0)*(1+Number(mc.markup_pct||0)/100) : Number(m.price_per_unit||0);
+      return [m.name, { name:m.name, unit: mc?mc.unit:m.unit, price_per_unit: sellPrice, coverage_factor: mc?Number(mc.coverage_factor||1):1 }];
+    }));
+  },[materials, matCostsLive]);
+  const variantMap=useMemo(()=>Object.fromEntries(
+    variantsLive.map(v=>[`${v.material_name}|${v.thickness_in}|${v.r_value}`.toLowerCase(), v])
+  ),[variantsLive]);
   const selectedLead=leads.find(l=>String(l.id)===String(selectedLeadId));
 
-  function floorTotal(floor){return(areas[floor]||[]).filter(a=>!a.is_optional).reduce((s,a)=>s+getAreaTotalCost(a,materialMap),0);}
-  const projectTotal=floors.reduce((s,f)=>s+floorTotal(f),0);
+  function floorTotal(floor){return(areas[floor]||[]).filter(a=>!a.is_optional).reduce((s,a)=>s+getAreaTotalCost(a,materialMap,variantMap),0);}
+  const projectMaterialTotal=floors.reduce((s,f)=>s+floorTotal(f),0);
+  const projectLaborTotal=laborRoles.reduce((s,r)=>s+Number(r.hours||0)*Number(r.days||1)*Number(r.people||1)*Number(r.rate||0),0);
+  const projectTotal=projectMaterialTotal+projectLaborTotal;
 
   function addFloor(){
     const name=newFloorName.trim();if(!name)return;
@@ -1247,15 +1298,30 @@ export default function ProjectEstimate() {
   }
 
   async function calculateJobPrice(companyId,allAreas,totalSqft){
-    const [{data:matCosts},{data:overheadCosts},{data:consumables}]=await Promise.all([
+    const [{data:matCosts},{data:variants},{data:overheadCosts},{data:consumables}]=await Promise.all([
       supabase.from("material_costs").select("*").eq("company_id",companyId),
+      supabase.from("material_variants").select("*").eq("company_id",companyId),
       supabase.from("cost_settings").select("*").eq("company_id",companyId).not("period","eq","job_consumable"),
       supabase.from("cost_settings").select("*").eq("company_id",companyId).eq("period","job_consumable"),
     ]);
     const matCostMap={};(matCosts||[]).forEach(m=>{matCostMap[m.material_name]=m;});
+    // variant key ignores facing (areas don't currently track it) — matches on material+thickness+R-value
+    const variantMap={};(variants||[]).forEach(v=>{variantMap[`${v.material_name}|${v.thickness_in}|${v.r_value}`.toLowerCase()]=v;});
     const TM={"2x4":3.5,"2x6":5.5,"2x8":7.25,"2x10":9.25,"2x12":11.25,"I-joist":11.875};
     let materialCost=0;
-    allAreas.forEach(a=>{const mc=matCostMap[a.material];if(!mc)return;const thick=TM[a.thickness_in]||0;let qty=mc.unit==="board_ft"?(a.sqft||0)*thick:mc.unit==="bag"?Math.ceil(((a.sqft||0)*thick)/(mc.coverage_factor||1)):(a.sqft||0);materialCost+=qty*Number(mc.cost_per_unit||0)*(1+Number(mc.markup_pct||0)/100);});
+    allAreas.forEach(a=>{
+      const variantKey=`${a.material}|${a.thickness_in}|${a.r_value}`.toLowerCase();
+      const variant=variantMap[variantKey];
+      if(variant){
+        // discrete per-thickness/R-value product (batt, rigid foam sheet) — priced flat per sqft
+        materialCost+=(a.sqft||0)*Number(variant.cost_per_sqft||0)*(1+Number(variant.markup_pct||0)/100);
+        return;
+      }
+      const mc=matCostMap[a.material];if(!mc)return;
+      const thick=TM[a.thickness_in]||0;
+      let qty=mc.unit==="board_ft"?(a.sqft||0)*thick:mc.unit==="bag"?Math.ceil(((a.sqft||0)*thick)/(mc.coverage_factor||1)):(a.sqft||0);
+      materialCost+=qty*Number(mc.cost_per_unit||0)*(1+Number(mc.markup_pct||0)/100);
+    });
     const overheadCost=(overheadCosts||[]).reduce((s,c)=>s+Number(c.amount||0),0)/20;
     const consumableCost=(consumables||[]).reduce((s,c)=>s+Number(c.amount||0)*(totalSqft>0?totalSqft/1000:1),0);
     const totalCost=materialCost+overheadCost+consumableCost;const margin=30;
@@ -1318,7 +1384,7 @@ async function saveProject() {
         const mls=(a.mat_lines&&a.mat_lines.length>0)?a.mat_lines:[{material:a.material||"",thickness_in:a.thickness_in||"",r_value:a.r_value||"",oc:a.oc||""}];
         return mls.map((ml,mi)=>{
           const mat=materialMap[ml.material];
-          const {qty,unit,unit_price,line_total}=calcArea(a.sqft,ml.thickness_in,mat);
+          const {qty,unit,unit_price,line_total}=calcArea(a.sqft,ml.thickness_in,mat,ml.r_value,variantMap);
           return {project_id:targetProjectId,floor_id:floorMap[floor],area_type:a.area_type,material:ml.material,thickness_in:ml.thickness_in||null,r_value:ml.r_value,sqft:a.sqft,qty,unit,unit_price,line_total,order_index:i*10+mi,company_id:companyId,options:mi===0?(a.options||[]):[]};
         });
       }));
@@ -1350,7 +1416,7 @@ async function saveProject() {
       const floorMap={};(floorRows||[]).forEach(f=>{floorMap[f.name]=f.id;});
       const allAreas=floors.flatMap(floor=>(areas[floor]||[]).filter(a=>a.area_type&&a.sqft).flatMap((a,i)=>{
         const mls=(a.mat_lines&&a.mat_lines.length>0)?a.mat_lines:[{material:a.material||"",thickness_in:a.thickness_in||"",r_value:a.r_value||"",oc:a.oc||""}];
-        return mls.map((ml,mi)=>{const mat=materialMap[ml.material];const {qty,unit,unit_price,line_total}=calcArea(a.sqft,ml.thickness_in,mat);return {project_id:proj.id,floor_id:floorMap[floor],area_type:a.area_type,material:ml.material,thickness_in:ml.thickness_in||null,r_value:ml.r_value,sqft:a.sqft,qty,unit,unit_price,line_total,order_index:i*10+mi,company_id:companyId,options:mi===0?(a.options||[]):[]}; });
+        return mls.map((ml,mi)=>{const mat=materialMap[ml.material];const {qty,unit,unit_price,line_total}=calcArea(a.sqft,ml.thickness_in,mat,ml.r_value,variantMap);return {project_id:proj.id,floor_id:floorMap[floor],area_type:a.area_type,material:ml.material,thickness_in:ml.thickness_in||null,r_value:ml.r_value,sqft:a.sqft,qty,unit,unit_price,line_total,order_index:i*10+mi,company_id:companyId,options:mi===0?(a.options||[]):[]}; });
       }));
       if(allAreas.length>0){
         const {data:areaRows,error:ae}=await supabase.from("areas").insert(allAreas).select();
@@ -1361,7 +1427,10 @@ async function saveProject() {
       }
       const allAreasList=floors.flatMap(floor=>(areas[floor]||[]).filter(a=>a.area_type&&a.sqft).flatMap(a=>{const mls=(a.mat_lines&&a.mat_lines.length>0)?a.mat_lines:[{material:a.material||"",thickness_in:a.thickness_in||""}];return mls.map(ml=>({...a,material:ml.material,thickness_in:ml.thickness_in}));}));
       const finalLaborCost=laborRoles.reduce((s,r)=>s+Number(r.hours||0)*Number(r.days||1)*Number(r.people||1)*Number(r.rate||0),0);
-      const pricing=await calculateJobPrice(companyId,allAreasList,projectTotal>0?projectTotal:0);
+      // actual conditioned sqft for the job — NOT the dollar total, which was
+      // previously passed here by mistake and threw off consumables scaling
+      const realTotalSqft=floors.reduce((s,f)=>s+(areas[f]||[]).filter(a=>!a.is_optional).reduce((ss,a)=>ss+(a.sqft||0),0),0);
+      const pricing=await calculateJobPrice(companyId,allAreasList,realTotalSqft);
       const fuelCostCalc=Number(jobMiles||0)*2*fuelRate;
       const {data:assetList}=await supabase.from("assets").select("*").eq("company_id",companyId);
       const depreciationCost=((assetList||[]).reduce((s,a)=>(s+(Number(a.purchase_price||0)-Number(a.salvage_value||0))/Number(a.useful_life_years||5)/12),0))/20;
@@ -1384,7 +1453,7 @@ async function saveProject() {
   useEffect(()=>{if(saved){const t=setTimeout(()=>setSaved(false),3000);return()=>clearTimeout(t);}},[saved]);
 
   const currentAreas=areas[activeFloor]||[];
-  const panelProps={floors,areas,materialMap,crewNotes,projectName,projectAddress,customer:selectedLead};
+  const panelProps={floors,areas,materialMap,variantMap,crewNotes,projectName,projectAddress,customer:selectedLead,laborRoles};
 
   if(loadingProject) return <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"system-ui",color:"#64748b"}}>Loading estimate…</div>;
 
@@ -1460,11 +1529,11 @@ async function saveProject() {
           ):(
             <>
               {currentAreas.map((area,idx)=>({area,idx})).filter(({area})=>!isAreaComplete(area)).map(({area,idx})=>(
-                <AreaRow key={area.id||area.temp_id} area={area} materials={materials} onChange={(field,value)=>updateArea(activeFloor,idx,field,value)} onDelete={()=>deleteArea(activeFloor,idx)} saveOptionsOnly={saveOptionsOnly} onMaterialAdded={loadMaterials} />
+                <AreaRow key={area.id||area.temp_id} area={area} materials={materials} materialMap={materialMap} variantMap={variantMap} onChange={(field,value)=>updateArea(activeFloor,idx,field,value)} onDelete={()=>deleteArea(activeFloor,idx)} saveOptionsOnly={saveOptionsOnly} onMaterialAdded={loadMaterials} />
               ))}
               {currentAreas.some(a=>isAreaComplete(a))&&(<div style={{fontSize:9,fontWeight:700,color:"#059669",textTransform:"uppercase",letterSpacing:0.5,marginBottom:4,marginTop:2,paddingLeft:2}}>✓ Completed areas</div>)}
               {currentAreas.map((area,idx)=>({area,idx})).filter(({area})=>isAreaComplete(area)).map(({area,idx})=>(
-                <AreaRow key={area.id||area.temp_id} area={area} materials={materials} onChange={(field,value)=>updateArea(activeFloor,idx,field,value)} onDelete={()=>deleteArea(activeFloor,idx)} saveOptionsOnly={saveOptionsOnly} onMaterialAdded={loadMaterials} />
+                <AreaRow key={area.id||area.temp_id} area={area} materials={materials} materialMap={materialMap} variantMap={variantMap} onChange={(field,value)=>updateArea(activeFloor,idx,field,value)} onDelete={()=>deleteArea(activeFloor,idx)} saveOptionsOnly={saveOptionsOnly} onMaterialAdded={loadMaterials} />
               ))}
             </>
           )}
@@ -1475,6 +1544,54 @@ async function saveProject() {
               <span style={{fontWeight:700}}>${fmt(floorTotal(activeFloor))}</span>
             </div>
           )}
+
+          {/* Crew & Labor — editable per-job, separate from the default rates in Settings */}
+          <div style={CARD_ORANGE}>
+            <div style={{fontSize:11,fontWeight:700,color:C.muted,marginBottom:6,textTransform:"uppercase",letterSpacing:0.4}}>
+              👷 Crew &amp; Labor for this job
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"1.4fr 50px 45px 45px 60px 65px 24px",gap:4,marginBottom:4,fontSize:9,color:C.muted,fontWeight:700,textTransform:"uppercase"}}>
+              <span>Role</span><span>Hrs</span><span>Days</span><span>People</span><span>Rate</span><span>Cost</span><span></span>
+            </div>
+            {laborRoles.map((r,i)=>{
+              const rowCost = Number(r.hours||0)*Number(r.days||1)*Number(r.people||1)*Number(r.rate||0);
+              return (
+                <div key={i} style={{display:"grid",gridTemplateColumns:"1.4fr 50px 45px 45px 60px 65px 24px",gap:4,marginBottom:4,alignItems:"center"}}>
+                  <input placeholder="Role" value={r.role}
+                    onChange={e=>setLaborRoles(p=>p.map((x,j)=>j===i?{...x,role:e.target.value}:x))}
+                    style={{...I,height:28,fontSize:11}} />
+                  <input type="number" value={r.hours} title="Hours per day"
+                    onChange={e=>setLaborRoles(p=>p.map((x,j)=>j===i?{...x,hours:e.target.value}:x))}
+                    style={{...I,height:28,fontSize:11,textAlign:"center"}} />
+                  <input type="number" value={r.days} title="Days on the job"
+                    onChange={e=>setLaborRoles(p=>p.map((x,j)=>j===i?{...x,days:e.target.value}:x))}
+                    style={{...I,height:28,fontSize:11,textAlign:"center"}} />
+                  <input type="number" value={r.people} title="How many of this role — e.g. 2 sprayers to finish faster"
+                    onChange={e=>setLaborRoles(p=>p.map((x,j)=>j===i?{...x,people:e.target.value}:x))}
+                    style={{...I,height:28,fontSize:11,textAlign:"center",fontWeight:700,color:Number(r.people)>1?"#059669":C.ink}} />
+                  <div style={{display:"flex",alignItems:"center",gap:1}}>
+                    <span style={{fontSize:10,color:C.muted}}>$</span>
+                    <input type="number" value={r.rate}
+                      onChange={e=>setLaborRoles(p=>p.map((x,j)=>j===i?{...x,rate:e.target.value}:x))}
+                      style={{...I,height:28,fontSize:11,textAlign:"right"}} />
+                  </div>
+                  <div style={{fontSize:11,fontWeight:700,color:C.green,textAlign:"right"}}>${fmt(rowCost)}</div>
+                  <button onClick={()=>setLaborRoles(p=>p.filter((_,j)=>j!==i))}
+                    style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:14}}>✕</button>
+                </div>
+              );
+            })}
+            <button onClick={()=>setLaborRoles(p=>[...p,{role:"",hours:"8",days:"1",people:1,rate:0}])}
+              style={{...Btn,height:28,fontSize:11,width:"100%",marginTop:2}}>
+              + Add Crew Role
+            </button>
+            <div style={{display:"flex",justifyContent:"space-between",marginTop:6,paddingTop:6,borderTop:`1px solid ${C.border}`,fontSize:12,fontWeight:700}}>
+              <span style={{color:C.muted}}>Total Labor Cost</span>
+              <span style={{color:C.green}}>
+                ${fmt(laborRoles.reduce((s,r)=>s+Number(r.hours||0)*Number(r.days||1)*Number(r.people||1)*Number(r.rate||0),0))}
+              </span>
+            </div>
+          </div>
         </div>
 
         <div className="estimate-side-panel" style={{width:220,flexShrink:0,borderLeft:`1px solid ${C.border}`,background:C.white,overflowY:"auto",padding:"10px 10px 20px"}}>
