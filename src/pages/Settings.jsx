@@ -120,6 +120,12 @@ export default function Settings() {
       .select("*").eq("company_id", company.id).eq("period","fuel").maybeSingle();
     if(fuelData) setFuelRate(Number(fuelData.amount||0.67));
 
+    // load jobs-per-month (used to allocate overhead per job) — was previously
+    // never persisted at all, just a local default that reset every reload
+    const { data:jpmData } = await supabase.from("cost_settings")
+      .select("*").eq("company_id", company.id).eq("period","jobs_per_month").maybeSingle();
+    if(jpmData) setJobsPerMonth(Number(jpmData.amount||20));
+
     // load labor roles
     const { data:lr } = await supabase.from("cost_settings")
       .select("*").eq("company_id", company.id)
@@ -220,7 +226,7 @@ export default function Settings() {
     setMatCosts(p=>p.map((m,i)=> i===idx ? {...m,[field]:value} : m));
   }
   function addMat() {
-    setMatCosts(p=>[...p,{id:null,material_name:"",unit:"board_ft",cost_per_unit:0,markup_pct:25,coverage_factor:1}]);
+    setMatCosts(p=>[...p,{id:null,material_name:"",unit:"board_ft",cost_per_unit:0,markup_pct:25,coverage_factor:1,r_per_inch:null}]);
   }
   function removeMat(idx) {
     setMatCosts(p=>p.filter((_,i)=>i!==idx));
@@ -254,13 +260,16 @@ export default function Settings() {
       const str = v => (v===null||v===undefined) ? "" : String(v).trim();
 
       const newMatCosts = [...matCosts];
-      function upsertMatCost(material_name, unit, cost_per_unit, markup_pct, coverage_factor){
+      function upsertMatCost(material_name, unit, cost_per_unit, markup_pct, coverage_factor, r_per_inch=null){
         const idx = newMatCosts.findIndex(m=>(m.material_name||"").toLowerCase()===material_name.toLowerCase());
-        const row = { id: idx>=0?newMatCosts[idx].id:null, material_name, unit, cost_per_unit, markup_pct, coverage_factor };
+        const row = { id: idx>=0?newMatCosts[idx].id:null, material_name, unit, cost_per_unit, markup_pct, coverage_factor, r_per_inch };
         if(idx>=0) newMatCosts[idx]=row; else newMatCosts.push(row);
       }
 
-      // Spray Foam (Sets) — continuous board-ft pricing
+      // Spray Foam (Sets) — continuous board-ft pricing. Thickness sprayed
+      // is calculated from the area's target R-value (R-value ÷ R-per-inch),
+      // not a stud-cavity dropdown — so each row gets a default R-per-inch
+      // based on whether it's open or closed cell, editable afterward.
       let sprayCount=0;
       const sprayRows = rows("Spray Foam (Sets)");
       if(sprayRows){
@@ -269,7 +278,9 @@ export default function Settings() {
           const name = str(r[0]); if(!name) continue;
           const pricePerBoardFt = num(r[4]);
           if(pricePerBoardFt<=0) continue;
-          upsertMatCost(name, "board_ft", Math.round(pricePerBoardFt*10000)/10000, 25, 1);
+          const nameLower = name.toLowerCase();
+          const rPerInch = nameLower.includes("closed") ? 6.85 : nameLower.includes("open") ? 3.75 : null;
+          upsertMatCost(name, "board_ft", Math.round(pricePerBoardFt*10000)/10000, 25, 1, rPerInch);
           sprayCount++;
         }
       }
@@ -291,8 +302,11 @@ export default function Settings() {
 
       const newVariants = [...materialVariants];
       function upsertVariant(material_name, thickness_in, r_value, facing, cost_per_sqft, markup_pct){
-        const key = v => `${v.material_name}|${v.thickness_in}|${v.r_value}|${v.facing||""}`.toLowerCase();
-        const targetKey = `${material_name}|${thickness_in}|${r_value}|${facing||""}`.toLowerCase();
+        // Matches the pricing lookup key — material + R-value only.
+        // Thickness varies by cavity depth on the actual job, not by price,
+        // so it's kept on the row for reference but isn't part of the match.
+        const key = v => `${v.material_name}|${v.r_value}`.toLowerCase();
+        const targetKey = `${material_name}|${r_value}`.toLowerCase();
         const idx = newVariants.findIndex(v=>key(v)===targetKey);
         const row = { id: idx>=0?newVariants[idx].id:null, material_name, thickness_in, r_value, facing,
           cost_per_sqft, markup_pct, sort_order: idx>=0?newVariants[idx].sort_order:newVariants.length };
@@ -459,6 +473,11 @@ export default function Settings() {
     setSaving(true);
     try {
       const THICK_MAP_LOCAL = {"2x4":3.5,"2x6":5.5,"2x8":7.25,"2x10":9.25,"2x12":11.25,"I-joist":11.875};
+      function parseRValueLocal(rValue){
+        if(!rValue) return 0;
+        const m = String(rValue).match(/(\d+(\.\d+)?)/);
+        return m ? parseFloat(m[1]) : 0;
+      }
 
       // load all projects for this company
       const { data:projects } = await supabase.from("projects")
@@ -475,7 +494,7 @@ export default function Settings() {
       const { data:mVariants } = await supabase.from("material_variants")
         .select("*").eq("company_id", company.id);
       const variantMap = {};
-      (mVariants||[]).forEach(v=>{ variantMap[`${v.material_name}|${v.thickness_in}|${v.r_value}`.toLowerCase()]=v; });
+      (mVariants||[]).forEach(v=>{ variantMap[`${v.material_name}|${v.r_value}`.toLowerCase()]=v; });
 
       // load overhead
       const { data:overheadCosts } = await supabase.from("cost_settings")
@@ -500,14 +519,16 @@ export default function Settings() {
         let totalSqft = 0;
         areas.forEach(a=>{
           totalSqft += Number(a.sqft||0);
-          const variant = variantMap[`${a.material}|${a.thickness_in}|${a.r_value}`.toLowerCase()];
+          const variant = variantMap[`${a.material}|${a.r_value}`.toLowerCase()];
           if(variant){
             materialCost += Number(a.sqft||0) * Number(variant.cost_per_sqft||0) * (1 + Number(variant.markup_pct||0)/100);
             return;
           }
           const mc = matCostMap[a.material];
           if(!mc) return;
-          const thick = THICK_MAP_LOCAL[a.thickness_in]||0;
+          const thick = (mc.unit==="board_ft" && mc.r_per_inch>0 && a.r_value)
+            ? parseRValueLocal(a.r_value)/Number(mc.r_per_inch)
+            : (THICK_MAP_LOCAL[a.thickness_in]||0);
           let qty = mc.unit==="board_ft" ? Number(a.sqft||0)*thick
                   : mc.unit==="bag" ? Math.ceil((Number(a.sqft||0)*thick)/(mc.coverage_factor||1))
                   : Number(a.sqft||0);
@@ -619,6 +640,18 @@ export default function Settings() {
         sort_order: 0,
       }]);
 
+      // save jobs-per-month (overhead allocation basis)
+      await supabase.from("cost_settings")
+        .delete().eq("company_id", company.id).eq("period","jobs_per_month");
+      await supabase.from("cost_settings").insert([{
+        company_id: company.id,
+        category: "Overhead",
+        name: "Jobs per month",
+        amount: Number(jobsPerMonth||20),
+        period: "jobs_per_month",
+        sort_order: 0,
+      }]);
+
       // save labor roles
       await supabase.from("cost_settings")
         .delete().eq("company_id", company.id).eq("period","labor_role");
@@ -664,6 +697,7 @@ export default function Settings() {
             cost_per_unit: Number(m.cost_per_unit)||0,
             markup_pct: Number(m.markup_pct)||0,
             coverage_factor: Number(m.coverage_factor)||1,
+            r_per_inch: m.r_per_inch!==""&&m.r_per_inch!=null ? Number(m.r_per_inch) : null,
           }))
         );
       }
@@ -911,7 +945,11 @@ export default function Settings() {
             <div style={{ fontSize:12, color:C.muted, marginBottom:10 }}>
               Enter your actual cost per unit and desired markup percentage.
               The sell price is calculated automatically. Coverage applies
-              to "bag" materials only (sqft-inches one bag covers).
+              to "bag" materials only (sqft-inches one bag covers). For
+              "board ft" spray foam, set R-value per inch instead (open
+              cell ≈3.75, closed cell ≈6.85) — the spray thickness used
+              for pricing is then calculated from each area's target
+              R-value, not from a stud-cavity dropdown.
             </div>
 
             <label style={{ display:"block", marginBottom:12 }}>
@@ -944,13 +982,15 @@ export default function Settings() {
                 <span>Unit</span>
                 <span>Cost</span>
                 <span>Mkup</span>
-                <span>Cover.</span>
+                <span>Cover./R-in</span>
                 <span>Sell Price</span>
                 <span></span>
               </div>
 
               {matCosts.map((m, i)=>{
                 const sellPrice = Number(m.cost_per_unit||0) * (1 + Number(m.markup_pct||0)/100);
+                const isBoardFt = m.unit==="board_ft";
+                const isBag = m.unit==="bag";
                 return (
                   <div key={i} style={{ display:"grid",
                       gridTemplateColumns:"2fr 1fr 70px 60px 65px 70px 28px",
@@ -978,12 +1018,20 @@ export default function Settings() {
                         style={{...I, height:28, fontSize:11, textAlign:"right"}} />
                       <span style={{ fontSize:11, color:C.muted }}>%</span>
                     </div>
-                    <input type="number" value={m.coverage_factor||1}
-                      disabled={m.unit!=="bag"}
-                      title="Sqft-inches one bag covers (bag materials only)"
-                      onChange={e=>updateMat(i,"coverage_factor",e.target.value)}
-                      style={{...I, height:28, fontSize:11, textAlign:"right",
-                        opacity:m.unit!=="bag"?0.4:1}} />
+                    {isBoardFt ? (
+                      <input type="number" value={m.r_per_inch||""}
+                        placeholder="R/in"
+                        title="R-value per inch for this spray foam — thickness sprayed is calculated from the area's target R-value, not a stud-cavity dropdown (e.g. open cell ≈3.75, closed cell ≈6.85)"
+                        onChange={e=>updateMat(i,"r_per_inch",e.target.value)}
+                        style={{...I, height:28, fontSize:11, textAlign:"right"}} />
+                    ) : (
+                      <input type="number" value={m.coverage_factor||1}
+                        disabled={!isBag}
+                        title="Sqft-inches one bag covers (bag materials only)"
+                        onChange={e=>updateMat(i,"coverage_factor",e.target.value)}
+                        style={{...I, height:28, fontSize:11, textAlign:"right",
+                          opacity:!isBag?0.4:1}} />
+                    )}
                     <div style={{ fontSize:12, fontWeight:700, color:C.green,
                         textAlign:"right" }}>
                       ${sellPrice.toFixed(2)}
@@ -1007,11 +1055,14 @@ export default function Settings() {
         {tab==="variants" && (
           <div>
             <div style={{ fontSize:12, color:C.muted, marginBottom:10 }}>
-              Batts and rigid foam are priced per exact thickness + R-value
-              combo (a 2x4 R-11 batt costs differently than a 2x12 R-38 batt).
-              Add one row per product you stock. When an estimate's area
-              matches a material + thickness + R-value here, this price is
-              used instead of the flat Materials tab price.
+              Batts and rigid foam are priced per R-value — an R-11 batt
+              costs differently than an R-38 batt. Add one row per product
+              you stock. <b>Pricing matches by Material + R-Value only</b>,
+              not thickness — the same R-value batt costs the same
+              regardless of which stud cavity it ends up in on the job.
+              Thickness is kept here just for your own reference. When an
+              estimate's area matches a Material + R-Value below, this
+              price is used instead of the flat Materials tab price.
             </div>
 
             <div style={{ background:C.white, borderRadius:10,

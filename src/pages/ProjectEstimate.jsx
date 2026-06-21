@@ -72,20 +72,32 @@ const OC_OPTS    = ['3"cc','7"oc','8"oc','12"oc','16"oc','24"oc','open cell'];
 const CONST_TYPES = ["New Construction","Remodeling","Addition","Existing Construction","Renovation","Commercial","Other"];
 const LADDER_OPTS = ["5ft","7ft","10ft","12ft","16ft","20ft","Lift","No ladder needed"];
 
+function parseRValueNumber(rValue){
+  if(!rValue) return 0;
+  const m = String(rValue).match(/(\d+(\.\d+)?)/);
+  return m ? parseFloat(m[1]) : 0;
+}
+
 function calcArea(sqft, thick, mat, rValue, variantMap) {
   if (!sqft || !mat) return { qty:0, unit:"-", line_total:0, unit_price:0 };
   // Discrete per-thickness/R-value product (batt, rigid foam sheet) takes
   // priority when a matching variant exists — priced flat per sqft.
   if(variantMap && mat.name){
-    const variant = variantMap[`${mat.name}|${thick}|${rValue||""}`.toLowerCase()];
+    const variant = variantMap[`${mat.name}|${rValue||""}`.toLowerCase()];
     if(variant){
       const sellPrice = Number(variant.cost_per_sqft||0)*(1+Number(variant.markup_pct||0)/100);
       const q = Math.round(sqft);
       return { qty:q, unit:"sqft", unit_price:sellPrice, line_total:Math.round(sqft*sellPrice*100)/100 };
     }
   }
-  const t = THICK_MAP[thick] || 0;
   const u = mat.unit, p = mat.price_per_unit || 0;
+  // Spray foam: the sprayed thickness is calculated from the target
+  // R-value (R-value ÷ R-per-inch), not picked from a stud-cavity
+  // dropdown — the stud/rafter size the area happens to be in is
+  // irrelevant to how much foam gets sprayed.
+  const t = (u==="board_ft" && mat.r_per_inch>0 && rValue)
+    ? parseRValueNumber(rValue)/Number(mat.r_per_inch)
+    : (THICK_MAP[thick] || 0);
   let q = u==="board_ft" ? sqft*t : u==="bag" ? Math.ceil((sqft*t)/(mat.coverage_factor||1)) : sqft;
   q = Math.round(q);
   return { qty:q, unit:u, unit_price:p, line_total:Math.round(q*p*100)/100 };
@@ -300,6 +312,7 @@ function AreaRow({ area, materials, materialMap, variantMap, onChange, onDelete,
 
   const [calcOpen, setCalcOpen] = useState(false);
   const [calcExpr, setCalcExpr] = useState(""); 
+  const [overrideOpen, setOverrideOpen] = useState(!!area.price_override);
 
   useEffect(()=>{
     if(area._collapsed) setExpanded(false);
@@ -353,10 +366,13 @@ function AreaRow({ area, materials, materialMap, variantMap, onChange, onDelete,
     onChange("oc", lines[0].oc||"");
   }
 
-  const totalCost = matLines.reduce((sum, ml) => {
-    const mat = materialMap ? materialMap[ml.material] : materials.find(m=>m.name===ml.material);
-    return sum + calcArea(computedSqft, ml.thickness_in, mat, ml.r_value, variantMap).line_total;
-  }, 0);
+  const isOverridden = area.price_override && Number(area.price_override)>0;
+  const totalCost = isOverridden
+    ? Math.round(computedSqft*Number(area.price_override)*100)/100
+    : matLines.reduce((sum, ml) => {
+        const mat = materialMap ? materialMap[ml.material] : materials.find(m=>m.name===ml.material);
+        return sum + calcArea(computedSqft, ml.thickness_in, mat, ml.r_value, variantMap).line_total;
+      }, 0);
 
   const firstMat = matLines[0].material;
   const isComplete = !!(area.area_type && firstMat && firstMat !== "__custom_mat__" && area.sqft > 0);
@@ -434,6 +450,7 @@ function useCalcResult(field) {
           {area.area_type||"—"}
         </span>
         <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+          {isOverridden && <span style={{fontSize:9,color:"#7c3aed",fontWeight:700}}>✏️ custom</span>}
           <span style={{ fontSize:11, fontWeight:700, color:"#059669" }}>${fmt(totalCost)}</span>
           <button onClick={()=>setExpanded(true)} style={{ border:"none", background:"none", color:"#059669", cursor:"pointer", fontSize:14, padding:"0 2px", lineHeight:1 }}>✏️</button>
         </div>
@@ -482,12 +499,34 @@ function useCalcResult(field) {
           padding:"6px 12px",borderRadius:6,cursor:"pointer",fontSize:13,fontWeight:700,whiteSpace:"nowrap"}}>
         {area.is_optional?"⭐ Optional":"☆ Mark Optional"}
       </button>
+      <button onClick={()=>{ if(overrideOpen){ onChange("price_override",""); } setOverrideOpen(p=>!p); }}
+        title="Override the price per sqft for this area, just on this job"
+        style={{border:"none",background:overrideOpen?"#7c3aed":"rgba(255,255,255,0.2)",
+          color:"#fff",
+          padding:"6px 12px",borderRadius:6,cursor:"pointer",fontSize:13,fontWeight:700,whiteSpace:"nowrap"}}>
+        {overrideOpen?"✕ Custom Price":"💲 Custom Price"}
+      </button>
       <button onClick={onDelete}
         style={{border:"none",background:"rgba(255,0,0,0.3)",color:"#fff",
           padding:"6px 12px",borderRadius:6,cursor:"pointer",fontSize:13,fontWeight:700}}>
         🗑 Delete
       </button>
     </div>
+    )}
+
+    {overrideOpen && (
+      <div style={{background:"#f5f3ff",border:"1px solid #ddd6fe",borderRadius:7,padding:"8px 10px",marginBottom:6}}>
+        <div style={{fontSize:10,color:"#6d28d9",fontWeight:700,textTransform:"uppercase",marginBottom:4}}>
+          Custom price for this job (overrides catalog pricing)
+        </div>
+        <div style={{display:"flex",alignItems:"center",gap:6}}>
+          <span style={{fontSize:12,color:"#6d28d9"}}>$</span>
+          <input type="number" placeholder="0.00" value={area.price_override||""}
+            onChange={e=>onChange("price_override",e.target.value)}
+            style={{...XS,width:90}} />
+          <span style={{fontSize:11,color:"#6d28d9"}}>/ sqft × {fmt(computedSqft)} ft²</span>
+        </div>
+      </div>
     )}
 
       {/* area type */}
@@ -954,7 +993,20 @@ function EstimatePanel({ floors, areas, materialMap, variantMap, crewNotes, proj
   );
 }
 
-// ── helpers ───────────────────────────────────────────────────────────────────
+// For combo areas, an override applies once to the whole area — only the
+// first mat_line carries the overridden price, the rest are zeroed out so
+// the total isn't multiplied by the number of combo layers.
+function calcAreaForSave(area, ml, mi, mat, variantMap) {
+  if(area.price_override && Number(area.price_override)>0){
+    if(mi===0){
+      const sellPrice = Number(area.price_override);
+      const q = Math.round(area.sqft||0);
+      return { qty:q, unit:"sqft", unit_price:sellPrice, line_total:Math.round((area.sqft||0)*sellPrice*100)/100 };
+    }
+    return { qty:0, unit:"sqft", unit_price:0, line_total:0 };
+  }
+  return calcArea(area.sqft, ml.thickness_in, mat, ml.r_value, variantMap);
+}
 function isAreaComplete(area) {
   const lines=area.mat_lines&&area.mat_lines.length>0?area.mat_lines:[{material:area.material||""}];
   const mat=lines[0].material;
@@ -962,10 +1014,15 @@ function isAreaComplete(area) {
 }
 
 function getAreaTotalCost(area, materialMap, variantMap) {
-  const lines=area.mat_lines&&area.mat_lines.length>0?area.mat_lines:[{material:area.material||"",thickness_in:area.thickness_in||"",r_value:area.r_value||"",oc:area.oc||""}];
   const raw=(area.measurements||[]).reduce((s,m)=>s+(m.sqft||0),0);
   const d=parseFloat(area.deduct_sqft)||0;
   const safeSqft=raw>0?Math.max(0,Math.round(raw-d)):(area.sqft||0);
+  // Per-job manual price override — bypasses the catalog/variant pricing
+  // entirely for this one area on this one estimate.
+  if(area.price_override && Number(area.price_override)>0){
+    return Math.round(safeSqft*Number(area.price_override)*100)/100;
+  }
+  const lines=area.mat_lines&&area.mat_lines.length>0?area.mat_lines:[{material:area.material||"",thickness_in:area.thickness_in||"",r_value:area.r_value||"",oc:area.oc||""}];
   return lines.reduce((sum,ml)=>{
     const mat=materialMap[ml.material];
     return sum+calcArea(safeSqft,ml.thickness_in,mat,ml.r_value,variantMap).line_total;
@@ -1009,6 +1066,9 @@ export default function ProjectEstimate() {
   const [fuelRate,setFuelRate]=useState(0.67);
   const [salesReps,setSalesReps]=useState([]);
   const [selectedRep,setSelectedRep]=useState("");
+  const [overheadCostsLive,setOverheadCostsLive]=useState([]);
+  const [consumablesLive,setConsumablesLive]=useState([]);
+  const [jobsPerMonthLive,setJobsPerMonthLive]=useState(20);
   const [newFloorName,setNewFloorName]=useState("");
   const [addingFloor,setAddingFloor]=useState(false);
   const [panelOpen,setPanelOpen]=useState(false);
@@ -1116,6 +1176,12 @@ export default function ProjectEstimate() {
       if(fuel) setFuelRate(Number(fuel.amount||0.67));
       const {data:reps}=await supabase.from("sales_reps").select("*").eq("company_id",cd.id).eq("active",true).order("created_at");
       if(reps?.length) setSalesReps(reps);
+      const {data:overheadRows}=await supabase.from("cost_settings").select("*").eq("company_id",cd.id).not("period","eq","job_consumable").not("period","eq","labor_role").not("period","eq","fuel").not("period","eq","jobs_per_month");
+      if(overheadRows) setOverheadCostsLive(overheadRows);
+      const {data:consumableRows}=await supabase.from("cost_settings").select("*").eq("company_id",cd.id).eq("period","job_consumable");
+      if(consumableRows) setConsumablesLive(consumableRows);
+      const {data:jpmRow}=await supabase.from("cost_settings").select("*").eq("company_id",cd.id).eq("period","jobs_per_month").maybeSingle();
+      if(jpmRow) setJobsPerMonthLive(Number(jpmRow.amount||20));
     });
   },[]);
 
@@ -1239,11 +1305,11 @@ export default function ProjectEstimate() {
     return Object.fromEntries(materials.map(m=>{
       const mc=costMap[m.name];
       const sellPrice=mc ? Number(mc.cost_per_unit||0)*(1+Number(mc.markup_pct||0)/100) : Number(m.price_per_unit||0);
-      return [m.name, { name:m.name, unit: mc?mc.unit:m.unit, price_per_unit: sellPrice, coverage_factor: mc?Number(mc.coverage_factor||1):1 }];
+      return [m.name, { name:m.name, unit: mc?mc.unit:m.unit, price_per_unit: sellPrice, coverage_factor: mc?Number(mc.coverage_factor||1):1, r_per_inch: mc&&mc.r_per_inch ? Number(mc.r_per_inch) : null }];
     }));
   },[materials, matCostsLive]);
   const variantMap=useMemo(()=>Object.fromEntries(
-    variantsLive.map(v=>[`${v.material_name}|${v.thickness_in}|${v.r_value}`.toLowerCase(), v])
+    variantsLive.map(v=>[`${v.material_name}|${v.r_value}`.toLowerCase(), v])
   ),[variantsLive]);
   const selectedLead=leads.find(l=>String(l.id)===String(selectedLeadId));
 
@@ -1306,11 +1372,21 @@ export default function ProjectEstimate() {
     ]);
     const matCostMap={};(matCosts||[]).forEach(m=>{matCostMap[m.material_name]=m;});
     // variant key ignores facing (areas don't currently track it) — matches on material+thickness+R-value
-    const variantMap={};(variants||[]).forEach(v=>{variantMap[`${v.material_name}|${v.thickness_in}|${v.r_value}`.toLowerCase()]=v;});
+    const variantMap={};(variants||[]).forEach(v=>{variantMap[`${v.material_name}|${v.r_value}`.toLowerCase()]=v;});
     const TM={"2x4":3.5,"2x6":5.5,"2x8":7.25,"2x10":9.25,"2x12":11.25,"I-joist":11.875};
     let materialCost=0;
+    const overriddenAreaIds=new Set();
     allAreas.forEach(a=>{
-      const variantKey=`${a.material}|${a.thickness_in}|${a.r_value}`.toLowerCase();
+      // Per-job manual price override — counted once per area even though
+      // combo areas appear here once per mat_line.
+      if(a.price_override && Number(a.price_override)>0){
+        const areaKey=a.id||a.temp_id;
+        if(areaKey && overriddenAreaIds.has(areaKey)) return;
+        if(areaKey) overriddenAreaIds.add(areaKey);
+        materialCost+=(a.sqft||0)*Number(a.price_override);
+        return;
+      }
+      const variantKey=`${a.material}|${a.r_value}`.toLowerCase();
       const variant=variantMap[variantKey];
       if(variant){
         // discrete per-thickness/R-value product (batt, rigid foam sheet) — priced flat per sqft
@@ -1318,7 +1394,9 @@ export default function ProjectEstimate() {
         return;
       }
       const mc=matCostMap[a.material];if(!mc)return;
-      const thick=TM[a.thickness_in]||0;
+      const thick=(mc.unit==="board_ft" && mc.r_per_inch>0 && a.r_value)
+        ? parseRValueNumber(a.r_value)/Number(mc.r_per_inch)
+        : (TM[a.thickness_in]||0);
       let qty=mc.unit==="board_ft"?(a.sqft||0)*thick:mc.unit==="bag"?Math.ceil(((a.sqft||0)*thick)/(mc.coverage_factor||1)):(a.sqft||0);
       materialCost+=qty*Number(mc.cost_per_unit||0)*(1+Number(mc.markup_pct||0)/100);
     });
@@ -1384,7 +1462,7 @@ async function saveProject() {
         const mls=(a.mat_lines&&a.mat_lines.length>0)?a.mat_lines:[{material:a.material||"",thickness_in:a.thickness_in||"",r_value:a.r_value||"",oc:a.oc||""}];
         return mls.map((ml,mi)=>{
           const mat=materialMap[ml.material];
-          const {qty,unit,unit_price,line_total}=calcArea(a.sqft,ml.thickness_in,mat,ml.r_value,variantMap);
+          const {qty,unit,unit_price,line_total}=calcAreaForSave(a,ml,mi,mat,variantMap);
           return {project_id:targetProjectId,floor_id:floorMap[floor],area_type:a.area_type,material:ml.material,thickness_in:ml.thickness_in||null,r_value:ml.r_value,sqft:a.sqft,qty,unit,unit_price,line_total,order_index:i*10+mi,company_id:companyId,options:mi===0?(a.options||[]):[]};
         });
       }));
@@ -1416,7 +1494,7 @@ async function saveProject() {
       const floorMap={};(floorRows||[]).forEach(f=>{floorMap[f.name]=f.id;});
       const allAreas=floors.flatMap(floor=>(areas[floor]||[]).filter(a=>a.area_type&&a.sqft).flatMap((a,i)=>{
         const mls=(a.mat_lines&&a.mat_lines.length>0)?a.mat_lines:[{material:a.material||"",thickness_in:a.thickness_in||"",r_value:a.r_value||"",oc:a.oc||""}];
-        return mls.map((ml,mi)=>{const mat=materialMap[ml.material];const {qty,unit,unit_price,line_total}=calcArea(a.sqft,ml.thickness_in,mat,ml.r_value,variantMap);return {project_id:proj.id,floor_id:floorMap[floor],area_type:a.area_type,material:ml.material,thickness_in:ml.thickness_in||null,r_value:ml.r_value,sqft:a.sqft,qty,unit,unit_price,line_total,order_index:i*10+mi,company_id:companyId,options:mi===0?(a.options||[]):[]}; });
+        return mls.map((ml,mi)=>{const mat=materialMap[ml.material];const {qty,unit,unit_price,line_total}=calcAreaForSave(a,ml,mi,mat,variantMap);return {project_id:proj.id,floor_id:floorMap[floor],area_type:a.area_type,material:ml.material,thickness_in:ml.thickness_in||null,r_value:ml.r_value,sqft:a.sqft,qty,unit,unit_price,line_total,order_index:i*10+mi,company_id:companyId,options:mi===0?(a.options||[]):[]}; });
       }));
       if(allAreas.length>0){
         const {data:areaRows,error:ae}=await supabase.from("areas").insert(allAreas).select();
@@ -1592,6 +1670,76 @@ async function saveProject() {
               </span>
             </div>
           </div>
+
+          {/* Full Cost Breakdown — menu of every cost feeding the quote */}
+          {(()=>{
+            const realTotalSqftLive = floors.reduce((s,f)=>s+(areas[f]||[]).filter(a=>!a.is_optional).reduce((ss,a)=>ss+(a.sqft||0),0),0);
+            const overheadPerJobLive = jobsPerMonthLive>0 ? overheadCostsLive.reduce((s,c)=>s+Number(c.amount||0),0)/jobsPerMonthLive : 0;
+            const consumablesPerJobLive = consumablesLive.reduce((s,c)=>s+Number(c.amount||0),0) * (realTotalSqftLive>0?realTotalSqftLive/1000:1);
+            const fuelCostLive = Number(jobMiles||0)*2*fuelRate;
+            const repLive = selectedRep?salesReps.find(r=>r.id===selectedRep):null;
+            const commissionPctLive = repLive?Number(repLive.commission_pct||0):0;
+            const subtotalLive = projectMaterialTotal+projectLaborTotal+overheadPerJobLive+consumablesPerJobLive+fuelCostLive;
+            const marginLive=30;
+            const withMarginLive = subtotalLive*(1+marginLive/100);
+            const commissionCostLive = withMarginLive*commissionPctLive/100;
+            const grandTotalLive = withMarginLive+commissionCostLive;
+            return (
+              <div style={CARD_ORANGE}>
+                <div style={{fontSize:11,fontWeight:700,color:C.muted,marginBottom:6,textTransform:"uppercase",letterSpacing:0.4}}>
+                  💲 Full Cost Breakdown
+                </div>
+
+                <div style={{display:"flex",justifyContent:"space-between",fontSize:12,padding:"3px 0"}}>
+                  <span style={{color:C.muted}}>Materials</span>
+                  <span style={{fontWeight:600}}>${fmt(projectMaterialTotal)}</span>
+                </div>
+                <div style={{display:"flex",justifyContent:"space-between",fontSize:12,padding:"3px 0"}}>
+                  <span style={{color:C.muted}}>Labor</span>
+                  <span style={{fontWeight:600}}>${fmt(projectLaborTotal)}</span>
+                </div>
+                <div style={{display:"flex",justifyContent:"space-between",fontSize:12,padding:"3px 0"}}>
+                  <span style={{color:C.muted}}>Overhead ({jobsPerMonthLive} jobs/mo)</span>
+                  <span style={{fontWeight:600}}>${fmt(overheadPerJobLive)}</span>
+                </div>
+                <div style={{display:"flex",justifyContent:"space-between",fontSize:12,padding:"3px 0"}}>
+                  <span style={{color:C.muted}}>Consumables</span>
+                  <span style={{fontWeight:600}}>${fmt(consumablesPerJobLive)}</span>
+                </div>
+
+                {/* Fuel — editable job miles */}
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:12,padding:"3px 0"}}>
+                  <span style={{color:C.muted,display:"flex",alignItems:"center",gap:4}}>
+                    Fuel
+                    <input type="number" placeholder="miles" value={jobMiles}
+                      onChange={e=>setJobMiles(e.target.value)}
+                      style={{...I,width:56,height:22,fontSize:10,textAlign:"right"}} />
+                    <span style={{fontSize:10}}>mi</span>
+                  </span>
+                  <span style={{fontWeight:600}}>${fmt(fuelCostLive)}</span>
+                </div>
+
+                {/* Sales rep / commission — editable */}
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:12,padding:"3px 0"}}>
+                  <span style={{color:C.muted,display:"flex",alignItems:"center",gap:4}}>
+                    <select value={selectedRep} onChange={e=>setSelectedRep(e.target.value)}
+                      style={{...I,width:90,height:22,fontSize:10}}>
+                      <option value="">No rep…</option>
+                      {salesReps.map(r=><option key={r.id} value={r.id}>{r.name}</option>)}
+                    </select>
+                    {commissionPctLive>0 && <span style={{fontSize:10}}>({commissionPctLive}%)</span>}
+                  </span>
+                  <span style={{fontWeight:600}}>${fmt(commissionCostLive)}</span>
+                </div>
+
+                <div style={{display:"flex",justifyContent:"space-between",marginTop:6,paddingTop:6,
+                    borderTop:`2px solid ${C.ink}`,fontSize:13,fontWeight:800}}>
+                  <span>Grand Total</span>
+                  <span style={{color:C.green}}>${fmt(grandTotalLive)}</span>
+                </div>
+              </div>
+            );
+          })()}
         </div>
 
         <div className="estimate-side-panel" style={{width:220,flexShrink:0,borderLeft:`1px solid ${C.border}`,background:C.white,overflowY:"auto",padding:"10px 10px 20px"}}>
