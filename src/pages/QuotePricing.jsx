@@ -28,6 +28,9 @@ export default function QuotePricing() {
   // labor roles from settings
   const [laborRoles, setLaborRoles] = useState([]);
 
+  // consumables from settings — adjustable per job (e.g. bump qty for a bigger job)
+  const [consumables, setConsumables] = useState([]);
+
   // fuel
   const [jobMiles, setJobMiles] = useState("");
   const [fuelRate, setFuelRate] = useState(0.67);
@@ -90,6 +93,14 @@ export default function QuotePricing() {
         const { data:reps } = await supabase.from("sales_reps")
           .select("*").eq("company_id",cd.id).eq("active",true);
         if(reps?.length) setSalesReps(reps);
+
+        // consumables — adjustable qty multiplier per job
+        const { data:cons } = await supabase.from("cost_settings")
+          .select("*").eq("company_id",cd.id).eq("period","job_consumable")
+          .order("sort_order");
+        if(cons?.length){
+          setConsumables(cons.map(c=>({ name:c.name, amount:Number(c.amount||0), qty:"1" })));
+        }
       }
     }
 
@@ -107,11 +118,13 @@ export default function QuotePricing() {
 
   const fuelCost = Number(jobMiles||0)*2*fuelRate;
 
+  const consumablesCost = consumables.reduce((s,c)=>s+Number(c.amount||0)*Number(c.qty||1),0);
+
   const extraTotal = extras.reduce((s,e)=>s+Number(e.amount||0),0);
 
   const discountAmt = Number(discount||0);
 
-  const totalCost = baseCost + laborCost + fuelCost;
+  const totalCost = baseCost + laborCost + fuelCost + consumablesCost;
 
   const rep = salesReps.find(r=>r.id===selectedRep);
   const commissionPct = rep ? Number(rep.commission_pct||0) : 0;
@@ -131,6 +144,7 @@ export default function QuotePricing() {
       await supabase.from("quotes").update({
         labor_cost: Math.round(laborCost*100)/100,
         fuel_cost: Math.round(fuelCost*100)/100,
+        consumables_cost: Math.round(consumablesCost*100)/100,
         commission_cost: Math.round(commission*100)/100,
         commission_pct: commissionPct,
         job_miles: Number(jobMiles||0),
@@ -270,6 +284,51 @@ export default function QuotePricing() {
           )}
         </div>
 
+        {/* CONSUMABLES */}
+        {consumables.length>0 && (
+          <div style={{background:C.white,borderRadius:12,border:`1px solid ${C.border}`,
+              padding:"14px 16px",marginBottom:12}}>
+            <div style={{fontSize:11,fontWeight:700,color:C.faint,
+                textTransform:"uppercase",letterSpacing:0.4,marginBottom:4}}>
+              📦 Consumables
+            </div>
+            <div style={{fontSize:11,color:C.muted,marginBottom:10}}>
+              Bump the qty on anything you'll need more of for this job.
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"2fr 70px 70px 70px",gap:4,
+                marginBottom:4,fontSize:9,fontWeight:700,color:C.faint,textTransform:"uppercase"}}>
+              <span>Item</span><span>Each</span><span>Qty</span><span>Cost</span>
+            </div>
+            {consumables.map((c,i)=>{
+              const rowCost = Number(c.amount||0)*Number(c.qty||1);
+              return (
+                <div key={i} style={{display:"grid",gridTemplateColumns:"2fr 70px 70px 70px",
+                    gap:4,marginBottom:4,alignItems:"center"}}>
+                  <div style={{fontSize:12,fontWeight:600,color:C.ink,
+                      overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                    {c.name||"—"}
+                  </div>
+                  <div style={{fontSize:11,color:C.muted,textAlign:"center"}}>${fmt(c.amount)}</div>
+                  <input type="number" value={c.qty}
+                    onChange={e=>setConsumables(p=>p.map((x,j)=>j===i?{...x,qty:e.target.value}:x))}
+                    style={{...I,height:28,fontSize:11,textAlign:"center"}} />
+                  <div style={{fontSize:11,color:C.green,fontWeight:700,textAlign:"right"}}>
+                    ${fmt(rowCost)}
+                  </div>
+                </div>
+              );
+            })}
+            {consumablesCost>0 && (
+              <div style={{display:"flex",justifyContent:"space-between",
+                  paddingTop:8,borderTop:`1px solid ${C.border}`,
+                  fontSize:13,fontWeight:700,color:C.ink}}>
+                <span>Total Consumables</span>
+                <span style={{color:C.green}}>${fmt(consumablesCost)}</span>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* FUEL */}
         <div style={{background:C.white,borderRadius:12,border:`1px solid ${C.border}`,
             padding:"14px 16px",marginBottom:12}}>
@@ -383,6 +442,12 @@ export default function QuotePricing() {
             <span style={{color:"#94a3b8",fontSize:12}}>Labor</span>
             <span style={{color:"white",fontSize:12}}>${fmt(laborCost)}</span>
           </div>
+          {consumablesCost>0 && (
+            <div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}>
+              <span style={{color:"#94a3b8",fontSize:12}}>Consumables</span>
+              <span style={{color:"white",fontSize:12}}>${fmt(consumablesCost)}</span>
+            </div>
+          )}
           <div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}>
             <span style={{color:"#94a3b8",fontSize:12}}>Fuel</span>
             <span style={{color:"white",fontSize:12}}>${fmt(fuelCost)}</span>
