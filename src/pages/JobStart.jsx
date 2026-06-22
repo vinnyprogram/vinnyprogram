@@ -117,6 +117,7 @@ export default function JobStart() {
     if(!newName.trim()) return;
     const { data, error } = await supabase.from("customers").insert([{
       name:newName.trim(), phone:newPhone.trim(), status:"New", estimate_amount:0,
+      company_id: company?.id || null,
     }]).select().single();
     if(error){ alert("Could not create customer: "+(error.message)); return; }
     const freshLeads = [...leads, data];
@@ -200,7 +201,7 @@ export default function JobStart() {
             <div style={{position:"relative"}}>
               <input value={query} onChange={e=>setQuery(e.target.value)}
                 placeholder="Search customer by name or phone…" style={{...I,paddingRight:80}} autoFocus />
-              <button onClick={()=>setCreating(true)}
+              <button onClick={()=>{ setCreating(true); setNewName(query.trim()); }}
                 style={{position:"absolute",right:4,top:4,height:30,padding:"0 10px",
                   borderRadius:6,border:"none",background:C.ink,color:"#fff",
                   cursor:"pointer",fontSize:12,fontWeight:700}}>
