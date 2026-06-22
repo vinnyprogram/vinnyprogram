@@ -92,6 +92,7 @@ export default function QuotePricing() {
       { data:reps },
       { data:cons },
       { data:areas },
+      { data:floorRows },
       { data:matCosts },
       { data:variants },
       { data:overheadRows },
@@ -101,7 +102,8 @@ export default function QuotePricing() {
       supabase.from("cost_settings").select("*").eq("company_id",cd.id).eq("period","fuel").maybeSingle(),
       supabase.from("sales_reps").select("*").eq("company_id",cd.id).eq("active",true),
       supabase.from("cost_settings").select("*").eq("company_id",cd.id).eq("period","job_consumable").order("sort_order"),
-      supabase.from("project_areas").select("*").eq("project_id",projectId),
+      supabase.from("areas").select("*").eq("project_id",projectId).order("order_index"),
+      supabase.from("project_floors").select("*").eq("project_id",projectId).order("order_index"),
       supabase.from("material_costs").select("*").eq("company_id",cd.id),
       supabase.from("material_variants").select("*").eq("company_id",cd.id),
       supabase.from("cost_settings").select("*").eq("company_id",cd.id)
@@ -110,12 +112,19 @@ export default function QuotePricing() {
       supabase.from("cost_settings").select("*").eq("company_id",cd.id).eq("period","jobs_per_month").maybeSingle(),
     ]);
 
-    // crew
+    // build floor name lookup
+    const floorNameMap = {};
+    (floorRows||[]).forEach(f=>{ floorNameMap[f.id]=f.name||f.label||""; });
+
+    // crew — filter out blank-named roles (from testing), pre-populate from Settings
     if(roles?.length){
-      setLaborRoles(roles.map(r=>({
-        role:r.name, rate:Number(r.amount||0),
-        people:"1", days:"1", hours:"8", extra:"",
-      })));
+      const validRoles = roles.filter(r=>r.name&&r.name.trim());
+      if(validRoles.length){
+        setLaborRoles(validRoles.map(r=>({
+          role:r.name, rate:Number(r.amount||0),
+          people:"1", days:"1", hours:"8", extra:"", included:true,
+        })));
+      }
     }
 
     // fuel rate + shop address
@@ -146,6 +155,7 @@ export default function QuotePricing() {
       let lineTotal = 0;
       let pricingNote = "";
       let effectivePerSqft = 0;
+      const floorName = floorNameMap[a.floor_id]||"";
 
       if(a.price_override && Number(a.price_override)>0){
         const key = a.id||`${a.area_type}${a.sqft}`;
@@ -184,7 +194,7 @@ export default function QuotePricing() {
 
       matTotal += lineTotal;
       lines.push({
-        floor: a.floor_name||"",
+        floor: floorName,
         area_type: a.area_type||"",
         material: a.material||"",
         r_value: a.r_value||"",
@@ -343,8 +353,8 @@ export default function QuotePricing() {
             <span style={{fontSize:9,color:"#059669",fontWeight:600}}>● live from Settings</span>
           </div>
           {areaCostLines.length===0 ? (
-            <div style={{fontSize:12,color:C.faint,padding:"8px 0"}}>
-              No areas entered on the estimate yet — go back and add measurements.
+            <div style={{fontSize:12,color:"#b45309",background:"#fffbeb",border:"1px solid #fde68a",borderRadius:6,padding:"8px 12px"}}>
+              ⚠️ No areas found — go back to the estimate, add measurements, and click <b>Save</b> before opening the Quote screen.
             </div>
           ) : (
             areaCostLines.map((a,i)=>(
@@ -379,8 +389,8 @@ export default function QuotePricing() {
             <span style={{fontSize:9,color:C.faint}}>÷ {jobsPerMonth} jobs/mo</span>
           </div>
           {overheadLines.length===0 ? (
-            <div style={{fontSize:12,color:C.faint,padding:"8px 0"}}>
-              No overhead costs set up yet — add them in <b>Settings → Overhead</b>.
+            <div style={{fontSize:12,color:"#b45309",background:"#fffbeb",border:"1px solid #fde68a",borderRadius:6,padding:"8px 12px"}}>
+              ⚠️ No overhead costs yet — add them in <b>Settings → Overhead</b> (rent, insurance, vehicles, etc.).
             </div>
           ) : (
             overheadLines.map((o,i)=>(
@@ -403,23 +413,31 @@ export default function QuotePricing() {
         <div style={CARD}>
           <div style={SEC}>
             <span>👷 Crew & Labor</span>
-            <span style={{fontSize:10,color:C.muted,fontWeight:400}}>adjust for this job</span>
+            <span style={{fontSize:10,color:C.muted,fontWeight:400}}>pre-loaded from Settings — adjust for this job</span>
           </div>
-          <div style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 1fr 1fr 1fr 24px",gap:4,marginBottom:6}}>
-            {["Role","Hrs/day","Days","People","$/hr","Extra/p",""].map((h,i)=>(
-              <div key={i} style={{fontSize:9,color:C.faint,fontWeight:700,textTransform:"uppercase"}}>{h}</div>
-            ))}
-          </div>
+          {laborRoles.length===0 && (
+            <div style={{fontSize:12,color:"#b45309",background:"#fffbeb",border:"1px solid #fde68a",borderRadius:6,padding:"8px 12px",marginBottom:10}}>
+              ⚠️ No crew roles yet — set them up in <b>Settings → Labor Roles</b> with hourly rates.
+            </div>
+          )}
+          {laborRoles.length>0 && (
+            <div style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 1fr 1fr 1fr 80px 24px",gap:4,marginBottom:6}}>
+              {["Role","Hrs/day","Days","People","$/hr","Extra/p","Cost",""].map((h,i)=>(
+                <div key={i} style={{fontSize:9,color:C.faint,fontWeight:700,textTransform:"uppercase"}}>{h}</div>
+              ))}
+            </div>
+          )}
           {laborRoles.map((r,i)=>{
             const rowCost = Number(r.hours||8)*Number(r.days||1)*Number(r.people||1)*Number(r.rate||0)+Number(r.extra||0)*Number(r.people||1);
             return (
-              <div key={i} style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 1fr 1fr 1fr 24px",gap:4,marginBottom:5,alignItems:"center"}}>
+              <div key={i} style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 1fr 1fr 1fr 80px 24px",gap:4,marginBottom:5,alignItems:"center"}}>
                 <input value={r.role||""} onChange={e=>setLaborRoles(p=>p.map((x,j)=>j===i?{...x,role:e.target.value}:x))} placeholder="Role name" style={{...I,height:28,fontSize:11}} />
                 <input type="number" value={r.hours} onChange={e=>setLaborRoles(p=>p.map((x,j)=>j===i?{...x,hours:e.target.value}:x))} style={{...I,height:28,fontSize:11,textAlign:"center"}} />
                 <input type="number" value={r.days} onChange={e=>setLaborRoles(p=>p.map((x,j)=>j===i?{...x,days:e.target.value}:x))} style={{...I,height:28,fontSize:11,textAlign:"center"}} />
                 <input type="number" value={r.people} onChange={e=>setLaborRoles(p=>p.map((x,j)=>j===i?{...x,people:e.target.value}:x))} style={{...I,height:28,fontSize:11,textAlign:"center",fontWeight:700,color:Number(r.people)>1?"#059669":C.ink}} />
                 <input type="number" value={r.rate} onChange={e=>setLaborRoles(p=>p.map((x,j)=>j===i?{...x,rate:e.target.value}:x))} style={{...I,height:28,fontSize:11,textAlign:"center"}} />
                 <input type="number" placeholder="0" value={r.extra} onChange={e=>setLaborRoles(p=>p.map((x,j)=>j===i?{...x,extra:e.target.value}:x))} style={{...I,height:28,fontSize:11,textAlign:"center"}} />
+                <div style={{fontSize:12,fontWeight:700,color:rowCost>0?C.green:C.faint,textAlign:"right"}}>${fmt(rowCost)}</div>
                 <button onClick={()=>setLaborRoles(p=>p.filter((_,j)=>j!==i))} style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:16,padding:0,lineHeight:1}}>✕</button>
               </div>
             );
@@ -429,7 +447,7 @@ export default function QuotePricing() {
               style={{border:`1px dashed ${C.border}`,background:"none",color:C.muted,padding:"6px 14px",borderRadius:6,cursor:"pointer",fontSize:12}}>
               + Add Role
             </button>
-            {laborCost>0 && <div style={TOTAL_ROW}><span>Total Labor</span><span style={{color:C.green,marginLeft:12}}>${fmt(laborCost)}</span></div>}
+            {laborCost>0 && <div style={{...TOTAL_ROW,marginBottom:0}}><span>Total Labor</span><span style={{color:C.green,marginLeft:12}}>${fmt(laborCost)}</span></div>}
           </div>
         </div>
 
@@ -439,6 +457,11 @@ export default function QuotePricing() {
             <span>📦 Consumables & Job-Site Costs</span>
             <span style={{fontSize:10,color:C.muted,fontWeight:400}}>adjust qty per job</span>
           </div>
+          {consumables.length===0 && (
+            <div style={{fontSize:12,color:"#b45309",background:"#fffbeb",border:"1px solid #fde68a",borderRadius:6,padding:"8px 12px",marginBottom:8}}>
+              ⚠️ No consumables yet — set them up in <b>Settings → Consumables</b>, then they'll auto-load here with qty fields.
+            </div>
+          )}
           {consumables.length>0 && (
             <>
               <div style={{display:"grid",gridTemplateColumns:"2fr 80px 70px 80px 24px",gap:4,marginBottom:6,fontSize:9,fontWeight:700,color:C.faint,textTransform:"uppercase"}}>
@@ -463,7 +486,7 @@ export default function QuotePricing() {
               style={{border:`1px dashed ${C.border}`,background:"none",color:C.muted,padding:"6px 14px",borderRadius:6,cursor:"pointer",fontSize:12}}>
               + Add Item
             </button>
-            {consumablesCost>0 && <div style={TOTAL_ROW}><span>Total Consumables</span><span style={{color:C.green,marginLeft:12}}>${fmt(consumablesCost)}</span></div>}
+            {consumablesCost>0 && <div style={{...TOTAL_ROW,marginBottom:0}}><span>Total Consumables</span><span style={{color:C.green,marginLeft:12}}>${fmt(consumablesCost)}</span></div>}
           </div>
         </div>
 
