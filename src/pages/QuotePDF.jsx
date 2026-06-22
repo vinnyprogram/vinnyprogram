@@ -157,11 +157,12 @@ export default function QuotePDF() {
       farr.forEach(a=>{
         if(!typeMap[a.area_type]) typeMap[a.area_type]={
           area_type:a.area_type, material:a.material, floor:floorName,
-          areas:[], totalSqft:0, totalCost:0,
+          areas:[], totalSqft:0, totalCost:0, totalPaintSqft:0,
         };
         typeMap[a.area_type].areas.push(a);
         typeMap[a.area_type].totalSqft += a.sqft||0;
         typeMap[a.area_type].totalCost += a.line_total||0;
+        typeMap[a.area_type].totalPaintSqft += Number(a.paint_sqft||0);
       });
       Object.values(typeMap).forEach(g=>result.push(g));
     });
@@ -181,7 +182,10 @@ export default function QuotePDF() {
     const floorList = floorNames.map(f=>
       `- ${f} ${group.area_type}`
     ).join('\n');
-    return `${desc} over the following areas:\n${floorList}`;
+    const paintLine = group.totalPaintSqft>0
+      ? `\n🎨 Intumescent paint: ${group.totalPaintSqft} ft²`
+      : "";
+    return `${desc} over the following areas:\n${floorList}${paintLine}`;
   }
 
   if(loading) return (

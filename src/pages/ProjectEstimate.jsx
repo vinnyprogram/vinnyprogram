@@ -464,6 +464,7 @@ function useCalcResult(field) {
               {fmt(computedSqft)} ft²
               {(area.measurements||[]).length>0 && <span style={{ marginLeft:4 }}>({area.measurements.map(m=>`${m.h}×${m.l}${m.q>1?`×${m.q}`:""}`).join("  ")})</span>}
               {area.deduct_sqft>0 && <span style={{color:"#ef4444"}}> −{area.deduct_sqft}</span>}
+              {Number(area.paint_sqft)>0 && <span style={{color:"#c2410c",marginLeft:4}}>🎨 {area.paint_sqft} ft²</span>}
             </span>
           )}
         </div>
@@ -887,6 +888,30 @@ function useCalcResult(field) {
             className="area-deduct" style={{...I,...noArrow,width:70,padding:"0 6px",height:30,fontSize:12}} />
           {totalCost>0&&<div style={{marginLeft:"auto",fontWeight:700,color:C.green,fontSize:13}}>Total ${fmt(totalCost)}</div>}
         </div>
+
+        {/* Intumescent paint — shown only for spray foam (open/closed cell) when
+            the foam isn't covered for fire rating and needs painting */}
+        {(()=>{
+          const matName=(area.material||"").toLowerCase();
+          const isSprayFoam=matName.includes("closed")||matName.includes("open cell");
+          if(!isSprayFoam) return null;
+          return (
+            <div style={{display:"flex",alignItems:"center",gap:6,marginTop:4,
+                background:"#fff7ed",border:"1px solid #fed7aa",borderRadius:6,padding:"4px 8px"}}>
+              <span style={{fontSize:10,color:"#c2410c",whiteSpace:"nowrap",fontWeight:600}}>🎨 Intumescent paint</span>
+              <input type="number" placeholder="0" inputMode="decimal" value={area.paint_sqft||""}
+                onChange={e=>onChange("paint_sqft",e.target.value)}
+                style={{...I,...noArrow,width:70,padding:"0 6px",height:26,fontSize:12}} />
+              <span style={{fontSize:10,color:"#c2410c"}}>ft²</span>
+              {Number(area.paint_sqft)>0 && (()=>{
+                const paintMat=materialMap&&Object.values(materialMap).find(m=>m.name?.toLowerCase().includes("intumescent"));
+                return paintMat
+                  ? <span style={{marginLeft:"auto",fontSize:11,color:"#c2410c",fontWeight:600}}>${fmt(Number(area.paint_sqft)*Number(paintMat.price_per_unit||0))}</span>
+                  : <span style={{marginLeft:"auto",fontSize:10,color:"#9a3412"}}>⚠️ Set price: Settings → Materials → "Intumescent Paint"</span>;
+              })()}
+            </div>
+          );
+        })()}
       </div>
     </div>
   );
@@ -932,12 +957,13 @@ function EstimatePanel({ floors, areas, materialMap, variantMap, crewNotes, proj
           const mls=(a.mat_lines&&a.mat_lines.length>0)?a.mat_lines:[{material:a.material||"",thickness_in:a.thickness_in||"",r_value:a.r_value||"",oc:a.oc||""}];
           const matKey=mls.map(ml=>ml.material).join("+");
           const key=a.area_type+"||||"+matKey;
-          if(!groupMap[key]) groupMap[key]={area_type:a.area_type,floors:[],mat_lines:mls,totalSqft:0,totalCost:0,floorOrder:floors.indexOf(a.floor)};
+          if(!groupMap[key]) groupMap[key]={area_type:a.area_type,floors:[],mat_lines:mls,totalSqft:0,totalCost:0,totalPaintSqft:0,floorOrder:floors.indexOf(a.floor)};
           const g=groupMap[key];
           if(!g.floors.includes(a.floor)) g.floors.push(a.floor);
           if(floors.indexOf(a.floor)<g.floorOrder) g.floorOrder=floors.indexOf(a.floor);
           g.totalSqft+=a.sqft||0;
           g.totalCost+=getAreaTotalCost(a,materialMap,variantMap);
+          g.totalPaintSqft+=Number(a.paint_sqft||0);
         });
         const groups=Object.values(groupMap).sort((a,b)=>a.floorOrder-b.floorOrder);
         return groups.map((g,i)=>{
@@ -954,6 +980,7 @@ function EstimatePanel({ floors, areas, materialMap, variantMap, crewNotes, proj
                     {thick&&<span>{thick} </span>}{matLabel}{" · "}{fmt(g.totalSqft)} ft²
                     {qty>0&&` → ${fmt(qty)} ${unit?.replace("_"," ")}`}
                   </div>
+                  {g.totalPaintSqft>0&&<div style={{fontSize:10,color:"#c2410c"}}>🎨 Paint {fmt(g.totalPaintSqft)} ft²</div>}
                 </div>
                 {g.totalCost>0&&<span style={{fontWeight:700,color:C.green,fontSize:12,flexShrink:0,paddingTop:2}}>${fmt(g.totalCost)}</span>}
               </div>
@@ -1027,10 +1054,22 @@ function getAreaTotalCost(area, materialMap, variantMap) {
     return Math.round(safeSqft*Number(area.price_override)*100)/100;
   }
   const lines=area.mat_lines&&area.mat_lines.length>0?area.mat_lines:[{material:area.material||"",thickness_in:area.thickness_in||"",r_value:area.r_value||"",oc:area.oc||""}];
-  return lines.reduce((sum,ml)=>{
+  let matCost = lines.reduce((sum,ml)=>{
     const mat=materialMap[ml.material];
     return sum+calcArea(safeSqft,ml.thickness_in,mat,ml.r_value,variantMap).line_total;
   },0);
+
+  // Intumescent paint cost — looks up "Intumescent Paint" (or any material
+  // with "intumescent" in the name) in Settings → Materials and prices it
+  // at the paint_sqft area input.
+  const paintSqft = Number(area.paint_sqft||0);
+  if(paintSqft>0 && materialMap){
+    const paintMat = Object.values(materialMap).find(m=>
+      m.name?.toLowerCase().includes("intumescent")
+    );
+    if(paintMat) matCost += paintSqft * Number(paintMat.price_per_unit||0);
+  }
+  return Math.round(matCost*100)/100;
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────
@@ -1225,7 +1264,7 @@ export default function ProjectEstimate() {
         const comboKey=`${a.floor_id}|${a.area_type}|${a.sqft}`;
         if(!comboMap[comboKey]){
           const measurements=segRows.filter(s=>s.area_id===a.id).map(s=>({h:s.height,l:s.length,q:1,sqft:s.sqft}));
-          comboMap[comboKey]={temp_id:a.id,floor:fl.name,area_type:a.area_type,material:a.material||"",thickness_in:a.thickness_in||"",r_value:a.r_value||"",oc:a.oc||"",sqft:a.sqft||0,measurements,mh:"",ml:"",mq:"1",deduct_sqft:"",_collapsed:true,options:Array.isArray(a.options)?a.options:(typeof a.options==="string"?JSON.parse(a.options||"[]"):[]),mat_lines:[{id:1,material:a.material||"",thickness_in:a.thickness_in||"",r_value:a.r_value||"",oc:a.oc||""}]};
+          comboMap[comboKey]={temp_id:a.id,floor:fl.name,area_type:a.area_type,material:a.material||"",thickness_in:a.thickness_in||"",r_value:a.r_value||"",oc:a.oc||"",sqft:a.sqft||0,measurements,mh:"",ml:"",mq:"1",deduct_sqft:a.deduct_sqft||"",paint_sqft:a.paint_sqft||"",price_override:a.price_override||"",_collapsed:true,options:Array.isArray(a.options)?a.options:(typeof a.options==="string"?JSON.parse(a.options||"[]"):[]),mat_lines:[{id:1,material:a.material||"",thickness_in:a.thickness_in||"",r_value:a.r_value||"",oc:a.oc||""}]};
         }else{
           comboMap[comboKey].mat_lines.push({id:comboMap[comboKey].mat_lines.length+1,material:a.material||"",thickness_in:a.thickness_in||"",r_value:a.r_value||"",oc:a.oc||""});
           comboMap[comboKey].material="__combo__";
@@ -1331,8 +1370,8 @@ export default function ProjectEstimate() {
       const collapsed=ex.map(a=>isAreaComplete(a)?{...a,_collapsed:true}:a);
       const last=collapsed[collapsed.length-1];
       const n=last
-        ?{...last,temp_id:Date.now(),sqft:0,measurements:[],mh:"",ml:"",mq:"1",deduct_sqft:"",_collapsed:false,options:[],is_optional:false}
-        :{temp_id:Date.now(),floor,area_type:"",material:"",thickness_in:"",r_value:"",oc:"",sqft:0,measurements:[],mh:"",ml:"",mq:"1",deduct_sqft:"",_collapsed:false,options:[],is_optional:false};
+        ?{...last,temp_id:Date.now(),sqft:0,measurements:[],mh:"",ml:"",mq:"1",deduct_sqft:"",paint_sqft:"",_collapsed:false,options:[],is_optional:false}
+        :{temp_id:Date.now(),floor,area_type:"",material:"",thickness_in:"",r_value:"",oc:"",sqft:0,measurements:[],mh:"",ml:"",mq:"1",deduct_sqft:"",paint_sqft:"",_collapsed:false,options:[],is_optional:false};
       return {...prev,[floor]:[...collapsed,n]};
     });
   }
@@ -1481,7 +1520,7 @@ async function saveProject() {
         return mls.map((ml,mi)=>{
           const mat=materialMap[ml.material];
           const {qty,unit,unit_price,line_total}=calcAreaForSave(a,ml,mi,mat,variantMap);
-          return {project_id:targetProjectId,floor_id:floorMap[floor],area_type:a.area_type,material:ml.material,thickness_in:ml.thickness_in||null,r_value:ml.r_value,sqft:a.sqft,qty,unit,unit_price,line_total,order_index:i*10+mi,company_id:companyId,options:mi===0?(a.options||[]):[]};
+          return {project_id:targetProjectId,floor_id:floorMap[floor],area_type:a.area_type,material:ml.material,thickness_in:ml.thickness_in||null,r_value:ml.r_value,sqft:a.sqft,qty,unit,unit_price,line_total,order_index:i*10+mi,company_id:companyId,options:mi===0?(a.options||[]):[],paint_sqft:mi===0?Number(a.paint_sqft||0):0,deduct_sqft:mi===0?Number(a.deduct_sqft||0):0,price_override:mi===0?(a.price_override||null):null};
         });
       }));
       if(allAreas.length>0){
