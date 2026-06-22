@@ -38,6 +38,8 @@ export default function QuotePricing() {
 
   // labor roles from settings
   const [laborRoles, setLaborRoles] = useState([]);
+  const [allRoles, setAllRoles]     = useState([]); // full list from Settings for the picker
+  const [showRolePicker, setShowRolePicker] = useState(false);
 
   // consumables from settings — adjustable per job
   const [consumables, setConsumables] = useState([]);
@@ -121,14 +123,22 @@ export default function QuotePricing() {
     const floorNameMap = {};
     (floorRows||[]).forEach(f=>{ floorNameMap[f.id]=f.name||f.label||""; });
 
-    // crew — filter out blank-named roles (from testing), pre-populate from Settings
+    // crew — store the full Settings list for the picker, then either
+    // restore the previously saved job-specific selection or use Settings as default
     if(roles?.length){
       const validRoles = roles.filter(r=>r.name&&r.name.trim());
-      if(validRoles.length){
-        setLaborRoles(validRoles.map(r=>({
-          role:r.name, rate:Number(r.amount||0),
-          people:"1", days:"1", hours:"8", extra:"", included:true,
-        })));
+      const settingsRoles = validRoles.map(r=>({
+        role:r.name, rate:Number(r.amount||0),
+        people:"1", days:"1", hours:"8", extra:"", fromSettings:true,
+      }));
+      setAllRoles(settingsRoles);
+      // If the quote has a previously saved crew selection, restore that;
+      // otherwise default to the full Settings list
+      if(q?.labor_roles_json){
+        try { setLaborRoles(JSON.parse(q.labor_roles_json)); }
+        catch { setLaborRoles(settingsRoles); }
+      } else {
+        setLaborRoles(settingsRoles);
       }
     }
 
@@ -330,6 +340,7 @@ export default function QuotePricing() {
         commission_pct: commPct,
         job_miles: Number(jobMiles||0),
         discount_amount: Number(discount||0),
+        labor_roles_json: JSON.stringify(laborRoles),
         sales_rep_id: selectedRep||null,
         grand_total: Math.round(finP*100)/100,
         final_price: Math.round(finP*100)/100,
@@ -498,10 +509,35 @@ export default function QuotePricing() {
             );
           })}
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:6}}>
-            <button onClick={()=>setLaborRoles(p=>[...p,{role:"",rate:0,people:"1",days:"1",hours:"8",extra:""}])}
-              style={{border:`1px dashed ${C.border}`,background:"none",color:C.muted,padding:"6px 14px",borderRadius:6,cursor:"pointer",fontSize:12}}>
-              + Add Role
-            </button>
+            <div>
+              {showRolePicker ? (
+                <select autoFocus
+                  style={{...I,height:32,fontSize:12,width:220}}
+                  onChange={e=>{
+                    const val = e.target.value;
+                    if(!val) return;
+                    if(val==="__blank__"){
+                      setLaborRoles(p=>[...p,{role:"",rate:0,people:"1",days:"1",hours:"8",extra:""}]);
+                    } else {
+                      const found = allRoles.find(r=>r.role===val);
+                      if(found) setLaborRoles(p=>[...p,{...found,people:"1",days:"1",hours:"8",extra:""}]);
+                    }
+                    setShowRolePicker(false);
+                  }}
+                  onBlur={()=>setShowRolePicker(false)}>
+                  <option value="">— select a role —</option>
+                  {allRoles.filter(r=>!laborRoles.some(lr=>lr.role===r.role)).map(r=>(
+                    <option key={r.role} value={r.role}>{r.role} · ${r.rate}/hr</option>
+                  ))}
+                  <option value="__blank__">+ New blank role</option>
+                </select>
+              ) : (
+                <button onClick={()=>setShowRolePicker(true)}
+                  style={{border:`1px dashed ${C.border}`,background:"none",color:C.muted,padding:"6px 14px",borderRadius:6,cursor:"pointer",fontSize:12}}>
+                  + Add Role
+                </button>
+              )}
+            </div>
             {laborCost>0 && <div style={{...TOTAL_ROW,marginBottom:0}}><span>Total Labor</span><span style={{color:C.green,marginLeft:12}}>${fmt(laborCost)}</span></div>}
           </div>
         </div>
