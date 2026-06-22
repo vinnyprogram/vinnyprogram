@@ -1282,7 +1282,13 @@ export default function ProjectEstimate() {
     return Object.fromEntries(materials.map(m=>{
       const mc=costMap[m.name];
       const sellPrice=mc ? Number(mc.cost_per_unit||0)*(1+Number(mc.markup_pct||0)/100) : Number(m.price_per_unit||0);
-      return [m.name, { name:m.name, unit: mc?mc.unit:m.unit, price_per_unit: sellPrice, coverage_factor: mc?Number(mc.coverage_factor||1):1, r_per_inch: mc&&mc.r_per_inch ? Number(mc.r_per_inch) : null }];
+      return [m.name, { name:m.name, unit: mc?mc.unit:m.unit, price_per_unit: sellPrice, coverage_factor: mc?Number(mc.coverage_factor||1):1,
+        r_per_inch: mc&&mc.r_per_inch ? Number(mc.r_per_inch)
+          : mc?.unit==="board_ft" ? (
+              m.name.toLowerCase().includes("closed") ? 6.8
+            : m.name.toLowerCase().includes("open")   ? 3.75
+            : null)
+          : null }];
     }));
   },[materials, matCostsLive]);
   const variantMap=useMemo(()=>Object.fromEntries(
@@ -1369,8 +1375,14 @@ export default function ProjectEstimate() {
         return;
       }
       const mc=matCostMap[a.material];if(!mc)return;
-      const thick=(mc.unit==="board_ft" && mc.r_per_inch>0 && a.r_value)
-        ? parseRValueNumber(a.r_value)/Number(mc.r_per_inch)
+      const rpi = mc.r_per_inch>0 ? Number(mc.r_per_inch)
+        : mc.unit==="board_ft" ? (
+            a.material.toLowerCase().includes("closed") ? 6.8
+          : a.material.toLowerCase().includes("open")   ? 3.75
+          : 0)
+        : 0;
+      const thick = (mc.unit==="board_ft" && rpi>0 && a.r_value)
+        ? parseRValueNumber(a.r_value)/rpi
         : (TM[a.thickness_in]||0);
       let qty=mc.unit==="board_ft"?(a.sqft||0)*thick:mc.unit==="bag"?Math.ceil(((a.sqft||0)*thick)/(mc.coverage_factor||1)):(a.sqft||0);
       materialCost+=qty*Number(mc.cost_per_unit||0)*(1+Number(mc.markup_pct||0)/100);

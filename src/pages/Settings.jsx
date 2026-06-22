@@ -528,8 +528,15 @@ export default function Settings() {
           }
           const mc = matCostMap[a.material];
           if(!mc) return;
-          const thick = (mc.unit==="board_ft" && mc.r_per_inch>0 && a.r_value)
-            ? parseRValueLocal(a.r_value)/Number(mc.r_per_inch)
+          const matNameL = (a.material||"").toLowerCase();
+          const rpi = mc.r_per_inch>0 ? Number(mc.r_per_inch)
+            : mc.unit==="board_ft" ? (
+                matNameL.includes("closed") ? 6.8
+              : matNameL.includes("open")   ? 3.75
+              : 0)
+            : 0;
+          const thick = (mc.unit==="board_ft" && rpi>0 && a.r_value)
+            ? parseRValueLocal(a.r_value)/rpi
             : (THICK_MAP_LOCAL[a.thickness_in]||0);
           let qty = mc.unit==="board_ft" ? Number(a.sqft||0)*thick
                   : mc.unit==="bag" ? Math.ceil((Number(a.sqft||0)*thick)/(mc.coverage_factor||1))

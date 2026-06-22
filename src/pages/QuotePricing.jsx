@@ -174,17 +174,31 @@ export default function QuotePricing() {
         } else {
           const mc = matCostMap[a.material];
           if(mc){
-            const rPerInch = mc.r_per_inch ? Number(mc.r_per_inch) : 0;
-            const thick = (mc.unit==="board_ft" && rPerInch>0 && a.r_value)
-              ? parseR(a.r_value)/rPerInch
+            // Auto-detect r_per_inch from name if not stored in DB:
+            //   Closed cell ≈ 6.8 R/in  (e.g. R30 → 30/6.8 = 4.4")
+            //   Open cell   ≈ 3.75 R/in (e.g. R30 → 30/3.75 = 8.0")
+            const matNameL = (a.material||"").toLowerCase();
+            const rpi = mc.r_per_inch>0 ? Number(mc.r_per_inch)
+              : mc.unit==="board_ft" ? (
+                  matNameL.includes("closed") ? 6.8
+                : matNameL.includes("open")   ? 3.75
+                : 0)
+              : 0;
+            const thick = (mc.unit==="board_ft" && rpi>0 && a.r_value)
+              ? parseR(a.r_value)/rpi
               : (THICK_MAP[a.thickness_in]||0);
             const qty = mc.unit==="board_ft" ? (a.sqft||0)*thick
                       : mc.unit==="bag" ? Math.ceil((a.sqft||0)*thick/(mc.coverage_factor||1))
                       : (a.sqft||0);
             lineTotal = qty*Number(mc.cost_per_unit||0)*(1+Number(mc.markup_pct||0)/100);
-            if(mc.unit==="board_ft") pricingNote = `${thick.toFixed(1)}" thick × $${mc.cost_per_unit}/bf`;
-            else if(mc.unit==="bag") pricingNote = `${Math.ceil((a.sqft||0)*thick/(mc.coverage_factor||1))} bags × $${mc.cost_per_unit}`;
-            else pricingNote = `$${mc.cost_per_unit}/sqft`;
+            if(mc.unit==="board_ft"){
+              const rLabel = rpi>0 ? ` (${rpi} R/in)` : "";
+              pricingNote = `${thick.toFixed(2)}" thick${rLabel} × $${mc.cost_per_unit}/bf`;
+            } else if(mc.unit==="bag"){
+              pricingNote = `${Math.ceil((a.sqft||0)*thick/(mc.coverage_factor||1))} bags × $${mc.cost_per_unit}`;
+            } else {
+              pricingNote = `$${mc.cost_per_unit}/sqft`;
+            }
             effectivePerSqft = (a.sqft||0)>0 ? lineTotal/(a.sqft||0) : 0;
           } else {
             pricingNote = "⚠️ no price in Settings";
@@ -421,23 +435,23 @@ export default function QuotePricing() {
             </div>
           )}
           {laborRoles.length>0 && (
-            <div style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 1fr 1fr 1fr 80px 24px",gap:4,marginBottom:6}}>
-              {["Role","Hrs/day","Days","People","$/hr","Extra/p","Cost",""].map((h,i)=>(
-                <div key={i} style={{fontSize:9,color:C.faint,fontWeight:700,textTransform:"uppercase"}}>{h}</div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 52px 52px 52px 52px 52px 72px 24px",gap:3,marginBottom:6}}>
+              {["Role","Hrs","Days","Ppl","$/hr","Extra","Cost",""].map((h,i)=>(
+                <div key={i} style={{fontSize:8,color:C.faint,fontWeight:700,textTransform:"uppercase",textAlign:i>0?"center":"left"}}>{h}</div>
               ))}
             </div>
           )}
           {laborRoles.map((r,i)=>{
             const rowCost = Number(r.hours||8)*Number(r.days||1)*Number(r.people||1)*Number(r.rate||0)+Number(r.extra||0)*Number(r.people||1);
             return (
-              <div key={i} style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 1fr 1fr 1fr 80px 24px",gap:4,marginBottom:5,alignItems:"center"}}>
+              <div key={i} style={{display:"grid",gridTemplateColumns:"1fr 52px 52px 52px 52px 52px 72px 24px",gap:3,marginBottom:5,alignItems:"center"}}>
                 <input value={r.role||""} onChange={e=>setLaborRoles(p=>p.map((x,j)=>j===i?{...x,role:e.target.value}:x))} placeholder="Role name" style={{...I,height:28,fontSize:11}} />
                 <input type="number" value={r.hours} onChange={e=>setLaborRoles(p=>p.map((x,j)=>j===i?{...x,hours:e.target.value}:x))} style={{...I,height:28,fontSize:11,textAlign:"center"}} />
                 <input type="number" value={r.days} onChange={e=>setLaborRoles(p=>p.map((x,j)=>j===i?{...x,days:e.target.value}:x))} style={{...I,height:28,fontSize:11,textAlign:"center"}} />
                 <input type="number" value={r.people} onChange={e=>setLaborRoles(p=>p.map((x,j)=>j===i?{...x,people:e.target.value}:x))} style={{...I,height:28,fontSize:11,textAlign:"center",fontWeight:700,color:Number(r.people)>1?"#059669":C.ink}} />
                 <input type="number" value={r.rate} onChange={e=>setLaborRoles(p=>p.map((x,j)=>j===i?{...x,rate:e.target.value}:x))} style={{...I,height:28,fontSize:11,textAlign:"center"}} />
                 <input type="number" placeholder="0" value={r.extra} onChange={e=>setLaborRoles(p=>p.map((x,j)=>j===i?{...x,extra:e.target.value}:x))} style={{...I,height:28,fontSize:11,textAlign:"center"}} />
-                <div style={{fontSize:12,fontWeight:700,color:rowCost>0?C.green:C.faint,textAlign:"right"}}>${fmt(rowCost)}</div>
+                <div style={{fontSize:12,fontWeight:700,color:rowCost>0?C.green:C.faint,textAlign:"right",paddingRight:2}}>${fmt(rowCost)}</div>
                 <button onClick={()=>setLaborRoles(p=>p.filter((_,j)=>j!==i))} style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:16,padding:0,lineHeight:1}}>✕</button>
               </div>
             );
