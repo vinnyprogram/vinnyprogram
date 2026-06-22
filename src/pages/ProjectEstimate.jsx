@@ -304,7 +304,7 @@ async function saveNew() {
 }
 
 // ── AreaRow ───────────────────────────────────────────────────────────────────
-function AreaRow({ area, materials, materialMap, variantMap, onChange, onDelete, saveOptionsOnly, onMaterialAdded }) {
+function AreaRow({ area, materials, materialMap, variantMap, onChange, onDelete, onMove, floors, activeFloor, saveOptionsOnly, onMaterialAdded }) {
   const [expanded, setExpanded] = useState(!area._collapsed);
 
   const [thickOpts, setThickOpts] = useState(()=>loadCustomList("custom_thick_opts", THICK_OPTS));
@@ -313,6 +313,7 @@ function AreaRow({ area, materials, materialMap, variantMap, onChange, onDelete,
   const [calcOpen, setCalcOpen] = useState(false);
   const [calcExpr, setCalcExpr] = useState(""); 
   const [overrideOpen, setOverrideOpen] = useState(!!area.price_override);
+  const [movingTo, setMovingTo] = useState(false);
 
   useEffect(()=>{
     if(area._collapsed) setExpanded(false);
@@ -506,6 +507,23 @@ function useCalcResult(field) {
           padding:"6px 12px",borderRadius:6,cursor:"pointer",fontSize:13,fontWeight:700,whiteSpace:"nowrap"}}>
         {overrideOpen?"✕ Custom Price":"💲 Custom Price"}
       </button>
+      {onMove && floors && floors.length>1 && (
+        movingTo
+          ? <select autoFocus
+              style={{height:32,borderRadius:6,border:"none",background:"#1d4ed8",color:"#fff",padding:"0 8px",fontSize:12,fontWeight:700,cursor:"pointer"}}
+              onChange={e=>{ if(e.target.value){ onMove(e.target.value); setMovingTo(false); } }}
+              onBlur={()=>setMovingTo(false)}>
+              <option value="">Move to…</option>
+              {floors.filter(f=>f!==activeFloor).map(f=>(
+                <option key={f} value={f}>{f}</option>
+              ))}
+            </select>
+          : <button onClick={()=>setMovingTo(true)}
+              style={{border:"none",background:"rgba(255,255,255,0.2)",color:"#fff",
+                padding:"6px 12px",borderRadius:6,cursor:"pointer",fontSize:13,fontWeight:700,whiteSpace:"nowrap"}}>
+              ↗ Move to…
+            </button>
+      )}
       <button onClick={onDelete}
         style={{border:"none",background:"rgba(255,0,0,0.3)",color:"#fff",
           padding:"6px 12px",borderRadius:6,cursor:"pointer",fontSize:13,fontWeight:700}}>
@@ -1335,6 +1353,18 @@ export default function ProjectEstimate() {
   }
 
   function deleteArea(floor,idx){setAreas(prev=>({...prev,[floor]:prev[floor].filter((_,i)=>i!==idx)}));}
+  function moveArea(fromFloor, idx, toFloor){
+    if(fromFloor===toFloor) return;
+    setAreas(prev=>{
+      const area = prev[fromFloor]?.[idx];
+      if(!area) return prev;
+      return {
+        ...prev,
+        [fromFloor]: prev[fromFloor].filter((_,i)=>i!==idx),
+        [toFloor]: [...(prev[toFloor]||[]), {...area, temp_id:area.temp_id||Date.now()}],
+      };
+    });
+  }
 
   async function saveNewCustomer(form){
     let companyId=null;
@@ -1595,11 +1625,11 @@ async function saveProject() {
           ):(
             <>
               {currentAreas.map((area,idx)=>({area,idx})).filter(({area})=>!isAreaComplete(area)).map(({area,idx})=>(
-                <AreaRow key={area.id||area.temp_id} area={area} materials={materials} materialMap={materialMap} variantMap={variantMap} onChange={(field,value)=>updateArea(activeFloor,idx,field,value)} onDelete={()=>deleteArea(activeFloor,idx)} saveOptionsOnly={saveOptionsOnly} onMaterialAdded={loadMaterials} />
+                <AreaRow key={area.id||area.temp_id} area={area} materials={materials} materialMap={materialMap} variantMap={variantMap} onChange={(field,value)=>updateArea(activeFloor,idx,field,value)} onDelete={()=>deleteArea(activeFloor,idx)} onMove={(toFloor)=>moveArea(activeFloor,realIdx,toFloor)} floors={floors} activeFloor={activeFloor} saveOptionsOnly={saveOptionsOnly} onMaterialAdded={loadMaterials} />
               ))}
               {currentAreas.some(a=>isAreaComplete(a))&&(<div style={{fontSize:9,fontWeight:700,color:"#059669",textTransform:"uppercase",letterSpacing:0.5,marginBottom:4,marginTop:2,paddingLeft:2}}>✓ Completed areas</div>)}
               {currentAreas.map((area,idx)=>({area,idx})).filter(({area})=>isAreaComplete(area)).map(({area,idx})=>(
-                <AreaRow key={area.id||area.temp_id} area={area} materials={materials} materialMap={materialMap} variantMap={variantMap} onChange={(field,value)=>updateArea(activeFloor,idx,field,value)} onDelete={()=>deleteArea(activeFloor,idx)} saveOptionsOnly={saveOptionsOnly} onMaterialAdded={loadMaterials} />
+                <AreaRow key={area.id||area.temp_id} area={area} materials={materials} materialMap={materialMap} variantMap={variantMap} onChange={(field,value)=>updateArea(activeFloor,idx,field,value)} onDelete={()=>deleteArea(activeFloor,idx)} onMove={(toFloor)=>moveArea(activeFloor,realIdx,toFloor)} floors={floors} activeFloor={activeFloor} saveOptionsOnly={saveOptionsOnly} onMaterialAdded={loadMaterials} />
               ))}
             </>
           )}
