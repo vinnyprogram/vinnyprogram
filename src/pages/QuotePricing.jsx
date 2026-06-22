@@ -302,6 +302,8 @@ export default function QuotePricing() {
     setSaving(true);
     try {
       await supabase.from("quotes").update({
+        material_cost: Math.round(materialCost*100)/100,
+        overhead_cost: Math.round(overheadCost*100)/100,
         labor_cost: Math.round(laborCost*100)/100,
         fuel_cost: Math.round(fuelCost*100)/100,
         consumables_cost: Math.round(consumablesCost*100)/100,

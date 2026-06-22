@@ -199,7 +199,12 @@ export default function QuotePDF() {
 
   const quoteNum = quote?.id ? String(quote.id).padStart(4,"0") : String(projectId).padStart(4,"0");
   const scope = groupedScope();
-  const total = scope.reduce((s,g)=>s+g.totalCost,0);
+  // Use the authoritative grand_total saved when the costing sheet was
+  // generated — it includes live material pricing, labor, overhead,
+  // consumables, fuel, commission, and discount. Summing stale area
+  // line_totals gives the wrong number if pricing changed after the
+  // estimate was last saved.
+  const total = quote?.grand_total || quote?.final_price || scope.reduce((s,g)=>s+g.totalCost,0);
   const salesRep = user?.user_metadata?.full_name || user?.email || "Sales Representative";
 
   return (
