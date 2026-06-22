@@ -1341,7 +1341,7 @@ export default function ProjectEstimate() {
     try{const {data:{user}}=await supabase.auth.getUser();const {data:cd}=await supabase.from("companies").select("id").eq("user_id",user.id).maybeSingle();companyId=cd?.id||null;}catch(e){}
     const {data,error}=await supabase.from("customers").insert([{name:form.name||"",phone:form.phone||"",company_name:form.company_name||"",email:form.email||"",address:form.address||"",status:"New",estimate_amount:0,company_id:companyId}]).select().single();
     if(error){alert("Could not save customer: "+(error.message||JSON.stringify(error)));return;}
-    if(data){loadLeads();setSelectedLeadId(String(data.id));setProjectName(data.name||"");setProjectAddress("");} // leave job address blank — user enters it separately
+    if(data){loadLeads();setSelectedLeadId(String(data.id));setProjectName(data.name||"");/* keep existing address — only blank if nothing entered yet */}
   }
 
   async function calculateJobPrice(companyId,allAreas,totalSqft){
@@ -1423,6 +1423,7 @@ async function saveProject() {
      const updateFields = {
         name:projectName||"New Project",
         address:projectAddress||"",
+        lead_id:Number(selectedLeadId)||null,
         crew_notes:JSON.stringify(crewNotes),
       };
      if(allComplete && (currentProj?.pipeline_status||"Draft")==="Draft"){
@@ -1542,7 +1543,7 @@ async function saveProject() {
         <div style={{flex:1,overflowY:"auto",overflowX:"hidden",padding:"8px 12px 200px 12px",minWidth:0,boxSizing:"border-box",width:"100%"}}>
           <CustomerSection leads={leads} selectedLead={selectedLead} selectedLeadId={selectedLeadId}
             projectAddress={projectAddress} projectName={projectName}
-            onSelect={(lead)=>{setSelectedLeadId(String(lead.id));setProjectName(lead.name||"");setProjectAddress("");}}
+            onSelect={(lead)=>{setSelectedLeadId(String(lead.id));setProjectName(lead.name||"");/* keep existing address — only blank if no address yet */if(!projectAddress) setProjectAddress("");}}
             onClear={()=>{setSelectedLeadId("");setProjectName("");setProjectAddress("");}}
             onSaveNew={saveNewCustomer} onAddressChange={setProjectAddress} onNameChange={setProjectName} />
 
