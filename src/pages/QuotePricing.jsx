@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 
@@ -24,6 +24,8 @@ export default function QuotePricing() {
   const [customer, setCustomer] = useState(null);
   const [loading, setLoading]   = useState(true);
   const [saving, setSaving]     = useState(false);
+  const [autoSaved, setAutoSaved] = useState(false);
+  const autoSaveTimer = useRef(null);
 
   // live-calculated costs (not stale from saved quote)
   const [liveMaterialCost, setLiveMaterialCost] = useState(null);
@@ -65,10 +67,13 @@ export default function QuotePricing() {
       .select("*").eq("id", projectId).maybeSingle();
     setProject(proj);
 
-    // load quote
+    // load quote and restore previously saved costing-sheet values
     const { data:q } = await supabase.from("quotes")
       .select("*").eq("project_id", projectId).maybeSingle();
     setQuote(q);
+    if(q?.job_miles)       setJobMiles(String(q.job_miles));
+    if(q?.sales_rep_id)    setSelectedRep(q.sales_rep_id);
+    if(q?.discount_amount) setDiscount(String(q.discount_amount));
 
     // load customer
     if(proj?.lead_id){
@@ -297,35 +302,66 @@ export default function QuotePricing() {
   const profit = finalPrice - totalCost - commission;
   const margin = finalPrice>0 ? (profit/finalPrice*100).toFixed(1) : 0;
 
+  // ── Core save function — called both by auto-save and by the Generate button ──
+  const saveQuote = useCallback(async ({navigate:doNavigate=false}={})=>{
+    if(!projectId) return;
+    const matCst = liveMaterialCost ?? Number(quote?.material_cost||0);
+    const ohCst  = liveOverheadCost ?? Number(quote?.overhead_cost||0);
+    const basC   = matCst + ohCst;
+    const labC   = laborRoles.reduce((s,r)=>s+Number(r.hours||8)*Number(r.days||1)*Number(r.people||1)*Number(r.rate||0)+Number(r.extra||0)*Number(r.people||1),0);
+    const fuelC  = Number(jobMiles||0)*2*fuelRate;
+    const consC  = consumables.reduce((s,c)=>s+Number(c.amount||0)*Number(c.qty||1),0);
+    const extT   = extras.reduce((s,e)=>s+Number(e.amount||0),0);
+    const discA  = Number(discount||0);
+    const totC   = basC + labC + fuelC + consC;
+    const repRec = salesReps.find(r=>r.id===selectedRep);
+    const commPct= repRec ? Number(repRec.commission_pct||0) : 0;
+    const preBD  = totC * (1 + (Number(quote?.profit_margin_pct||30)/100));
+    const comm   = (preBD + extT) * commPct/100;
+    const finP   = preBD + extT + comm - discA;
+    try {
+      await supabase.from("quotes").update({
+        material_cost: Math.round(matCst*100)/100,
+        overhead_cost: Math.round(ohCst*100)/100,
+        labor_cost: Math.round(labC*100)/100,
+        fuel_cost: Math.round(fuelC*100)/100,
+        consumables_cost: Math.round(consC*100)/100,
+        commission_cost: Math.round(comm*100)/100,
+        commission_pct: commPct,
+        job_miles: Number(jobMiles||0),
+        discount_amount: Number(discount||0),
+        sales_rep_id: selectedRep||null,
+        grand_total: Math.round(finP*100)/100,
+        final_price: Math.round(finP*100)/100,
+      }).eq("project_id", projectId);
+      if(project?.lead_id){
+        await supabase.from("customers")
+          .update({estimate_amount: Math.round(finP*100)/100})
+          .eq("id", project.lead_id);
+      }
+      setAutoSaved(true);
+      setTimeout(()=>setAutoSaved(false), 2500);
+      if(doNavigate) navigate(`/quote/${projectId}`);
+    } catch(err){
+      if(doNavigate) alert("Error: "+err.message);
+      else console.warn("Auto-save error:", err.message);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[projectId, liveMaterialCost, liveOverheadCost, laborRoles, jobMiles, fuelRate, consumables, extras, discount, selectedRep, salesReps, quote, project]);
+
+  // ── Auto-save: debounce 1.2 s after any editable field changes ──────────────
+  useEffect(()=>{
+    if(loading) return;
+    clearTimeout(autoSaveTimer.current);
+    autoSaveTimer.current = setTimeout(()=>saveQuote(), 1200);
+    return ()=>clearTimeout(autoSaveTimer.current);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[laborRoles, consumables, jobMiles, selectedRep, extras, discount]);
+
   async function saveAndGoToQuote() {
     if(saving) return;
     setSaving(true);
-    try {
-      await supabase.from("quotes").update({
-        material_cost: Math.round(materialCost*100)/100,
-        overhead_cost: Math.round(overheadCost*100)/100,
-        labor_cost: Math.round(laborCost*100)/100,
-        fuel_cost: Math.round(fuelCost*100)/100,
-        consumables_cost: Math.round(consumablesCost*100)/100,
-        commission_cost: Math.round(commission*100)/100,
-        commission_pct: commissionPct,
-        job_miles: Number(jobMiles||0),
-        sales_rep_id: selectedRep||null,
-        grand_total: Math.round(finalPrice*100)/100,
-        final_price: Math.round(finalPrice*100)/100,
-      }).eq("project_id", projectId);
-
-      // update customer estimate amount
-      if(project?.lead_id){
-        await supabase.from("customers")
-          .update({estimate_amount: Math.round(finalPrice*100)/100})
-          .eq("id", project.lead_id);
-      }
-
-      navigate(`/quote/${projectId}`);
-    } catch(err){
-      alert("Error: "+err.message);
-    }
+    await saveQuote({navigate:true});
     setSaving(false);
   }
 
@@ -353,6 +389,9 @@ export default function QuotePricing() {
         <div style={{flex:1}}>
           <div style={{color:"white",fontWeight:700,fontSize:14}}>Job Costing Sheet</div>
           <div style={{color:"#94a3b8",fontSize:11}}>{customer?.name} · {project?.address}</div>
+        </div>
+        <div style={{fontSize:11,color:autoSaved?"#34d399":"#475569",fontWeight:600,minWidth:60,textAlign:"right"}}>
+          {autoSaved?"✓ Saved":""}
         </div>
         <button onClick={saveAndGoToQuote} disabled={saving}
           style={{border:"none",background:"#059669",color:"white",padding:"10px 20px",borderRadius:8,cursor:"pointer",fontSize:13,fontWeight:700,whiteSpace:"nowrap"}}>
