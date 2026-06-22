@@ -25,15 +25,20 @@ export default function QuotePricing() {
   const [loading, setLoading]   = useState(true);
   const [saving, setSaving]     = useState(false);
 
+  // live-calculated costs (not stale from saved quote)
+  const [liveMaterialCost, setLiveMaterialCost] = useState(null);
+  const [liveOverheadCost, setLiveOverheadCost] = useState(null);
+
   // labor roles from settings
   const [laborRoles, setLaborRoles] = useState([]);
 
-  // consumables from settings — adjustable per job (e.g. bump qty for a bigger job)
+  // consumables from settings — adjustable per job
   const [consumables, setConsumables] = useState([]);
 
   // fuel
   const [jobMiles, setJobMiles] = useState("");
   const [fuelRate, setFuelRate] = useState(0.67);
+  const [calcingMiles, setCalcingMiles] = useState(false);
 
   // sales rep
   const [salesReps, setSalesReps]   = useState([]);
@@ -69,47 +74,138 @@ export default function QuotePricing() {
 
     // load company settings
     const { data:{user} } = await supabase.auth.getUser();
-    if(user){
-      const { data:cd } = await supabase.from("companies")
-        .select("id").eq("user_id",user.id).maybeSingle();
-      if(cd){
-        // labor roles
-        const { data:roles } = await supabase.from("cost_settings")
-          .select("*").eq("company_id",cd.id).eq("period","labor_role")
-          .order("sort_order");
-        if(roles?.length){
-          setLaborRoles(roles.map(r=>({
-            role:r.name, rate:Number(r.amount||0),
-            people:"1", days:"1", hours:"8", extra:"",
-          })));
-        }
+    if(!user){ setLoading(false); return; }
 
-        // fuel rate
-        const { data:fuel } = await supabase.from("cost_settings")
-          .select("*").eq("company_id",cd.id).eq("period","fuel").maybeSingle();
-        if(fuel) setFuelRate(Number(fuel.amount||0.67));
+    const { data:cd } = await supabase.from("companies")
+      .select("id").eq("user_id",user.id).maybeSingle();
+    if(!cd){ setLoading(false); return; }
 
-        // sales reps
-        const { data:reps } = await supabase.from("sales_reps")
-          .select("*").eq("company_id",cd.id).eq("active",true);
-        if(reps?.length) setSalesReps(reps);
+    // load everything in parallel
+    const [
+      { data:roles },
+      { data:fuel },
+      { data:reps },
+      { data:cons },
+      { data:areas },
+      { data:matCosts },
+      { data:variants },
+      { data:overheadRows },
+      { data:jpmRow },
+    ] = await Promise.all([
+      supabase.from("cost_settings").select("*").eq("company_id",cd.id).eq("period","labor_role").order("sort_order"),
+      supabase.from("cost_settings").select("*").eq("company_id",cd.id).eq("period","fuel").maybeSingle(),
+      supabase.from("sales_reps").select("*").eq("company_id",cd.id).eq("active",true),
+      supabase.from("cost_settings").select("*").eq("company_id",cd.id).eq("period","job_consumable").order("sort_order"),
+      supabase.from("project_areas").select("*").eq("project_id",projectId),
+      supabase.from("material_costs").select("*").eq("company_id",cd.id),
+      supabase.from("material_variants").select("*").eq("company_id",cd.id),
+      supabase.from("cost_settings").select("*").eq("company_id",cd.id)
+        .not("period","eq","labor_role").not("period","eq","job_consumable")
+        .not("period","eq","fuel").not("period","eq","jobs_per_month"),
+      supabase.from("cost_settings").select("*").eq("company_id",cd.id).eq("period","jobs_per_month").maybeSingle(),
+    ]);
 
-        // consumables — adjustable qty multiplier per job
-        const { data:cons } = await supabase.from("cost_settings")
-          .select("*").eq("company_id",cd.id).eq("period","job_consumable")
-          .order("sort_order");
-        if(cons?.length){
-          setConsumables(cons.map(c=>({ name:c.name, amount:Number(c.amount||0), qty:"1" })));
-        }
+    // crew
+    if(roles?.length){
+      setLaborRoles(roles.map(r=>({
+        role:r.name, rate:Number(r.amount||0),
+        people:"1", days:"1", hours:"8", extra:"",
+      })));
+    }
+
+    // fuel rate + shop address
+    const fRate = Number(fuel?.amount||0.67);
+    setFuelRate(fRate);
+    const shopAddr = fuel?.notes||"";
+
+    // sales reps
+    if(reps?.length) setSalesReps(reps);
+
+    // consumables — all items from Settings, qty defaults to 1
+    if(cons?.length){
+      setConsumables(cons.map(c=>({ name:c.name, amount:Number(c.amount||0), qty:"1" })));
+    }
+
+    // ── Live material cost recalculation ──────────────────────────────────
+    // Recalculates from the project's actual areas + current Settings pricing
+    // so the number is always up-to-date, not stale from when the estimate
+    // was last saved (which might have been before pricing was configured).
+    const THICK_MAP = {"2x4":3.5,"2x6":5.5,"2x8":7.25,"2x10":9.25,"2x12":11.25,"I-joist":11.875};
+    const matCostMap = {};
+    (matCosts||[]).forEach(m=>{ matCostMap[m.material_name]=m; });
+    const variantMap = {};
+    (variants||[]).forEach(v=>{ variantMap[`${v.material_name}|${v.r_value||""}`.toLowerCase()]=v; });
+    function parseR(rValue){ const m=String(rValue||"").match(/(\d+(\.\d+)?)/); return m?parseFloat(m[1]):0; }
+
+    let matTotal = 0;
+    const seenOverride = new Set();
+    (areas||[]).forEach(a=>{
+      if(a.price_override && Number(a.price_override)>0){
+        const key = a.id||a.area_type;
+        if(seenOverride.has(key)) return;
+        seenOverride.add(key);
+        matTotal += (a.sqft||0)*Number(a.price_override);
+        return;
       }
+      const vKey = `${a.material||""}|${a.r_value||""}`.toLowerCase();
+      const variant = variantMap[vKey];
+      if(variant){
+        matTotal += (a.sqft||0)*Number(variant.cost_per_sqft||0)*(1+Number(variant.markup_pct||0)/100);
+        return;
+      }
+      const mc = matCostMap[a.material];
+      if(!mc) return;
+      const thick = (mc.unit==="board_ft" && mc.r_per_inch>0 && a.r_value)
+        ? parseR(a.r_value)/Number(mc.r_per_inch)
+        : (THICK_MAP[a.thickness_in]||0);
+      const qty = mc.unit==="board_ft" ? (a.sqft||0)*thick
+                : mc.unit==="bag" ? Math.ceil((a.sqft||0)*thick/(mc.coverage_factor||1))
+                : (a.sqft||0);
+      matTotal += qty*Number(mc.cost_per_unit||0)*(1+Number(mc.markup_pct||0)/100);
+    });
+    setLiveMaterialCost(Math.round(matTotal*100)/100);
+
+    // ── Live overhead per job ─────────────────────────────────────────────
+    const totalMonthlyOH = (overheadRows||[]).reduce((s,c)=>s+Number(c.amount||0),0);
+    const jobsPerMonth = jpmRow ? Number(jpmRow.amount||20) : 20;
+    const ohPerJob = jobsPerMonth>0 ? totalMonthlyOH/jobsPerMonth : 0;
+    setLiveOverheadCost(Math.round(ohPerJob*100)/100);
+
+    // ── Fuel distance auto-calculate ──────────────────────────────────────
+    // Uses Google Maps Distance Matrix to get driving distance from the
+    // shop/office address (Settings → Fuel) to the job site address.
+    const jobAddress = proj?.address || "";
+    if(shopAddr && jobAddress && import.meta.env.VITE_GOOGLE_PLACES_KEY){
+      setCalcingMiles(true);
+      try {
+        const origin = encodeURIComponent(shopAddr);
+        const dest = encodeURIComponent(jobAddress);
+        const key = import.meta.env.VITE_GOOGLE_PLACES_KEY;
+        const res = await fetch(
+          `https://maps.googleapis.com/maps/api/distancematrix/json?origins=${origin}&destinations=${dest}&units=imperial&key=${key}`
+        );
+        const json = await res.json();
+        const el = json?.rows?.[0]?.elements?.[0];
+        if(el?.status==="OK" && el?.distance?.value){
+          // distance.value is in meters — convert to miles (one-way)
+          const miles = Math.round(el.distance.value / 1609.34);
+          setJobMiles(String(miles));
+        }
+      } catch(e){
+        console.warn("Distance Matrix error:", e);
+      }
+      setCalcingMiles(false);
     }
 
     setLoading(false);
   }
 
   // ── Calculations ────────────────────────────────────────────────────────────
-  const baseCost = Number(quote?.material_cost||0)
-    + Number(quote?.overhead_cost||0);
+  // Use live-recalculated values (from current Settings pricing) with
+  // fallback to saved quote values if recalculation hasn't finished yet.
+  const materialCost = liveMaterialCost ?? Number(quote?.material_cost||0);
+  const overheadCost = liveOverheadCost ?? Number(quote?.overhead_cost||0);
+  const baseCost = materialCost + overheadCost;
 
   const laborCost = laborRoles.reduce((s,r)=>
     s + Number(r.hours||8)*Number(r.days||1)*Number(r.people||1)*Number(r.rate||0)
@@ -208,25 +304,34 @@ export default function QuotePricing() {
         <div style={{background:C.white,borderRadius:12,border:`1px solid ${C.border}`,
             padding:"14px 16px",marginBottom:12}}>
           <div style={{fontSize:11,fontWeight:700,color:C.faint,
-              textTransform:"uppercase",letterSpacing:0.4,marginBottom:10}}>
-            📊 Cost Summary (Read Only)
+              textTransform:"uppercase",letterSpacing:0.4,marginBottom:10,
+              display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <span>📊 Cost Summary</span>
+            <span style={{fontSize:9,color:"#059669",fontWeight:600}}>● live from Settings</span>
           </div>
           {[
-            ["Materials",   quote?.material_cost],
-            ["Overhead",    quote?.overhead_cost],
+            ["Materials",   materialCost],
+            ["Overhead",    overheadCost],
           ].map(([label,val],i)=>(
             <div key={i} style={{display:"flex",justifyContent:"space-between",
                 fontSize:12,color:C.muted,paddingBottom:4,marginBottom:4,
                 borderBottom:`1px dashed ${C.border}`}}>
               <span>{label}</span>
-              <span>${fmt(val)}</span>
+              <span style={{color:val>0?C.ink:C.faint}}>${fmt(val)}</span>
             </div>
           ))}
           <div style={{display:"flex",justifyContent:"space-between",
               fontSize:13,fontWeight:700,color:C.ink}}>
             <span>Base Cost</span>
-            <span>${fmt(baseCost)}</span>
+            <span style={{color:baseCost>0?C.green:C.faint}}>${fmt(baseCost)}</span>
           </div>
+          {baseCost===0 && (
+            <div style={{marginTop:8,fontSize:11,color:"#b45309",background:"#fffbeb",
+                border:"1px solid #fde68a",borderRadius:6,padding:"6px 10px"}}>
+              ⚠️ $0 means no material pricing is set up yet — go to
+              <b> Settings → Materials</b> to import your pricing worksheet.
+            </div>
+          )}
         </div>
 
         {/* CREW & LABOR */}
@@ -352,9 +457,17 @@ export default function QuotePricing() {
         <div style={{background:C.white,borderRadius:12,border:`1px solid ${C.border}`,
             padding:"14px 16px",marginBottom:12}}>
           <div style={{fontSize:11,fontWeight:700,color:C.faint,
-              textTransform:"uppercase",letterSpacing:0.4,marginBottom:10}}>
-            ⛽ Fuel
+              textTransform:"uppercase",letterSpacing:0.4,marginBottom:4,
+              display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <span>⛽ Fuel</span>
+            {calcingMiles && <span style={{fontSize:9,color:"#059669"}}>📍 calculating distance…</span>}
+            {!calcingMiles && jobMiles && <span style={{fontSize:9,color:"#059669"}}>● auto-filled from Maps</span>}
           </div>
+          {!calcingMiles && !jobMiles && (
+            <div style={{fontSize:11,color:C.faint,marginBottom:8}}>
+              Set your shop address in <b>Settings → Fuel</b> to auto-fill miles.
+            </div>
+          )}
           <div style={{display:"flex",alignItems:"center",gap:12}}>
             <div style={{flex:1}}>
               <div style={{fontSize:12,color:C.muted,marginBottom:4}}>Miles (one-way)</div>

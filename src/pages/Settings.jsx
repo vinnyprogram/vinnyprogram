@@ -63,6 +63,7 @@ export default function Settings() {
   const [salesReps, setSalesReps] = useState([]);
   // Fuel
   const [fuelRate, setFuelRate] = useState(0.67); // $/mile IRS rate
+  const [shopAddress, setShopAddress] = useState(""); // for fuel auto-calc on quotes
   const [companyAddress] = useState("69 Watson St, Brockton MA");
 
   // Labor roles
@@ -119,6 +120,7 @@ export default function Settings() {
     const { data:fuelData } = await supabase.from("cost_settings")
       .select("*").eq("company_id", company.id).eq("period","fuel").maybeSingle();
     if(fuelData) setFuelRate(Number(fuelData.amount||0.67));
+    if(fuelData?.notes) setShopAddress(fuelData.notes||"");
 
     // load jobs-per-month (used to allocate overhead per job) — was previously
     // never persisted at all, just a local default that reset every reload
@@ -628,7 +630,7 @@ export default function Settings() {
         }
       }
 
-      // save fuel rate
+      // save fuel rate + shop address (used for auto-calculating fuel miles on quotes)
       await supabase.from("cost_settings")
         .delete().eq("company_id", company.id).eq("period","fuel");
       await supabase.from("cost_settings").insert([{
@@ -636,6 +638,7 @@ export default function Settings() {
         category: "Fuel",
         name: "Fuel rate per mile",
         amount: Number(fuelRate||0.67),
+        notes: shopAddress||"",
         period: "fuel",
         sort_order: 0,
       }]);
@@ -1295,8 +1298,17 @@ export default function Settings() {
         {tab==="fuel" && (
           <div>
             <div style={{fontSize:12,color:C.muted,marginBottom:12}}>
-              Fuel cost is calculated per job based on distance from your company to the job site.
-              Enter miles manually on each estimate.
+              Set your shop/office address so the Quote screen can auto-calculate
+              the driving distance to each job site and fill in fuel miles automatically.
+            </div>
+            <div style={{background:C.white,borderRadius:10,border:`1px solid ${C.border}`,padding:"16px",marginBottom:12}}>
+              <div style={{fontWeight:700,fontSize:14,marginBottom:12}}>Shop / Office Address</div>
+              <input placeholder="e.g. 123 Main St, Millis, MA 02054"
+                value={shopAddress} onChange={e=>setShopAddress(e.target.value)}
+                style={{...I,width:"100%",fontSize:13,marginBottom:4}} />
+              <div style={{fontSize:11,color:C.faint}}>
+                Used to auto-calculate one-way miles to the job when you open the Quote screen.
+              </div>
             </div>
             <div style={{background:C.white,borderRadius:10,border:`1px solid ${C.border}`,padding:"16px",marginBottom:12}}>
               <div style={{fontWeight:700,fontSize:14,marginBottom:12}}>Fuel Rate</div>
@@ -1322,11 +1334,6 @@ export default function Settings() {
                   <div>Fuel cost = 50 × ${fuelRate} = <b>${fmt(50*fuelRate)}</b></div>
                 </div>
               </div>
-            </div>
-            <div style={{background:"#fffbeb",borderRadius:8,padding:"10px 14px",
-                border:"1px solid #fde68a",fontSize:12,color:"#92400e"}}>
-              💡 On each estimate you enter the one-way miles to the job.
-              The app calculates round trip automatically.
             </div>
           </div>
         )}
