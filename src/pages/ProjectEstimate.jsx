@@ -464,7 +464,11 @@ function useCalcResult(field) {
               {fmt(computedSqft)} ft²
               {(area.measurements||[]).length>0 && <span style={{ marginLeft:4 }}>({area.measurements.map(m=>`${m.h}×${m.l}${m.q>1?`×${m.q}`:""}`).join("  ")})</span>}
               {area.deduct_sqft>0 && <span style={{color:"#ef4444"}}> −{area.deduct_sqft}</span>}
-              {Number(area.paint_sqft)>0 && <span style={{color:"#c2410c",marginLeft:4}}>🎨 {area.paint_sqft} ft²</span>}
+              {Number(area.paint_sqft)>0 && (()=>{
+                const mls=(area.mat_lines&&area.mat_lines.length>0)?area.mat_lines:[{material:area.material||""}];
+                const hasFoam=mls.some(ml=>{const m=(ml.material||"").toLowerCase();return m.includes("closed")||m.includes("open cell")||m.includes("open-cell");});
+                return hasFoam?<span style={{color:"#c2410c",marginLeft:4}}>🎨 {area.paint_sqft} ft²</span>:null;
+              })()}
             </span>
           )}
         </div>
@@ -890,10 +894,13 @@ function useCalcResult(field) {
         </div>
 
         {/* Intumescent paint — shown only for spray foam (open/closed cell) when
-            the foam isn't covered for fire rating and needs painting */}
+            the foam isn't covered for fire rating and needs painting.
+            In combo mode, area.material is '__combo__' so we check mat_lines. */}
         {(()=>{
-          const matName=(area.material||"").toLowerCase();
-          const isSprayFoam=matName.includes("closed")||matName.includes("open cell");
+          const allMats = isComboMode
+            ? matLines.map(ml=>(ml.material||"").toLowerCase())
+            : [(area.material||"").toLowerCase()];
+          const isSprayFoam = allMats.some(m=>m.includes("closed")||m.includes("open cell")||m.includes("open-cell"));
           if(!isSprayFoam) return null;
           return (
             <div style={{display:"flex",alignItems:"center",gap:6,marginTop:4,
