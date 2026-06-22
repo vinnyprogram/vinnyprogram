@@ -1625,11 +1625,11 @@ async function saveProject() {
           ):(
             <>
               {currentAreas.map((area,idx)=>({area,idx})).filter(({area})=>!isAreaComplete(area)).map(({area,idx})=>(
-                <AreaRow key={area.id||area.temp_id} area={area} materials={materials} materialMap={materialMap} variantMap={variantMap} onChange={(field,value)=>updateArea(activeFloor,idx,field,value)} onDelete={()=>deleteArea(activeFloor,idx)} onMove={(toFloor)=>moveArea(activeFloor,realIdx,toFloor)} floors={floors} activeFloor={activeFloor} saveOptionsOnly={saveOptionsOnly} onMaterialAdded={loadMaterials} />
+                <AreaRow key={area.id||area.temp_id} area={area} materials={materials} materialMap={materialMap} variantMap={variantMap} onChange={(field,value)=>updateArea(activeFloor,idx,field,value)} onDelete={()=>deleteArea(activeFloor,idx)} onMove={(toFloor)=>{const realI=(areas[activeFloor]||[]).indexOf(area);moveArea(activeFloor,realI>=0?realI:idx,toFloor);}} floors={floors} activeFloor={activeFloor} saveOptionsOnly={saveOptionsOnly} onMaterialAdded={loadMaterials} />
               ))}
               {currentAreas.some(a=>isAreaComplete(a))&&(<div style={{fontSize:9,fontWeight:700,color:"#059669",textTransform:"uppercase",letterSpacing:0.5,marginBottom:4,marginTop:2,paddingLeft:2}}>✓ Completed areas</div>)}
               {currentAreas.map((area,idx)=>({area,idx})).filter(({area})=>isAreaComplete(area)).map(({area,idx})=>(
-                <AreaRow key={area.id||area.temp_id} area={area} materials={materials} materialMap={materialMap} variantMap={variantMap} onChange={(field,value)=>updateArea(activeFloor,idx,field,value)} onDelete={()=>deleteArea(activeFloor,idx)} onMove={(toFloor)=>moveArea(activeFloor,realIdx,toFloor)} floors={floors} activeFloor={activeFloor} saveOptionsOnly={saveOptionsOnly} onMaterialAdded={loadMaterials} />
+                <AreaRow key={area.id||area.temp_id} area={area} materials={materials} materialMap={materialMap} variantMap={variantMap} onChange={(field,value)=>updateArea(activeFloor,idx,field,value)} onDelete={()=>deleteArea(activeFloor,idx)} onMove={(toFloor)=>{const realI=(areas[activeFloor]||[]).indexOf(area);moveArea(activeFloor,realI>=0?realI:idx,toFloor);}} floors={floors} activeFloor={activeFloor} saveOptionsOnly={saveOptionsOnly} onMaterialAdded={loadMaterials} />
               ))}
             </>
           )}
