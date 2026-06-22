@@ -233,28 +233,31 @@ export default function QuotePricing() {
         <div style={{background:C.white,borderRadius:12,border:`1px solid ${C.border}`,
             padding:"14px 16px",marginBottom:12}}>
           <div style={{fontSize:11,fontWeight:700,color:C.faint,
-              textTransform:"uppercase",letterSpacing:0.4,marginBottom:10}}>
+              textTransform:"uppercase",letterSpacing:0.4,marginBottom:6}}>
             👷 Crew & Labor
           </div>
+          <div style={{fontSize:11,color:C.muted,marginBottom:10}}>
+            Adjust hrs, days, and people for this job. Add or remove roles as needed.
+          </div>
           <div style={{display:"grid",
-              gridTemplateColumns:"2fr 1fr 1fr 1fr 1fr 1fr",
+              gridTemplateColumns:"2fr 1fr 1fr 1fr 1fr 1fr 24px",
               gap:4,marginBottom:6}}>
-            {["Role","Hrs/day","Days","People","$/hr","Extra/person"].map(h=>(
-              <div key={h} style={{fontSize:9,color:C.faint,fontWeight:700,
+            {["Role","Hrs/day","Days","People","$/hr","Extra/person",""].map((h,i)=>(
+              <div key={i} style={{fontSize:9,color:C.faint,fontWeight:700,
                   textTransform:"uppercase"}}>{h}</div>
             ))}
           </div>
           {laborRoles.map((r,i)=>{
-            const cost = Number(r.hours||8)*Number(r.days||1)*Number(r.people||1)*Number(r.rate||0)
+            const rowCost = Number(r.hours||8)*Number(r.days||1)*Number(r.people||1)*Number(r.rate||0)
               + Number(r.extra||0)*Number(r.people||1);
             return (
               <div key={i} style={{display:"grid",
-                  gridTemplateColumns:"2fr 1fr 1fr 1fr 1fr 1fr",
+                  gridTemplateColumns:"2fr 1fr 1fr 1fr 1fr 1fr 24px",
                   gap:4,marginBottom:6,alignItems:"center"}}>
-                <div style={{fontSize:12,fontWeight:600,color:C.ink,
-                    overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-                  {r.role||"—"}
-                </div>
+                <input value={r.role||""}
+                  onChange={e=>setLaborRoles(p=>p.map((x,j)=>j===i?{...x,role:e.target.value}:x))}
+                  placeholder="Role name"
+                  style={{...I,height:28,fontSize:11}} />
                 <input type="number" value={r.hours}
                   onChange={e=>setLaborRoles(p=>p.map((x,j)=>j===i?{...x,hours:e.target.value}:x))}
                   style={{...I,height:28,fontSize:11,textAlign:"center"}} />
@@ -264,70 +267,86 @@ export default function QuotePricing() {
                 <input type="number" value={r.people}
                   onChange={e=>setLaborRoles(p=>p.map((x,j)=>j===i?{...x,people:e.target.value}:x))}
                   style={{...I,height:28,fontSize:11,textAlign:"center"}} />
-                <div style={{fontSize:11,color:C.muted,textAlign:"center"}}>
-                  ${r.rate}
-                </div>
-                <input type="number" placeholder="0"
-                  value={r.extra}
+                <input type="number" value={r.rate}
+                  onChange={e=>setLaborRoles(p=>p.map((x,j)=>j===i?{...x,rate:e.target.value}:x))}
+                  style={{...I,height:28,fontSize:11,textAlign:"center"}} />
+                <input type="number" placeholder="0" value={r.extra}
                   onChange={e=>setLaborRoles(p=>p.map((x,j)=>j===i?{...x,extra:e.target.value}:x))}
                   style={{...I,height:28,fontSize:11,textAlign:"center"}} />
+                <button onClick={()=>setLaborRoles(p=>p.filter((_,j)=>j!==i))}
+                  style={{border:"none",background:"none",color:C.faint,
+                    cursor:"pointer",fontSize:16,padding:0,lineHeight:1}}>✕</button>
               </div>
             );
           })}
-          {laborCost>0 && (
-            <div style={{display:"flex",justifyContent:"space-between",
-                paddingTop:8,borderTop:`1px solid ${C.border}`,
-                fontSize:13,fontWeight:700,color:C.ink}}>
-              <span>Total Labor</span>
-              <span style={{color:C.green}}>${fmt(laborCost)}</span>
-            </div>
-          )}
-        </div>
-
-        {/* CONSUMABLES */}
-        {consumables.length>0 && (
-          <div style={{background:C.white,borderRadius:12,border:`1px solid ${C.border}`,
-              padding:"14px 16px",marginBottom:12}}>
-            <div style={{fontSize:11,fontWeight:700,color:C.faint,
-                textTransform:"uppercase",letterSpacing:0.4,marginBottom:4}}>
-              📦 Consumables
-            </div>
-            <div style={{fontSize:11,color:C.muted,marginBottom:10}}>
-              Bump the qty on anything you'll need more of for this job.
-            </div>
-            <div style={{display:"grid",gridTemplateColumns:"2fr 70px 70px 70px",gap:4,
-                marginBottom:4,fontSize:9,fontWeight:700,color:C.faint,textTransform:"uppercase"}}>
-              <span>Item</span><span>Each</span><span>Qty</span><span>Cost</span>
-            </div>
-            {consumables.map((c,i)=>{
-              const rowCost = Number(c.amount||0)*Number(c.qty||1);
-              return (
-                <div key={i} style={{display:"grid",gridTemplateColumns:"2fr 70px 70px 70px",
-                    gap:4,marginBottom:4,alignItems:"center"}}>
-                  <div style={{fontSize:12,fontWeight:600,color:C.ink,
-                      overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-                    {c.name||"—"}
-                  </div>
-                  <div style={{fontSize:11,color:C.muted,textAlign:"center"}}>${fmt(c.amount)}</div>
-                  <input type="number" value={c.qty}
-                    onChange={e=>setConsumables(p=>p.map((x,j)=>j===i?{...x,qty:e.target.value}:x))}
-                    style={{...I,height:28,fontSize:11,textAlign:"center"}} />
-                  <div style={{fontSize:11,color:C.green,fontWeight:700,textAlign:"right"}}>
-                    ${fmt(rowCost)}
-                  </div>
-                </div>
-              );
-            })}
-            {consumablesCost>0 && (
-              <div style={{display:"flex",justifyContent:"space-between",
-                  paddingTop:8,borderTop:`1px solid ${C.border}`,
-                  fontSize:13,fontWeight:700,color:C.ink}}>
-                <span>Total Consumables</span>
-                <span style={{color:C.green}}>${fmt(consumablesCost)}</span>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:6}}>
+            <button
+              onClick={()=>setLaborRoles(p=>[...p,{role:"",rate:0,people:"1",days:"1",hours:"8",extra:""}])}
+              style={{border:`1px dashed ${C.border}`,background:"none",color:C.muted,
+                padding:"6px 14px",borderRadius:6,cursor:"pointer",fontSize:12}}>
+              + Add Role
+            </button>
+            {laborCost>0 && (
+              <div style={{fontSize:13,fontWeight:700,color:C.green}}>
+                Total Labor: ${fmt(laborCost)}
               </div>
             )}
           </div>
-        )}
+        </div>
+
+        {/* CONSUMABLES */}
+        <div style={{background:C.white,borderRadius:12,border:`1px solid ${C.border}`,
+            padding:"14px 16px",marginBottom:12}}>
+          <div style={{fontSize:11,fontWeight:700,color:C.faint,
+              textTransform:"uppercase",letterSpacing:0.4,marginBottom:6}}>
+            📦 Consumables & Job-Site Costs
+          </div>
+          <div style={{fontSize:11,color:C.muted,marginBottom:10}}>
+            Add supplies needed for this job. Bump qty for bigger jobs or add one-off items.
+          </div>
+          {consumables.length>0 && (
+            <>
+              <div style={{display:"grid",gridTemplateColumns:"2fr 70px 70px 70px 24px",gap:4,
+                  marginBottom:4,fontSize:9,fontWeight:700,color:C.faint,textTransform:"uppercase"}}>
+                <span>Item</span><span>Each</span><span>Qty</span><span>Cost</span><span></span>
+              </div>
+              {consumables.map((c,i)=>{
+                const rowCost = Number(c.amount||0)*Number(c.qty||1);
+                return (
+                  <div key={i} style={{display:"grid",gridTemplateColumns:"2fr 70px 70px 70px 24px",
+                      gap:4,marginBottom:4,alignItems:"center"}}>
+                    <input value={c.name||""}
+                      onChange={e=>setConsumables(p=>p.map((x,j)=>j===i?{...x,name:e.target.value}:x))}
+                      style={{...I,height:28,fontSize:11}} />
+                    <div style={{fontSize:11,color:C.muted,textAlign:"center"}}>${fmt(c.amount)}</div>
+                    <input type="number" value={c.qty}
+                      onChange={e=>setConsumables(p=>p.map((x,j)=>j===i?{...x,qty:e.target.value}:x))}
+                      style={{...I,height:28,fontSize:11,textAlign:"center"}} />
+                    <div style={{fontSize:11,color:C.green,fontWeight:700,textAlign:"right"}}>
+                      ${fmt(rowCost)}
+                    </div>
+                    <button onClick={()=>setConsumables(p=>p.filter((_,j)=>j!==i))}
+                      style={{border:"none",background:"none",color:C.faint,
+                        cursor:"pointer",fontSize:16,padding:0,lineHeight:1}}>✕</button>
+                  </div>
+                );
+              })}
+            </>
+          )}
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:6}}>
+            <button
+              onClick={()=>setConsumables(p=>[...p,{name:"",amount:0,qty:"1"}])}
+              style={{border:`1px dashed ${C.border}`,background:"none",color:C.muted,
+                padding:"6px 14px",borderRadius:6,cursor:"pointer",fontSize:12}}>
+              + Add Item
+            </button>
+            {consumablesCost>0 && (
+              <div style={{fontSize:13,fontWeight:700,color:C.green}}>
+                Total: ${fmt(consumablesCost)}
+              </div>
+            )}
+          </div>
+        </div>
 
         {/* FUEL */}
         <div style={{background:C.white,borderRadius:12,border:`1px solid ${C.border}`,
