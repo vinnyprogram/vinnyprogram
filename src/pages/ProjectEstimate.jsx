@@ -875,13 +875,11 @@ function useCalcResult(field) {
 }
 
 // ── EstimatePanel ─────────────────────────────────────────────────────────────
-function EstimatePanel({ floors, areas, materialMap, variantMap, crewNotes, projectName, projectAddress, customer, laborRoles }) {
+function EstimatePanel({ floors, areas, materialMap, variantMap, crewNotes, projectName, projectAddress, customer }) {
   function floorTotal(floor) {
     return (areas[floor]||[]).filter(a=>!a.is_optional).reduce((s,a)=>s+getAreaTotalCost(a,materialMap,variantMap),0);
   }
-  const materialTotal = floors.reduce((s,f)=>s+floorTotal(f),0);
-  const laborTotal = (laborRoles||[]).reduce((s,r)=>s+Number(r.hours||0)*Number(r.days||1)*Number(r.people||1)*Number(r.rate||0),0);
-  const total = materialTotal + laborTotal;
+  const total = floors.reduce((s,f)=>s+floorTotal(f),0);
   return (
     <div style={{ fontSize:11, lineHeight:1.55 }}>
       {customer && (
@@ -972,18 +970,6 @@ function EstimatePanel({ floors, areas, materialMap, variantMap, crewNotes, proj
           </div>
         );
       })()}
-      {laborTotal>0 && (
-        <div style={{marginTop:4,paddingTop:6,borderTop:`1px dashed ${C.border}`}}>
-          <div style={{display:"flex",justifyContent:"space-between",fontSize:11,color:C.muted,marginBottom:2}}>
-            <span>Materials</span>
-            <span>${fmt(materialTotal)}</span>
-          </div>
-          <div style={{display:"flex",justifyContent:"space-between",fontSize:11,color:C.muted}}>
-            <span>👷 Labor</span>
-            <span>${fmt(laborTotal)}</span>
-          </div>
-        </div>
-      )}
       <div style={{ display:"flex", justifyContent:"space-between", paddingTop:6, borderTop:`2px solid ${C.ink}`, fontWeight:700 }}>
         <span style={{fontSize:12}}>Total</span>
         <span style={{fontSize:17,color:C.green}}>${fmt(total)}</span>
@@ -1066,9 +1052,6 @@ export default function ProjectEstimate() {
   const [fuelRate,setFuelRate]=useState(0.67);
   const [salesReps,setSalesReps]=useState([]);
   const [selectedRep,setSelectedRep]=useState("");
-  const [overheadCostsLive,setOverheadCostsLive]=useState([]);
-  const [consumablesLive,setConsumablesLive]=useState([]);
-  const [jobsPerMonthLive,setJobsPerMonthLive]=useState(20);
   const [newFloorName,setNewFloorName]=useState("");
   const [addingFloor,setAddingFloor]=useState(false);
   const [panelOpen,setPanelOpen]=useState(false);
@@ -1176,12 +1159,6 @@ export default function ProjectEstimate() {
       if(fuel) setFuelRate(Number(fuel.amount||0.67));
       const {data:reps}=await supabase.from("sales_reps").select("*").eq("company_id",cd.id).eq("active",true).order("created_at");
       if(reps?.length) setSalesReps(reps);
-      const {data:overheadRows}=await supabase.from("cost_settings").select("*").eq("company_id",cd.id).not("period","eq","job_consumable").not("period","eq","labor_role").not("period","eq","fuel").not("period","eq","jobs_per_month");
-      if(overheadRows) setOverheadCostsLive(overheadRows);
-      const {data:consumableRows}=await supabase.from("cost_settings").select("*").eq("company_id",cd.id).eq("period","job_consumable");
-      if(consumableRows) setConsumablesLive(consumableRows);
-      const {data:jpmRow}=await supabase.from("cost_settings").select("*").eq("company_id",cd.id).eq("period","jobs_per_month").maybeSingle();
-      if(jpmRow) setJobsPerMonthLive(Number(jpmRow.amount||20));
     });
   },[]);
 
@@ -1314,9 +1291,7 @@ export default function ProjectEstimate() {
   const selectedLead=leads.find(l=>String(l.id)===String(selectedLeadId));
 
   function floorTotal(floor){return(areas[floor]||[]).filter(a=>!a.is_optional).reduce((s,a)=>s+getAreaTotalCost(a,materialMap,variantMap),0);}
-  const projectMaterialTotal=floors.reduce((s,f)=>s+floorTotal(f),0);
-  const projectLaborTotal=laborRoles.reduce((s,r)=>s+Number(r.hours||0)*Number(r.days||1)*Number(r.people||1)*Number(r.rate||0),0);
-  const projectTotal=projectMaterialTotal+projectLaborTotal;
+  const projectTotal=floors.reduce((s,f)=>s+floorTotal(f),0);
 
   function addFloor(){
     const name=newFloorName.trim();if(!name)return;
@@ -1531,7 +1506,7 @@ async function saveProject() {
   useEffect(()=>{if(saved){const t=setTimeout(()=>setSaved(false),3000);return()=>clearTimeout(t);}},[saved]);
 
   const currentAreas=areas[activeFloor]||[];
-  const panelProps={floors,areas,materialMap,variantMap,crewNotes,projectName,projectAddress,customer:selectedLead,laborRoles};
+  const panelProps={floors,areas,materialMap,variantMap,crewNotes,projectName,projectAddress,customer:selectedLead};
 
   if(loadingProject) return <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"system-ui",color:"#64748b"}}>Loading estimate…</div>;
 
@@ -1622,124 +1597,6 @@ async function saveProject() {
               <span style={{fontWeight:700}}>${fmt(floorTotal(activeFloor))}</span>
             </div>
           )}
-
-          {/* Crew & Labor — editable per-job, separate from the default rates in Settings */}
-          <div style={CARD_ORANGE}>
-            <div style={{fontSize:11,fontWeight:700,color:C.muted,marginBottom:6,textTransform:"uppercase",letterSpacing:0.4}}>
-              👷 Crew &amp; Labor for this job
-            </div>
-            <div style={{display:"grid",gridTemplateColumns:"1.4fr 50px 45px 45px 60px 65px 24px",gap:4,marginBottom:4,fontSize:9,color:C.muted,fontWeight:700,textTransform:"uppercase"}}>
-              <span>Role</span><span>Hrs</span><span>Days</span><span>People</span><span>Rate</span><span>Cost</span><span></span>
-            </div>
-            {laborRoles.map((r,i)=>{
-              const rowCost = Number(r.hours||0)*Number(r.days||1)*Number(r.people||1)*Number(r.rate||0);
-              return (
-                <div key={i} style={{display:"grid",gridTemplateColumns:"1.4fr 50px 45px 45px 60px 65px 24px",gap:4,marginBottom:4,alignItems:"center"}}>
-                  <input placeholder="Role" value={r.role}
-                    onChange={e=>setLaborRoles(p=>p.map((x,j)=>j===i?{...x,role:e.target.value}:x))}
-                    style={{...I,height:28,fontSize:11}} />
-                  <input type="number" value={r.hours} title="Hours per day"
-                    onChange={e=>setLaborRoles(p=>p.map((x,j)=>j===i?{...x,hours:e.target.value}:x))}
-                    style={{...I,height:28,fontSize:11,textAlign:"center"}} />
-                  <input type="number" value={r.days} title="Days on the job"
-                    onChange={e=>setLaborRoles(p=>p.map((x,j)=>j===i?{...x,days:e.target.value}:x))}
-                    style={{...I,height:28,fontSize:11,textAlign:"center"}} />
-                  <input type="number" value={r.people} title="How many of this role — e.g. 2 sprayers to finish faster"
-                    onChange={e=>setLaborRoles(p=>p.map((x,j)=>j===i?{...x,people:e.target.value}:x))}
-                    style={{...I,height:28,fontSize:11,textAlign:"center",fontWeight:700,color:Number(r.people)>1?"#059669":C.ink}} />
-                  <div style={{display:"flex",alignItems:"center",gap:1}}>
-                    <span style={{fontSize:10,color:C.muted}}>$</span>
-                    <input type="number" value={r.rate}
-                      onChange={e=>setLaborRoles(p=>p.map((x,j)=>j===i?{...x,rate:e.target.value}:x))}
-                      style={{...I,height:28,fontSize:11,textAlign:"right"}} />
-                  </div>
-                  <div style={{fontSize:11,fontWeight:700,color:C.green,textAlign:"right"}}>${fmt(rowCost)}</div>
-                  <button onClick={()=>setLaborRoles(p=>p.filter((_,j)=>j!==i))}
-                    style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:14}}>✕</button>
-                </div>
-              );
-            })}
-            <button onClick={()=>setLaborRoles(p=>[...p,{role:"",hours:"8",days:"1",people:1,rate:0}])}
-              style={{...Btn,height:28,fontSize:11,width:"100%",marginTop:2}}>
-              + Add Crew Role
-            </button>
-            <div style={{display:"flex",justifyContent:"space-between",marginTop:6,paddingTop:6,borderTop:`1px solid ${C.border}`,fontSize:12,fontWeight:700}}>
-              <span style={{color:C.muted}}>Total Labor Cost</span>
-              <span style={{color:C.green}}>
-                ${fmt(laborRoles.reduce((s,r)=>s+Number(r.hours||0)*Number(r.days||1)*Number(r.people||1)*Number(r.rate||0),0))}
-              </span>
-            </div>
-          </div>
-
-          {/* Full Cost Breakdown — menu of every cost feeding the quote */}
-          {(()=>{
-            const realTotalSqftLive = floors.reduce((s,f)=>s+(areas[f]||[]).filter(a=>!a.is_optional).reduce((ss,a)=>ss+(a.sqft||0),0),0);
-            const overheadPerJobLive = jobsPerMonthLive>0 ? overheadCostsLive.reduce((s,c)=>s+Number(c.amount||0),0)/jobsPerMonthLive : 0;
-            const consumablesPerJobLive = consumablesLive.reduce((s,c)=>s+Number(c.amount||0),0) * (realTotalSqftLive>0?realTotalSqftLive/1000:1);
-            const fuelCostLive = Number(jobMiles||0)*2*fuelRate;
-            const repLive = selectedRep?salesReps.find(r=>r.id===selectedRep):null;
-            const commissionPctLive = repLive?Number(repLive.commission_pct||0):0;
-            const subtotalLive = projectMaterialTotal+projectLaborTotal+overheadPerJobLive+consumablesPerJobLive+fuelCostLive;
-            const marginLive=30;
-            const withMarginLive = subtotalLive*(1+marginLive/100);
-            const commissionCostLive = withMarginLive*commissionPctLive/100;
-            const grandTotalLive = withMarginLive+commissionCostLive;
-            return (
-              <div style={CARD_ORANGE}>
-                <div style={{fontSize:11,fontWeight:700,color:C.muted,marginBottom:6,textTransform:"uppercase",letterSpacing:0.4}}>
-                  💲 Full Cost Breakdown
-                </div>
-
-                <div style={{display:"flex",justifyContent:"space-between",fontSize:12,padding:"3px 0"}}>
-                  <span style={{color:C.muted}}>Materials</span>
-                  <span style={{fontWeight:600}}>${fmt(projectMaterialTotal)}</span>
-                </div>
-                <div style={{display:"flex",justifyContent:"space-between",fontSize:12,padding:"3px 0"}}>
-                  <span style={{color:C.muted}}>Labor</span>
-                  <span style={{fontWeight:600}}>${fmt(projectLaborTotal)}</span>
-                </div>
-                <div style={{display:"flex",justifyContent:"space-between",fontSize:12,padding:"3px 0"}}>
-                  <span style={{color:C.muted}}>Overhead ({jobsPerMonthLive} jobs/mo)</span>
-                  <span style={{fontWeight:600}}>${fmt(overheadPerJobLive)}</span>
-                </div>
-                <div style={{display:"flex",justifyContent:"space-between",fontSize:12,padding:"3px 0"}}>
-                  <span style={{color:C.muted}}>Consumables</span>
-                  <span style={{fontWeight:600}}>${fmt(consumablesPerJobLive)}</span>
-                </div>
-
-                {/* Fuel — editable job miles */}
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:12,padding:"3px 0"}}>
-                  <span style={{color:C.muted,display:"flex",alignItems:"center",gap:4}}>
-                    Fuel
-                    <input type="number" placeholder="miles" value={jobMiles}
-                      onChange={e=>setJobMiles(e.target.value)}
-                      style={{...I,width:56,height:22,fontSize:10,textAlign:"right"}} />
-                    <span style={{fontSize:10}}>mi</span>
-                  </span>
-                  <span style={{fontWeight:600}}>${fmt(fuelCostLive)}</span>
-                </div>
-
-                {/* Sales rep / commission — editable */}
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:12,padding:"3px 0"}}>
-                  <span style={{color:C.muted,display:"flex",alignItems:"center",gap:4}}>
-                    <select value={selectedRep} onChange={e=>setSelectedRep(e.target.value)}
-                      style={{...I,width:90,height:22,fontSize:10}}>
-                      <option value="">No rep…</option>
-                      {salesReps.map(r=><option key={r.id} value={r.id}>{r.name}</option>)}
-                    </select>
-                    {commissionPctLive>0 && <span style={{fontSize:10}}>({commissionPctLive}%)</span>}
-                  </span>
-                  <span style={{fontWeight:600}}>${fmt(commissionCostLive)}</span>
-                </div>
-
-                <div style={{display:"flex",justifyContent:"space-between",marginTop:6,paddingTop:6,
-                    borderTop:`2px solid ${C.ink}`,fontSize:13,fontWeight:800}}>
-                  <span>Grand Total</span>
-                  <span style={{color:C.green}}>${fmt(grandTotalLive)}</span>
-                </div>
-              </div>
-            );
-          })()}
         </div>
 
         <div className="estimate-side-panel" style={{width:220,flexShrink:0,borderLeft:`1px solid ${C.border}`,background:C.white,overflowY:"auto",padding:"10px 10px 20px"}}>
