@@ -148,21 +148,23 @@ export default function QuotePDF() {
       if(fl) byFloor[fl.name] = [...(byFloor[fl.name]||[]), a];
     });
 
-    // group by material within floor
+    // group by area_type within floor, carry phase through
     const result = [];
     Object.entries(byFloor).forEach(([floorName, farr])=>{
       if(!farr.length) return;
-      // group by area_type
       const typeMap = {};
       farr.forEach(a=>{
         if(!typeMap[a.area_type]) typeMap[a.area_type]={
           area_type:a.area_type, material:a.material, floor:floorName,
           areas:[], totalSqft:0, totalCost:0, totalPaintSqft:0,
+          phase: a.phase||null,
         };
         typeMap[a.area_type].areas.push(a);
         typeMap[a.area_type].totalSqft += a.sqft||0;
         typeMap[a.area_type].totalCost += a.line_total||0;
         typeMap[a.area_type].totalPaintSqft += Number(a.paint_sqft||0);
+        // If any area in the type has a phase, mark the group with it
+        if(a.phase) typeMap[a.area_type].phase = a.phase;
       });
       Object.values(typeMap).forEach(g=>result.push(g));
     });
@@ -361,21 +363,45 @@ export default function QuotePDF() {
               </tr>
             </thead>
             <tbody>
-              {scope.map((g,i)=>(
-                <tr key={i} style={{borderBottom:"1px solid #e2e8f0",
-                    background:i%2===0?"white":"#fafbfc"}}>
-                  <td style={{padding:"12px",fontSize:12,fontWeight:600,
-                      color:"#0f172a",verticalAlign:"top"}}>
-                    {g.material||g.area_type}
-                  </td>
-                  <td style={{padding:"12px",fontSize:12,color:"#374151",
-                      lineHeight:1.7,verticalAlign:"top"}}>
-                    {buildDescription(g).split('\n').map((line,j)=>(
-                      <div key={j}>{line}</div>
-                    ))}
-                  </td>
-                </tr>
-              ))}
+              {(()=>{
+                const hasPhases = scope.some(g=>g.phase===1||g.phase===2);
+                if(!hasPhases) return scope.map((g,i)=>(
+                  <tr key={i} style={{borderBottom:"1px solid #e2e8f0",background:i%2===0?"white":"#fafbfc"}}>
+                    <td style={{padding:"12px",fontSize:12,fontWeight:600,color:"#0f172a",verticalAlign:"top"}}>{g.material||g.area_type}</td>
+                    <td style={{padding:"12px",fontSize:12,color:"#374151",lineHeight:1.7,verticalAlign:"top"}}>
+                      {buildDescription(g).split('\n').map((line,j)=>(<div key={j}>{line}</div>))}
+                    </td>
+                  </tr>
+                ));
+                // Phased job — insert phase header rows
+                const rows = [];
+                let lastPhase = undefined;
+                const sorted = [...scope].sort((a,b)=>(a.phase||99)-(b.phase||99));
+                sorted.forEach((g,i)=>{
+                  const ph = g.phase||99;
+                  if(ph !== lastPhase){
+                    lastPhase = ph;
+                    const label = ph===1?"1st Phase — Before Rough Inspection": ph===2?"2nd Phase — After Rough Inspection":"";
+                    if(label) rows.push(
+                      <tr key={"ph"+ph} style={{background:ph===1?"#eff6ff":"#f5f3ff"}}>
+                        <td colSpan={2} style={{padding:"8px 12px",fontSize:11,fontWeight:800,
+                            color:ph===1?"#1d4ed8":"#6d28d9",textTransform:"uppercase",letterSpacing:0.5}}>
+                          {ph===1?"🔵":"🟣"} {label}
+                        </td>
+                      </tr>
+                    );
+                  }
+                  rows.push(
+                    <tr key={i} style={{borderBottom:"1px solid #e2e8f0",background:i%2===0?"white":"#fafbfc"}}>
+                      <td style={{padding:"12px",fontSize:12,fontWeight:600,color:"#0f172a",verticalAlign:"top"}}>{g.material||g.area_type}</td>
+                      <td style={{padding:"12px",fontSize:12,color:"#374151",lineHeight:1.7,verticalAlign:"top"}}>
+                        {buildDescription(g).split('\n').map((line,j)=>(<div key={j}>{line}</div>))}
+                      </td>
+                    </tr>
+                  );
+                });
+                return rows;
+              })()}
 
               {/* optional items */}
               {options.map((o,i)=>(

@@ -449,6 +449,8 @@ function useCalcResult(field) {
       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:2 }}>
         <span style={{ fontSize:11, fontWeight:700, color:C.ink }}>
           {area.is_optional&&<span style={{color:"#f59e0b",marginRight:4}}>⭐</span>}
+          {area.phase===1&&<span style={{background:"#3b82f6",color:"#fff",borderRadius:4,padding:"1px 5px",fontSize:9,fontWeight:800,marginRight:4}}>PH 1</span>}
+          {area.phase===2&&<span style={{background:"#8b5cf6",color:"#fff",borderRadius:4,padding:"1px 5px",fontSize:9,fontWeight:800,marginRight:4}}>PH 2</span>}
           {area.area_type||"—"}
         </span>
         <div style={{ display:"flex", alignItems:"center", gap:6 }}>
@@ -512,6 +514,16 @@ function useCalcResult(field) {
           color:"#fff",
           padding:"6px 12px",borderRadius:6,cursor:"pointer",fontSize:13,fontWeight:700,whiteSpace:"nowrap"}}>
         {overrideOpen?"✕ Custom Price":"💲 Custom Price"}
+      </button>
+
+      {/* Phase selector — tap to cycle: none → Phase 1 → Phase 2 → none */}
+      <button
+        onClick={()=>onChange("phase", area.phase===1 ? 2 : area.phase===2 ? null : 1)}
+        title="Mark this area as Phase 1 (before rough inspection) or Phase 2 (after)"
+        style={{border:"none",whiteSpace:"nowrap",padding:"6px 10px",borderRadius:6,cursor:"pointer",fontSize:11,fontWeight:800,
+          background: area.phase===1?"#3b82f6":area.phase===2?"#8b5cf6":"rgba(255,255,255,0.2)",
+          color:"#fff"}}>
+        {area.phase===1?"🔵 Phase 1":area.phase===2?"🟣 Phase 2":"◯ Phase"}
       </button>
       {onMove && floors && floors.length>1 && (
         movingTo
@@ -945,41 +957,50 @@ function EstimatePanel({ floors, areas, materialMap, variantMap, crewNotes, proj
       {(()=>{
        const allAreas=floors.flatMap(floor=>(areas[floor]||[]).filter(a=>a.area_type&&a.sqft&&a.material!=="__custom_mat__"&&!a.is_optional).map(a=>({...a,floor})));
         if(!allAreas.length) return <div style={{color:C.faint,fontSize:10,textAlign:"center",padding:"10px 0"}}>No areas yet</div>;
-        const groupMap={};
-        allAreas.forEach(a=>{
-          const mls=(a.mat_lines&&a.mat_lines.length>0)?a.mat_lines:[{material:a.material||"",thickness_in:a.thickness_in||"",r_value:a.r_value||"",oc:a.oc||""}];
-          const matKey=mls.map(ml=>ml.material).join("+");
-          const key=a.area_type+"||||"+matKey;
-          if(!groupMap[key]) groupMap[key]={area_type:a.area_type,floors:[],mat_lines:mls,totalSqft:0,totalCost:0,totalPaintSqft:0,floorOrder:floors.indexOf(a.floor)};
-          const g=groupMap[key];
-          if(!g.floors.includes(a.floor)) g.floors.push(a.floor);
-          if(floors.indexOf(a.floor)<g.floorOrder) g.floorOrder=floors.indexOf(a.floor);
-          g.totalSqft+=a.sqft||0;
-          g.totalCost+=getAreaTotalCost(a,materialMap,variantMap);
-          g.totalPaintSqft+=Number(a.paint_sqft||0);
-        });
-        const groups=Object.values(groupMap).sort((a,b)=>a.floorOrder-b.floorOrder);
-        return groups.map((g,i)=>{
-          const thick=g.mat_lines[0]?.thickness_in||"";
-          const floorLabel=g.floors.sort((a,b)=>floors.indexOf(a)-floors.indexOf(b)).map(f=>f.replace(" Floor","")).join(", ");
-          const matLabel=g.mat_lines.length>1?g.mat_lines.map(ml=>((ml.material||"")+" "+(ml.r_value||"")).trim()).join(" · "):((g.mat_lines[0]?.material||"")+" "+(g.mat_lines[0]?.r_value||"")+" "+(g.mat_lines[0]?.oc||"")).trim();
-          const {qty,unit}=calcArea(g.totalSqft,thick,materialMap[g.mat_lines[0]?.material],g.mat_lines[0]?.r_value,variantMap);
-          return (
-            <div key={i} style={{paddingBottom:5,marginBottom:5,borderBottom:`1px solid ${C.chip}`}}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
-                <div style={{flex:1,paddingRight:4,lineHeight:1.5}}>
-                  <div style={{fontWeight:700,fontSize:12,color:C.ink}}>{floorLabel} — {g.area_type}</div>
-                  <div style={{fontSize:10,color:C.muted,lineHeight:1.5}}>
-                    {thick&&<span>{thick} </span>}{matLabel}{" · "}{fmt(g.totalSqft)} ft²
-                    {qty>0&&` → ${fmt(qty)} ${unit?.replace("_"," ")}`}
+        const hasPhases=allAreas.some(a=>a.phase===1||a.phase===2);
+        function buildGroups(list){
+          const gm={};
+          list.forEach(a=>{
+            const mls=(a.mat_lines&&a.mat_lines.length>0)?a.mat_lines:[{material:a.material||"",thickness_in:a.thickness_in||"",r_value:a.r_value||"",oc:a.oc||""}];
+            const key=a.area_type+"||||"+mls.map(ml=>ml.material).join("+");
+            if(!gm[key]) gm[key]={area_type:a.area_type,floors:[],mat_lines:mls,totalSqft:0,totalCost:0,totalPaintSqft:0,floorOrder:floors.indexOf(a.floor)};
+            const g=gm[key];
+            if(!g.floors.includes(a.floor)) g.floors.push(a.floor);
+            if(floors.indexOf(a.floor)<g.floorOrder) g.floorOrder=floors.indexOf(a.floor);
+            g.totalSqft+=a.sqft||0; g.totalCost+=getAreaTotalCost(a,materialMap,variantMap); g.totalPaintSqft+=Number(a.paint_sqft||0);
+          });
+          return Object.values(gm).sort((a,b)=>a.floorOrder-b.floorOrder);
+        }
+        function renderGroups(groups){
+          return groups.map((g,i)=>{
+            const thick=g.mat_lines[0]?.thickness_in||"";
+            const floorLabel=g.floors.sort((a,b)=>floors.indexOf(a)-floors.indexOf(b)).map(f=>f.replace(" Floor","")).join(", ");
+            const matLabel=g.mat_lines.length>1?g.mat_lines.map(ml=>((ml.material||"")+" "+(ml.r_value||"")).trim()).join(" · "):((g.mat_lines[0]?.material||"")+" "+(g.mat_lines[0]?.r_value||"")+" "+(g.mat_lines[0]?.oc||"")).trim();
+            const {qty,unit}=calcArea(g.totalSqft,thick,materialMap[g.mat_lines[0]?.material],g.mat_lines[0]?.r_value,variantMap);
+            return (
+              <div key={i} style={{paddingBottom:5,marginBottom:5,borderBottom:`1px solid ${C.chip}`}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+                  <div style={{flex:1,paddingRight:4,lineHeight:1.5}}>
+                    <div style={{fontWeight:700,fontSize:12,color:C.ink}}>{floorLabel} — {g.area_type}</div>
+                    <div style={{fontSize:10,color:C.muted,lineHeight:1.5}}>
+                      {thick&&<span>{thick} </span>}{matLabel}{" · "}{fmt(g.totalSqft)} ft²
+                      {qty>0&&` → ${fmt(qty)} ${unit?.replace("_"," ")}`}
+                    </div>
+                    {g.totalPaintSqft>0&&<div style={{fontSize:10,color:"#c2410c"}}>🎨 Paint {fmt(g.totalPaintSqft)} ft²</div>}
                   </div>
-                  {g.totalPaintSqft>0&&<div style={{fontSize:10,color:"#c2410c"}}>🎨 Paint {fmt(g.totalPaintSqft)} ft²</div>}
+                  {g.totalCost>0&&<span style={{fontWeight:700,color:C.green,fontSize:12,flexShrink:0,paddingTop:2}}>${fmt(g.totalCost)}</span>}
                 </div>
-                {g.totalCost>0&&<span style={{fontWeight:700,color:C.green,fontSize:12,flexShrink:0,paddingTop:2}}>${fmt(g.totalCost)}</span>}
               </div>
-            </div>
-          );
-        });
+            );
+          });
+        }
+        const PH={borderRadius:5,padding:"2px 8px",fontSize:10,fontWeight:800,marginBottom:4,marginTop:6,display:"inline-block"};
+        if(!hasPhases) return renderGroups(buildGroups(allAreas));
+        return (<>
+          {allAreas.some(a=>a.phase===1)&&<><div style={{...PH,background:"#eff6ff",color:"#1d4ed8"}}>🔵 1st Phase</div>{renderGroups(buildGroups(allAreas.filter(a=>a.phase===1)))}</>}
+          {allAreas.some(a=>a.phase===2)&&<><div style={{...PH,background:"#f5f3ff",color:"#6d28d9"}}>🟣 2nd Phase</div>{renderGroups(buildGroups(allAreas.filter(a=>a.phase===2)))}</>}
+          {allAreas.some(a=>!a.phase)&&<><div style={{...PH,background:"#f9fafb",color:C.faint}}>Unassigned</div>{renderGroups(buildGroups(allAreas.filter(a=>!a.phase)))}</>}
+        </>);
       })()}
       {(()=>{
         const optionalAreas=floors.flatMap(floor=>(areas[floor]||[]).filter(a=>a.area_type&&a.sqft&&a.material!=="__custom_mat__"&&a.is_optional).map(a=>({...a,floor})));
@@ -1274,7 +1295,7 @@ export default function ProjectEstimate() {
         const comboKey=`${a.floor_id}|${a.area_type}|${a.sqft}`;
         if(!comboMap[comboKey]){
           const measurements=segRows.filter(s=>s.area_id===a.id).map(s=>({h:s.height,l:s.length,q:1,sqft:s.sqft}));
-          comboMap[comboKey]={temp_id:a.id,floor:fl.name,area_type:a.area_type,material:a.material||"",thickness_in:a.thickness_in||"",r_value:a.r_value||"",oc:a.oc||"",sqft:a.sqft||0,measurements,mh:"",ml:"",mq:"1",deduct_sqft:a.deduct_sqft||"",paint_sqft:a.paint_sqft||"",price_override:a.price_override||"",_collapsed:true,options:Array.isArray(a.options)?a.options:(typeof a.options==="string"?JSON.parse(a.options||"[]"):[]),mat_lines:[{id:1,material:a.material||"",thickness_in:a.thickness_in||"",r_value:a.r_value||"",oc:a.oc||""}]};
+          comboMap[comboKey]={temp_id:a.id,floor:fl.name,area_type:a.area_type,material:a.material||"",thickness_in:a.thickness_in||"",r_value:a.r_value||"",oc:a.oc||"",sqft:a.sqft||0,measurements,mh:"",ml:"",mq:"1",deduct_sqft:a.deduct_sqft||"",paint_sqft:a.paint_sqft||"",price_override:a.price_override||"",phase:a.phase||null,_collapsed:true,options:Array.isArray(a.options)?a.options:(typeof a.options==="string"?JSON.parse(a.options||"[]"):[]),mat_lines:[{id:1,material:a.material||"",thickness_in:a.thickness_in||"",r_value:a.r_value||"",oc:a.oc||""}]};
         }else{
           comboMap[comboKey].mat_lines.push({id:comboMap[comboKey].mat_lines.length+1,material:a.material||"",thickness_in:a.thickness_in||"",r_value:a.r_value||"",oc:a.oc||""});
           comboMap[comboKey].material="__combo__";
@@ -1384,8 +1405,8 @@ export default function ProjectEstimate() {
       // Copy defaults from the most recent area but start fresh for measurements
       const last=collapsed[0]; // take from first (top) since that's most recent
       const n=last
-        ?{...last,temp_id:Date.now(),sqft:0,measurements:[],mh:"",ml:"",mq:"1",deduct_sqft:"",paint_sqft:"",price_override:"",_collapsed:false,options:[],is_optional:false}
-        :{temp_id:Date.now(),floor,area_type:"",material:"",thickness_in:"",r_value:"",oc:"",sqft:0,measurements:[],mh:"",ml:"",mq:"1",deduct_sqft:"",paint_sqft:"",price_override:"",_collapsed:false,options:[],is_optional:false};
+        ?{...last,temp_id:Date.now(),sqft:0,measurements:[],mh:"",ml:"",mq:"1",deduct_sqft:"",paint_sqft:"",price_override:"",phase:null,_collapsed:false,options:[],is_optional:false}
+        :{temp_id:Date.now(),floor,area_type:"",material:"",thickness_in:"",r_value:"",oc:"",sqft:0,measurements:[],mh:"",ml:"",mq:"1",deduct_sqft:"",paint_sqft:"",price_override:"",phase:null,_collapsed:false,options:[],is_optional:false};
       // Prepend — new area appears at the top of the list
       return {...prev,[floor]:[n,...collapsed]};
     });
@@ -1545,7 +1566,7 @@ async function saveProject({silent=false}={}) {
         return mls.map((ml,mi)=>{
           const mat=materialMap[ml.material];
           const {qty,unit,unit_price,line_total}=calcAreaForSave(a,ml,mi,mat,variantMap);
-          return {project_id:targetProjectId,floor_id:floorMap[floor],area_type:a.area_type,material:ml.material,thickness_in:ml.thickness_in||null,r_value:ml.r_value,sqft:a.sqft,qty,unit,unit_price,line_total,order_index:i*10+mi,company_id:companyId,options:mi===0?(a.options||[]):[],paint_sqft:mi===0?Number(a.paint_sqft||0):0,deduct_sqft:mi===0?Number(a.deduct_sqft||0):0,price_override:mi===0?(a.price_override||null):null};
+          return {project_id:targetProjectId,floor_id:floorMap[floor],area_type:a.area_type,material:ml.material,thickness_in:ml.thickness_in||null,r_value:ml.r_value,sqft:a.sqft,qty,unit,unit_price,line_total,order_index:i*10+mi,company_id:companyId,options:mi===0?(a.options||[]):[],paint_sqft:mi===0?Number(a.paint_sqft||0):0,deduct_sqft:mi===0?Number(a.deduct_sqft||0):0,price_override:mi===0?(a.price_override||null):null,phase:mi===0?(a.phase||null):null};
         });
       }));
       if(allAreas.length>0){
@@ -1579,7 +1600,7 @@ async function saveProject({silent=false}={}) {
       const floorMap={};(floorRows||[]).forEach(f=>{floorMap[f.name]=f.id;});
       const allAreas=floors.flatMap(floor=>(areas[floor]||[]).filter(a=>a.area_type&&a.sqft).flatMap((a,i)=>{
         const mls=(a.mat_lines&&a.mat_lines.length>0)?a.mat_lines:[{material:a.material||"",thickness_in:a.thickness_in||"",r_value:a.r_value||"",oc:a.oc||""}];
-        return mls.map((ml,mi)=>{const mat=materialMap[ml.material];const {qty,unit,unit_price,line_total}=calcAreaForSave(a,ml,mi,mat,variantMap);return {project_id:proj.id,floor_id:floorMap[floor],area_type:a.area_type,material:ml.material,thickness_in:ml.thickness_in||null,r_value:ml.r_value,sqft:a.sqft,qty,unit,unit_price,line_total,order_index:i*10+mi,company_id:companyId,options:mi===0?(a.options||[]):[],paint_sqft:mi===0?Number(a.paint_sqft||0):0,deduct_sqft:mi===0?Number(a.deduct_sqft||0):0,price_override:mi===0?(a.price_override||null):null}; });
+        return mls.map((ml,mi)=>{const mat=materialMap[ml.material];const {qty,unit,unit_price,line_total}=calcAreaForSave(a,ml,mi,mat,variantMap);return {project_id:proj.id,floor_id:floorMap[floor],area_type:a.area_type,material:ml.material,thickness_in:ml.thickness_in||null,r_value:ml.r_value,sqft:a.sqft,qty,unit,unit_price,line_total,order_index:i*10+mi,company_id:companyId,options:mi===0?(a.options||[]):[],paint_sqft:mi===0?Number(a.paint_sqft||0):0,deduct_sqft:mi===0?Number(a.deduct_sqft||0):0,price_override:mi===0?(a.price_override||null):null,phase:mi===0?(a.phase||null):null}; });
       }));
       if(allAreas.length>0){
         const {data:areaRows,error:ae}=await supabase.from("areas").insert(allAreas).select();
