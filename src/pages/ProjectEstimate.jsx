@@ -1140,7 +1140,10 @@ export default function ProjectEstimate() {
     saveDraftNow();
     clearTimeout(autoSaveTimer.current);
     autoSaveTimer.current = setTimeout(()=>{
-      if(selectedLeadId && !wasSaved.current){
+      // In edit mode: always auto-save directly to DB (project ID already exists).
+      // In new-project mode: only auto-save once a project ID exists (after first manual save).
+      const targetId = projectId || savedProjectId;
+      if(selectedLeadId && targetId){
         saveProject({silent:true});
       }
     }, 3000);
@@ -1167,10 +1170,14 @@ export default function ProjectEstimate() {
   function loadDraft(key){try{const r=localStorage.getItem(key);return r?JSON.parse(r):null;}catch(e){return null;}}
 
   function saveDraftNow(overrideAreas,overrideFloors){
+    // In edit mode, changes are auto-saved directly to the DB — no need
+    // for a localStorage draft, and creating one causes a duplicate entry
+    // in the Estimates list that looks like a second copy of the project.
+    if(isEditing) return;
     if(!selectedLeadId) return;
     const key=getDraftKey(selectedLeadId, projectAddress);
     try{
-      localStorage.setItem(key,JSON.stringify({savedAt:new Date().toISOString(),selectedLeadId,projectName,projectAddress,crewNotes,floors:overrideFloors||floors,areas:overrideAreas||areas,editingProjectId:isEditing?projectId:null}));
+      localStorage.setItem(key,JSON.stringify({savedAt:new Date().toISOString(),selectedLeadId,projectName,projectAddress,crewNotes,floors:overrideFloors||floors,areas:overrideAreas||areas,editingProjectId:null}));
       if(!draftKey) setDraftKey(key);
     }catch(e){}
   }

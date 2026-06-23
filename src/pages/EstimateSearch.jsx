@@ -28,20 +28,24 @@ export default function EstimateSearch() {
   const [openCost, setOpenCost] = useState(null);
   const [drafts, setDrafts]     = useState([]);
 
-  // Load all drafts from localStorage, clean up duplicates
+  // Load all drafts from localStorage, clean up duplicates and edit-mode leftovers
   useEffect(()=>{
     const found = [];
     const keysToDelete = [];
     for(let i=0; i<localStorage.length; i++){
       const key = localStorage.key(i);
-      if(key?.startsWith("draft_estimate_")){
+      if(key?.startsWith("draft_estimate_")||key?.startsWith("insulation_draft_")){
         try {
           const d = JSON.parse(localStorage.getItem(key));
+          // Edit-mode drafts (editingProjectId set) are just unsaved edits to
+          // existing projects — they're not new jobs and shouldn't show as
+          // separate draft entries alongside the real saved project.
+          if(d && d.editingProjectId){ keysToDelete.push(key); continue; }
           if(d) found.push({...d, key});
         } catch(e) { keysToDelete.push(key); }
       }
     }
-    // delete bad/corrupt drafts
+    // delete bad/corrupt drafts and edit-mode leftovers
     keysToDelete.forEach(k=>localStorage.removeItem(k));
     // deduplicate by leadId — keep newest per customer
     const seen = {};
