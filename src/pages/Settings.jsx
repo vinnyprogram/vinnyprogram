@@ -52,6 +52,8 @@ export default function Settings() {
 
   // Materials
   const [matCosts, setMatCosts] = useState([]);
+  // Two-layer material system: types (Layer 1) each have products (Layer 2)
+  const [matTypes, setMatTypes] = useState([]); // [{id, name, unit, r_per_inch, products:[...]}]
   // Per-thickness/R-value/facing pricing for batts & rigid foam
   const [materialVariants, setMaterialVariants] = useState([]);
   const [importing, setImporting] = useState(false);
@@ -145,6 +147,32 @@ export default function Settings() {
     const { data:m } = await supabase.from("material_costs")
       .select("*").eq("company_id", company.id);
     if(m?.length) setMatCosts(m);
+
+    // Load two-layer material system
+    const [{data:types},{data:products}] = await Promise.all([
+      supabase.from("material_types").select("*").eq("company_id",company.id).order("sort_order"),
+      supabase.from("material_products").select("*").eq("company_id",company.id).order("sort_order"),
+    ]);
+    if(types?.length){
+      // DB has the new system — load and combine
+      setMatTypes(types.map(t=>({
+        ...t,
+        products:(products||[]).filter(p=>p.material_type_id===t.id),
+      })));
+    } else if(m?.length){
+      // No types yet — seed from existing material_costs so user sees their
+      // existing data in the new UI and can save to migrate it
+      setMatTypes(m.map((mc,i)=>({
+        id:null, material_type_id:null,
+        name:mc.material_name, unit:mc.unit||"sqft", r_per_inch:mc.r_per_inch||null,
+        sort_order:i,
+        products:[{
+          id:null, brand:"", description:"",
+          cost_per_unit:mc.cost_per_unit||0, markup_pct:mc.markup_pct||20,
+          coverage_factor:mc.coverage_factor||1, is_active:true, r_value:null,
+        }],
+      })));
+    }
     else seedMaterials();
 
     // load material variants (per thickness/R-value pricing)
@@ -696,7 +724,7 @@ export default function Settings() {
         );
       }
 
-      // save material costs
+      // save material costs (legacy — kept for backward compat)
       await supabase.from("material_costs").delete().eq("company_id", company.id);
       if(matCosts.length>0){
         await supabase.from("material_costs").insert(
@@ -710,6 +738,58 @@ export default function Settings() {
             r_per_inch: m.r_per_inch!==""&&m.r_per_inch!=null ? Number(m.r_per_inch) : null,
           }))
         );
+      }
+
+      // ── save two-layer material system ─────────────────────────────────────
+      if(matTypes.length>0){
+        // delete existing, then reinsert (simplest approach — no partial updates)
+        await supabase.from("material_products").delete().eq("company_id", company.id);
+        await supabase.from("material_types").delete().eq("company_id", company.id);
+        const validTypes = matTypes.filter(t=>t.name?.trim());
+        if(validTypes.length){
+          const {data:savedTypes} = await supabase.from("material_types").insert(
+            validTypes.map((t,i)=>({
+              company_id: company.id, name:t.name.trim(), unit:t.unit||"sqft",
+              r_per_inch:t.r_per_inch?Number(t.r_per_inch):null, sort_order:i,
+            }))
+          ).select();
+          if(savedTypes?.length){
+            const allProducts = [];
+            savedTypes.forEach((savedType,ti)=>{
+              const origType = validTypes[ti];
+              (origType.products||[]).filter(p=>p.brand?.trim()||p.cost_per_unit>0).forEach((p,pi)=>{
+                allProducts.push({
+                  company_id: company.id,
+                  material_type_id: savedType.id,
+                  brand: p.brand||"",
+                  description: p.description||"",
+                  cost_per_unit: Number(p.cost_per_unit||0),
+                  markup_pct: Number(p.markup_pct||20),
+                  coverage_factor: Number(p.coverage_factor||1),
+                  is_active: !!p.is_active,
+                  r_value: p.r_value||null,
+                  sort_order: pi,
+                });
+              });
+            });
+            if(allProducts.length>0) await supabase.from("material_products").insert(allProducts);
+          }
+        }
+        // Also sync back to material_costs for backward compat with old queries
+        const syncCosts = validTypes.map(t=>{
+          const active = (t.products||[]).find(p=>p.is_active) || t.products?.[0];
+          return {
+            company_id:company.id, material_name:t.name.trim(),
+            unit:t.unit||"sqft", cost_per_unit:Number(active?.cost_per_unit||0),
+            markup_pct:Number(active?.markup_pct||20),
+            coverage_factor:Number(active?.coverage_factor||1),
+            r_per_inch:t.r_per_inch?Number(t.r_per_inch):null,
+          };
+        });
+        if(syncCosts.length>0){
+          await supabase.from("material_costs").delete().eq("company_id",company.id);
+          await supabase.from("material_costs").insert(syncCosts);
+        }
       }
 
       // save material variants (per thickness/R-value pricing)
@@ -952,111 +1032,134 @@ export default function Settings() {
         {/* ── MATERIALS TAB ── */}
         {tab==="materials" && (
           <div>
-            <div style={{ fontSize:12, color:C.muted, marginBottom:10 }}>
-              Enter your actual cost per unit and desired markup percentage.
-              The sell price is calculated automatically. Coverage applies
-              to "bag" materials only (sqft-inches one bag covers). For
-              "board ft" spray foam, set R-value per inch instead (open
-              cell ≈3.75, closed cell ≈6.85) — the spray thickness used
-              for pricing is then calculated from each area's target
-              R-value, not from a stud-cavity dropdown.
+            <div style={{fontSize:12,color:C.muted,marginBottom:12,lineHeight:1.6}}>
+              <b>Material Types</b> (Layer 1) are what appear in the area dropdown — e.g. "Fiberglass Batt".
+              Under each type, add the <b>brands/products</b> (Layer 2) you actually buy from suppliers.
+              Mark one as <span style={{color:"#059669",fontWeight:700}}>Active</span> — that product's
+              price is used for estimates. Switch active products when you change suppliers without
+              touching any area cards.
             </div>
 
-            <label style={{ display:"block", marginBottom:12 }}>
+            <label style={{display:"block",marginBottom:12}}>
               <input type="file" accept=".xlsx,.xls" style={{display:"none"}}
                 onChange={e=>{ const f=e.target.files?.[0]; if(f) handleImportWorkbook(f); e.target.value=""; }} />
-              <span style={{...BtnG, display:"inline-flex", alignItems:"center", gap:6,
-                  cursor: importing?"default":"pointer", opacity: importing?0.6:1}}
+              <span style={{...BtnG,display:"inline-flex",alignItems:"center",gap:6,
+                  cursor:importing?"default":"pointer",opacity:importing?0.6:1}}
                 onClick={e=>{ if(importing) e.preventDefault(); }}>
-                {importing ? "Importing…" : "📥 Import Pricing Worksheet (.xlsx)"}
+                {importing?"Importing…":"📥 Import Pricing Worksheet (.xlsx)"}
               </span>
             </label>
 
             {importSummary && (
-              <div style={{ background:"#f0fdf4", border:"1px solid #86efac", borderRadius:8,
-                  padding:"12px 14px", marginBottom:12, fontSize:12, color:"#166534", whiteSpace:"pre-line" }}>
+              <div style={{background:"#f0fdf4",border:"1px solid #86efac",borderRadius:8,
+                  padding:"12px 14px",marginBottom:12,fontSize:12,color:"#166534",whiteSpace:"pre-line"}}>
                 {importSummary}
               </div>
             )}
 
-            <div style={{ background:C.white, borderRadius:10,
-                border:`1px solid ${C.border}`, overflow:"hidden", marginBottom:10 }}>
-              {/* header */}
-              <div style={{ display:"grid",
-                  gridTemplateColumns:"2fr 1fr 70px 60px 65px 70px 28px",
-                  gap:5, padding:"8px 12px", background:"#f8fafc",
-                  borderBottom:`1px solid ${C.border}`,
-                  fontSize:10, fontWeight:700, color:C.muted,
-                  textTransform:"uppercase", letterSpacing:0.4 }}>
-                <span>Material</span>
-                <span>Unit</span>
-                <span>Cost</span>
-                <span>Mkup</span>
-                <span>Cover./R-in</span>
-                <span>Sell Price</span>
-                <span></span>
-              </div>
-
-              {matCosts.map((m, i)=>{
-                const sellPrice = Number(m.cost_per_unit||0) * (1 + Number(m.markup_pct||0)/100);
-                const isBoardFt = m.unit==="board_ft";
-                const isBag = m.unit==="bag";
-                return (
-                  <div key={i} style={{ display:"grid",
-                      gridTemplateColumns:"2fr 1fr 70px 60px 65px 70px 28px",
-                      gap:5, padding:"8px 12px",
-                      borderBottom: i<matCosts.length-1?`1px solid ${C.border}`:"none",
-                      alignItems:"center", background:i%2===0?C.white:"#fafbfc" }}>
-                    <input placeholder="Material name" value={m.material_name}
-                      onChange={e=>updateMat(i,"material_name",e.target.value)}
-                      style={{...I, height:28, fontSize:11}} />
-                    <select value={m.unit} onChange={e=>updateMat(i,"unit",e.target.value)}
-                      style={{...I, height:28, fontSize:11, padding:"0 4px"}}>
-                      <option value="board_ft">board ft</option>
-                      <option value="bag">bag</option>
+            {matTypes.map((t,ti)=>{
+              const updateType=(field,val)=>setMatTypes(p=>p.map((x,i)=>i===ti?{...x,[field]:val}:x));
+              const updateProduct=(pi,field,val)=>setMatTypes(p=>p.map((x,i)=>i===ti?{...x,products:x.products.map((pp,j)=>j===pi?{...pp,[field]:val}:pp)}:x));
+              const removeProduct=(pi)=>setMatTypes(p=>p.map((x,i)=>i===ti?{...x,products:x.products.filter((_,j)=>j!==pi)}:x));
+              const setActive=(pi)=>setMatTypes(p=>p.map((x,i)=>i===ti?{...x,products:x.products.map((pp,j)=>({...pp,is_active:j===pi}))}:x));
+              const addProduct=()=>setMatTypes(p=>p.map((x,i)=>i===ti?{...x,products:[...x.products,{id:null,brand:"",description:"",cost_per_unit:0,markup_pct:20,coverage_factor:1,is_active:false,r_value:null}]}:x));
+              const activeProduct=(t.products||[]).find(p=>p.is_active);
+              const activeSell=activeProduct?Number(activeProduct.cost_per_unit||0)*(1+Number(activeProduct.markup_pct||20)/100):0;
+              return (
+                <div key={ti} style={{background:C.white,borderRadius:10,border:`1px solid ${C.border}`,marginBottom:12,overflow:"hidden"}}>
+                  {/* Type header */}
+                  <div style={{background:"#f8fafc",borderBottom:`1px solid ${C.border}`,padding:"10px 12px",display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+                    <input placeholder="Type name (e.g. Fiberglass Batt)" value={t.name||""}
+                      onChange={e=>updateType("name",e.target.value)}
+                      style={{...I,height:32,fontSize:13,fontWeight:700,flex:2,minWidth:140}} />
+                    <select value={t.unit||"sqft"} onChange={e=>updateType("unit",e.target.value)}
+                      style={{...I,height:32,fontSize:12,flex:1,minWidth:110}}>
                       <option value="sqft">sqft</option>
+                      <option value="board_ft">board ft (spray foam)</option>
+                      <option value="bag">bag (cellulose)</option>
                     </select>
-                    <div style={{ display:"flex", alignItems:"center", gap:2 }}>
-                      <span style={{ fontSize:11, color:C.muted }}>$</span>
-                      <input type="number" value={m.cost_per_unit}
-                        onChange={e=>updateMat(i,"cost_per_unit",e.target.value)}
-                        style={{...I, height:28, fontSize:11, textAlign:"right"}} />
-                    </div>
-                    <div style={{ display:"flex", alignItems:"center", gap:1 }}>
-                      <input type="number" value={m.markup_pct}
-                        onChange={e=>updateMat(i,"markup_pct",e.target.value)}
-                        style={{...I, height:28, fontSize:11, textAlign:"right"}} />
-                      <span style={{ fontSize:11, color:C.muted }}>%</span>
-                    </div>
-                    {isBoardFt ? (
-                      <input type="number" value={m.r_per_inch||""}
-                        placeholder="R/in"
-                        title="R-value per inch for this spray foam — thickness sprayed is calculated from the area's target R-value, not a stud-cavity dropdown (e.g. open cell ≈3.75, closed cell ≈6.85)"
-                        onChange={e=>updateMat(i,"r_per_inch",e.target.value)}
-                        style={{...I, height:28, fontSize:11, textAlign:"right"}} />
-                    ) : (
-                      <input type="number" value={m.coverage_factor||1}
-                        disabled={!isBag}
-                        title="Sqft-inches one bag covers (bag materials only)"
-                        onChange={e=>updateMat(i,"coverage_factor",e.target.value)}
-                        style={{...I, height:28, fontSize:11, textAlign:"right",
-                          opacity:!isBag?0.4:1}} />
+                    {t.unit==="board_ft"&&(
+                      <div style={{display:"flex",alignItems:"center",gap:4}}>
+                        <input type="number" placeholder="R/in" value={t.r_per_inch||""}
+                          onChange={e=>updateType("r_per_inch",e.target.value)}
+                          title="R-value per inch (closed cell≈6.8, open cell≈3.75)"
+                          style={{...I,height:32,fontSize:12,width:60,textAlign:"right"}} />
+                        <span style={{fontSize:11,color:C.muted}}>R/in</span>
+                      </div>
                     )}
-                    <div style={{ fontSize:12, fontWeight:700, color:C.green,
-                        textAlign:"right" }}>
-                      ${sellPrice.toFixed(2)}
-                    </div>
-                    <button onClick={()=>removeMat(i)}
-                      style={{...Btn, padding:"0 6px", height:26,
-                        color:C.faint, fontSize:13}}>✕</button>
+                    {activeSell>0&&<div style={{fontSize:12,color:C.green,fontWeight:700,marginLeft:"auto"}}>Sell: ${activeSell.toFixed(2)}/{t.unit==="board_ft"?"bf":t.unit==="bag"?"bag":"sqft"}</div>}
+                    <button onClick={()=>setMatTypes(p=>p.filter((_,i)=>i!==ti))}
+                      style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:18,padding:"0 4px",flexShrink:0}}>✕</button>
                   </div>
-                );
-              })}
-            </div>
 
-            <button onClick={addMat}
-              style={{...BtnG, width:"100%", height:36, fontSize:13}}>
-              + Add Material
+                  {/* Products (Layer 2) */}
+                  <div style={{padding:"8px 12px"}}>
+                    <div style={{fontSize:10,fontWeight:700,color:C.faint,textTransform:"uppercase",letterSpacing:0.4,marginBottom:6}}>
+                      Brands / Supplier Products
+                    </div>
+                    {(t.products||[]).length===0&&(
+                      <div style={{fontSize:11,color:C.faint,fontStyle:"italic",marginBottom:6}}>
+                        No products yet — add at least one brand/product to price this material.
+                      </div>
+                    )}
+                    {(t.products||[]).map((p,pi)=>{
+                      const sell=Number(p.cost_per_unit||0)*(1+Number(p.markup_pct||20)/100);
+                      return (
+                        <div key={pi} style={{display:"grid",gridTemplateColumns:"1.2fr 1fr 70px 50px"+(t.unit==="bag"?" 60px":"")+" 65px 90px 24px",
+                            gap:5,padding:"6px 8px",marginBottom:4,borderRadius:6,
+                            background:p.is_active?"#f0fdf4":"#fafbfc",
+                            border:`1px solid ${p.is_active?"#86efac":C.border}`,
+                            alignItems:"center"}}>
+                          <input placeholder="Brand (e.g. Owens Corning)" value={p.brand||""}
+                            onChange={e=>updateProduct(pi,"brand",e.target.value)}
+                            style={{...I,height:26,fontSize:11}} />
+                          <input placeholder="Description / SKU" value={p.description||""}
+                            onChange={e=>updateProduct(pi,"description",e.target.value)}
+                            style={{...I,height:26,fontSize:11}} />
+                          <div style={{display:"flex",alignItems:"center",gap:2}}>
+                            <span style={{fontSize:10,color:C.muted}}>$</span>
+                            <input type="number" value={p.cost_per_unit}
+                              onChange={e=>updateProduct(pi,"cost_per_unit",e.target.value)}
+                              style={{...I,height:26,fontSize:11,textAlign:"right"}} />
+                          </div>
+                          <div style={{display:"flex",alignItems:"center",gap:1}}>
+                            <input type="number" value={p.markup_pct}
+                              onChange={e=>updateProduct(pi,"markup_pct",e.target.value)}
+                              style={{...I,height:26,fontSize:11,textAlign:"right"}} />
+                            <span style={{fontSize:10,color:C.muted}}>%</span>
+                          </div>
+                          {t.unit==="bag"&&(
+                            <input type="number" value={p.coverage_factor||1} title="sqft·in one bag covers"
+                              onChange={e=>updateProduct(pi,"coverage_factor",e.target.value)}
+                              style={{...I,height:26,fontSize:11,textAlign:"right"}} />
+                          )}
+                          <div style={{fontSize:11,fontWeight:700,color:C.green,textAlign:"right"}}>
+                            ${sell.toFixed(2)}
+                          </div>
+                          <button onClick={()=>setActive(pi)}
+                            style={{border:"none",borderRadius:5,height:26,fontSize:10,fontWeight:700,cursor:"pointer",
+                              background:p.is_active?"#059669":"#e5e7eb",
+                              color:p.is_active?"white":C.muted,whiteSpace:"nowrap"}}>
+                            {p.is_active?"✓ Active":"Set Active"}
+                          </button>
+                          <button onClick={()=>removeProduct(pi)}
+                            style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:16,padding:0}}>✕</button>
+                        </div>
+                      );
+                    })}
+                    <button onClick={addProduct}
+                      style={{border:`1px dashed ${C.border}`,background:"none",color:C.muted,
+                        padding:"5px 12px",borderRadius:6,cursor:"pointer",fontSize:11,marginTop:2}}>
+                      + Add Brand / Product
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+
+            <button onClick={()=>setMatTypes(p=>[...p,{id:null,name:"",unit:"sqft",r_per_inch:null,products:[{id:null,brand:"",description:"",cost_per_unit:0,markup_pct:20,coverage_factor:1,is_active:true,r_value:null}]}])}
+              style={{...BtnG,width:"100%",height:38,fontSize:13,marginBottom:8}}>
+              + Add Material Type
             </button>
           </div>
         )}

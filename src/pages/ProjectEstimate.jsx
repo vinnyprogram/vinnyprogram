@@ -304,7 +304,7 @@ async function saveNew() {
 }
 
 // ── AreaRow ───────────────────────────────────────────────────────────────────
-function AreaRow({ area, materials, materialMap, variantMap, onChange, onDelete, onMove, floors, activeFloor, saveOptionsOnly, onMaterialAdded, customAreaTypes, onSaveCustomAreaType }) {
+function AreaRow({ area, matTypesLive, materials, materialMap, variantMap, onChange, onDelete, onMove, floors, activeFloor, saveOptionsOnly, onMaterialAdded, customAreaTypes, onSaveCustomAreaType }) {
   const [expanded, setExpanded] = useState(!area._collapsed);
 
   const [thickOpts, setThickOpts] = useState(()=>loadCustomList("custom_thick_opts", THICK_OPTS));
@@ -611,7 +611,7 @@ function useCalcResult(field) {
                 }
               }}>
               <option value="">Material</option>
-              {materials.map(m=><option key={m.id}>{m.name}</option>)}
+              {(matTypesLive&&matTypesLive.length>0?matTypesLive:materials).map(m=><option key={m.id||m.name}>{m.name}</option>)}
               <option value="__combo__">⚡ Combo</option>
               <option value="__custom_mat__">✏️ Other</option>
             </select>
@@ -666,7 +666,7 @@ function useCalcResult(field) {
                     else updateMatLine(idx,"material",e.target.value);
                   }}>
                   <option value="">Material {idx+1}</option>
-                  {materials.map(m=><option key={m.id}>{m.name}</option>)}
+                  {(matTypesLive&&matTypesLive.length>0?matTypesLive:materials).map(m=><option key={m.id||m.name}>{m.name}</option>)}
                   <option value="__custom__">✏️ Other</option>
                 </select>
                 {ml.material==="__custom__" && (
@@ -752,7 +752,7 @@ function useCalcResult(field) {
                       onChange("options",opts);
                     } else { updateOpt("material",e.target.value); }
                   }}>
-                    <option value="">Material</option>{materials.map(m=><option key={m.id}>{m.name}</option>)}<option value="__combo__">⚡ Combo</option>
+                    <option value="">Material</option>{(matTypesLive&&matTypesLive.length>0?matTypesLive:materials).map(m=><option key={m.id||m.name}>{m.name}</option>)}<option value="__combo__">⚡ Combo</option>
                   </select>
                   <select style={{...XS,flex:1}} value={opt.thickness_in||matLines[0].thickness_in||""} onChange={e=>updateOpt("thickness_in",e.target.value)}><option value="">Thick</option>{THICK_OPTS.map(t=><option key={t}>{t}</option>)}</select>
                   <select style={{...XS,flex:1}} value={opt.r_value||matLines[0].r_value||""} onChange={e=>updateOpt("r_value",e.target.value)}><option value="">R-Val</option>{R_VALS.map(r=><option key={r}>{r}</option>)}</select>
@@ -763,7 +763,7 @@ function useCalcResult(field) {
                   {optLines.map((ol,li)=>(
                     <div key={li} style={{marginBottom:6,paddingBottom:6,borderBottom:li<optLines.length-1?"1px dashed #fde68a":"none"}}>
                       <div style={{display:"flex",gap:4,marginBottom:3,alignItems:"center"}}>
-                        <select style={{...XS,flex:1}} value={ol.material||""} onChange={e=>updateOptLine(li,"material",e.target.value)}><option value="">Material {li+1}</option>{materials.map(m=><option key={m.id}>{m.name}</option>)}</select>
+                        <select style={{...XS,flex:1}} value={ol.material||""} onChange={e=>updateOptLine(li,"material",e.target.value)}><option value="">Material {li+1}</option>{(matTypesLive&&matTypesLive.length>0?matTypesLive:materials).map(m=><option key={m.id||m.name}>{m.name}</option>)}</select>
                         {optLines.length>2&&<button onClick={()=>{const lines=optLines.filter((_,j)=>j!==li);const opts=[...areaOptions];opts[oi]={...opts[oi],mat_lines:lines};onChange("options",opts);}} style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:13,padding:0}}>✕</button>}
                       </div>
                       <div style={{display:"flex",gap:4}}>
@@ -1109,6 +1109,8 @@ export default function ProjectEstimate() {
   const [customAreaTypes,setCustomAreaTypes]=useState([]);  // extra area types saved to DB
   const [matCostsLive,setMatCostsLive]=useState([]);
   const [variantsLive,setVariantsLive]=useState([]);
+  const [matTypesLive,setMatTypesLive]=useState([]);      // Layer 1
+  const [matProductsLive,setMatProductsLive]=useState([]); // Layer 2
   const [leads,setLeads]=useState([]);
   const [selectedLeadId,setSelectedLeadId]=useState(leadId||"");
   const [projectName,setProjectName]=useState("");
@@ -1292,6 +1294,10 @@ export default function ProjectEstimate() {
       .then(({data})=>{if(data) setMatCostsLive(data);});
     supabase.from("material_variants").select("*").eq("company_id",companyId)
       .then(({data})=>{if(data) setVariantsLive(data);});
+    supabase.from("material_types").select("*").eq("company_id",companyId).order("sort_order")
+      .then(({data})=>{if(data) setMatTypesLive(data);});
+    supabase.from("material_products").select("*").eq("company_id",companyId).order("sort_order")
+      .then(({data})=>{if(data) setMatProductsLive(data);});
   }
 
   function loadLeads(){
@@ -1397,6 +1403,26 @@ export default function ProjectEstimate() {
   // always defaulted to 0 — that disconnect meant the live on-screen total
   // while editing could differ from the final saved quote total.
   const materialMap=useMemo(()=>{
+    // ── Two-layer system (new): material_types + material_products ────────────
+    if(matTypesLive.length>0){
+      return Object.fromEntries(matTypesLive.map(t=>{
+        // Find the active product for this type
+        const prods = matProductsLive.filter(p=>p.material_type_id===t.id&&p.is_active);
+        const prod = prods[0];
+        const rpi = t.r_per_inch ? Number(t.r_per_inch)
+          : t.name.toLowerCase().includes("closed") ? 6.8
+          : t.name.toLowerCase().includes("open") ? 3.75
+          : null;
+        const sellPrice = prod ? Number(prod.cost_per_unit||0)*(1+Number(prod.markup_pct||20)/100) : 0;
+        return [t.name, {
+          name:t.name, unit:t.unit||"sqft",
+          price_per_unit:sellPrice,
+          coverage_factor:prod?Number(prod.coverage_factor||1):1,
+          r_per_inch:rpi,
+        }];
+      }));
+    }
+    // ── Legacy system (fallback): material_costs ───────────────────────────────
     const costMap=Object.fromEntries(matCostsLive.map(m=>[m.material_name,m]));
     return Object.fromEntries(materials.map(m=>{
       const mc=costMap[m.name];
@@ -1409,7 +1435,7 @@ export default function ProjectEstimate() {
             : null)
           : null }];
     }));
-  },[materials, matCostsLive]);
+  },[matTypesLive, matProductsLive, materials, matCostsLive]);
   const variantMap=useMemo(()=>Object.fromEntries(
     variantsLive.map(v=>[`${v.material_name}|${v.r_value}`.toLowerCase(), v])
   ),[variantsLive]);
@@ -1744,11 +1770,11 @@ async function saveProject({silent=false}={}) {
           ):(
             <>
               {currentAreas.map((area,idx)=>({area,idx})).filter(({area})=>!isAreaComplete(area)).map(({area,idx})=>(
-                <AreaRow key={area.id||area.temp_id} area={area} materials={materials} materialMap={materialMap} variantMap={variantMap} onChange={(field,value)=>updateArea(activeFloor,idx,field,value)} onDelete={()=>deleteArea(activeFloor,idx)} onMove={(toFloor)=>{const realI=(areas[activeFloor]||[]).indexOf(area);moveArea(activeFloor,realI>=0?realI:idx,toFloor);}} floors={floors} activeFloor={activeFloor} saveOptionsOnly={saveOptionsOnly} onMaterialAdded={loadMaterials} customAreaTypes={customAreaTypes} onSaveCustomAreaType={saveCustomAreaType} />
+                <AreaRow key={area.id||area.temp_id} area={area} matTypesLive={matTypesLive} materials={materials} materialMap={materialMap} variantMap={variantMap} onChange={(field,value)=>updateArea(activeFloor,idx,field,value)} onDelete={()=>deleteArea(activeFloor,idx)} onMove={(toFloor)=>{const realI=(areas[activeFloor]||[]).indexOf(area);moveArea(activeFloor,realI>=0?realI:idx,toFloor);}} floors={floors} activeFloor={activeFloor} saveOptionsOnly={saveOptionsOnly} onMaterialAdded={loadMaterials} customAreaTypes={customAreaTypes} onSaveCustomAreaType={saveCustomAreaType} />
               ))}
               {currentAreas.some(a=>isAreaComplete(a))&&(<div style={{fontSize:9,fontWeight:700,color:"#059669",textTransform:"uppercase",letterSpacing:0.5,marginBottom:4,marginTop:2,paddingLeft:2}}>✓ Completed areas</div>)}
               {currentAreas.map((area,idx)=>({area,idx})).filter(({area})=>isAreaComplete(area)).map(({area,idx})=>(
-                <AreaRow key={area.id||area.temp_id} area={area} materials={materials} materialMap={materialMap} variantMap={variantMap} onChange={(field,value)=>updateArea(activeFloor,idx,field,value)} onDelete={()=>deleteArea(activeFloor,idx)} onMove={(toFloor)=>{const realI=(areas[activeFloor]||[]).indexOf(area);moveArea(activeFloor,realI>=0?realI:idx,toFloor);}} floors={floors} activeFloor={activeFloor} saveOptionsOnly={saveOptionsOnly} onMaterialAdded={loadMaterials} customAreaTypes={customAreaTypes} onSaveCustomAreaType={saveCustomAreaType} />
+                <AreaRow key={area.id||area.temp_id} area={area} matTypesLive={matTypesLive} materials={materials} materialMap={materialMap} variantMap={variantMap} onChange={(field,value)=>updateArea(activeFloor,idx,field,value)} onDelete={()=>deleteArea(activeFloor,idx)} onMove={(toFloor)=>{const realI=(areas[activeFloor]||[]).indexOf(area);moveArea(activeFloor,realI>=0?realI:idx,toFloor);}} floors={floors} activeFloor={activeFloor} saveOptionsOnly={saveOptionsOnly} onMaterialAdded={loadMaterials} customAreaTypes={customAreaTypes} onSaveCustomAreaType={saveCustomAreaType} />
               ))}
             </>
           )}
