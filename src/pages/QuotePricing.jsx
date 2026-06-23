@@ -147,7 +147,7 @@ export default function QuotePricing() {
       supabase.from("sales_reps").select("*").eq("company_id",cd.id).eq("active",true),
       supabase.from("cost_settings").select("*").eq("company_id",cd.id).eq("period","job_consumable").order("sort_order"),
       supabase.from("areas").select("*").eq("project_id",projectId).order("order_index"),
-      supabase.from("project_floors").select("*").eq("project_id",projectId).order("order_index"),
+      supabase.from("floors").select("*").eq("project_id",projectId).order("order_index"),
       supabase.from("material_costs").select("*").eq("company_id",cd.id),
       supabase.from("material_variants").select("*").eq("company_id",cd.id),
       supabase.from("cost_settings").select("*").eq("company_id",cd.id)
@@ -316,29 +316,39 @@ export default function QuotePricing() {
     setLiveOverheadCost(Math.round(ohPerJob*100)/100);
 
     // ── Fuel distance auto-calculate ──────────────────────────────────────
-    // Uses Google Maps Distance Matrix to get driving distance from the
-    // shop/office address (Settings → Fuel) to the job site address.
+    // Google's Distance Matrix JSON API is blocked by CORS in browsers.
+    // Use the Maps JavaScript SDK's DistanceMatrixService instead.
     const jobAddress = proj?.address || "";
-    if(shopAddr && jobAddress && import.meta.env.VITE_GOOGLE_PLACES_KEY){
+    if(shopAddr && jobAddress && import.meta.env.VITE_GOOGLE_PLACES_KEY && !q?.job_miles){
       setCalcingMiles(true);
       try {
-        const origin = encodeURIComponent(shopAddr);
-        const dest = encodeURIComponent(jobAddress);
-        const key = import.meta.env.VITE_GOOGLE_PLACES_KEY;
-        const res = await fetch(
-          `https://maps.googleapis.com/maps/api/distancematrix/json?origins=${origin}&destinations=${dest}&units=imperial&key=${key}`
-        );
-        const json = await res.json();
-        const el = json?.rows?.[0]?.elements?.[0];
-        if(el?.status==="OK" && el?.distance?.value){
-          // distance.value is in meters — convert to miles (one-way)
-          const miles = Math.round(el.distance.value / 1609.34);
-          setJobMiles(String(miles));
-        }
+        // Dynamically load the Maps JS SDK if not already loaded
+        await new Promise((resolve, reject)=>{
+          if(window.google?.maps) return resolve();
+          const s = document.createElement("script");
+          s.src = `https://maps.googleapis.com/maps/api/js?key=${import.meta.env.VITE_GOOGLE_PLACES_KEY}&libraries=places`;
+          s.onload = resolve; s.onerror = reject;
+          document.head.appendChild(s);
+        });
+        const svc = new window.google.maps.DistanceMatrixService();
+        svc.getDistanceMatrix({
+          origins:[shopAddr], destinations:[jobAddress],
+          travelMode:window.google.maps.TravelMode.DRIVING,
+          unitSystem:window.google.maps.UnitSystem.IMPERIAL,
+        },(res,status)=>{
+          if(status==="OK"){
+            const el = res?.rows?.[0]?.elements?.[0];
+            if(el?.status==="OK" && el?.distance?.value){
+              const miles = Math.round(el.distance.value / 1609.34);
+              setJobMiles(String(miles));
+            }
+          }
+          setCalcingMiles(false);
+        });
       } catch(e){
-        console.warn("Distance Matrix error:", e);
+        console.warn("Distance Matrix error:", e.message);
+        setCalcingMiles(false);
       }
-      setCalcingMiles(false);
     }
 
     setLoading(false);
