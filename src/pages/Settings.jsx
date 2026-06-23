@@ -92,7 +92,7 @@ export default function Settings() {
   const [offersInsulation, setOffersInsulation] = useState(true);
   const [offersHers, setOffersHers] = useState(true);
 
-  useEffect(()=>{ if(company) load(); },[company]);
+  useEffect(()=>{ if(company?.id) load(); },[company?.id]);
 
   async function load() {
     // load overhead costs
