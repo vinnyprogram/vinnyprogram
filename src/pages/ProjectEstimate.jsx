@@ -80,6 +80,26 @@ function parseRValueNumber(rValue){
 
 function calcArea(sqft, thick, mat, rValue, variantMap) {
   if (!sqft || !mat) return { qty:0, unit:"-", line_total:0, unit_price:0 };
+  // Per-R-value product lookup (new system) — find the best product for this R-value
+  if(mat.allProducts?.length>0 && rValue){
+    const rStr = String(rValue).toLowerCase().replace(/[^0-9.]/g,"");
+    const rMatch = mat.allProducts.find(p=>p.is_active && p.r_value &&
+      String(p.r_value).toLowerCase().replace(/[^0-9.]/g,"")===rStr);
+    const prod = rMatch || mat.allProducts.find(p=>p.is_active&&!p.r_value) || mat.allProducts.find(p=>p.is_active);
+    if(prod){
+      const cost = Number(prod.cost_per_unit||0);
+      const rpi = mat.r_per_inch||0;
+      const t = (mat.unit==="board_ft"||mat.unit==="bag") && rpi>0
+        ? parseRValueNumber(rValue)/rpi
+        : (THICK_MAP[thick]||0);
+      const u = mat.unit;
+      const cov = Number(prod.coverage_factor||1);
+      let q = u==="board_ft"?sqft*t : u==="bag"?Math.ceil((sqft*t)/cov) : sqft;
+      q = Math.round(q);
+      return { qty:q, unit:u, unit_price:cost, line_total:Math.round(q*cost*100)/100 };
+    }
+  }
+  // Variant pricing (existing batt/rigid flat $/sqft per R-value)
   if(variantMap && mat.name){
     const variant = variantMap[`${mat.name}|${rValue||""}`.toLowerCase()];
     if(variant){
@@ -89,16 +109,9 @@ function calcArea(sqft, thick, mat, rValue, variantMap) {
     }
   }
   const u = mat.unit, p = mat.price_per_unit || 0;
-  // Depth/thickness from R-value applies to BOTH spray foam (board_ft) and
-  // blown-in cellulose/fiberglass (bag). Example: R-38 cellulose at 3.5 R/in
-  // → depth = 38/3.5 = 10.86 inches → sqft × 10.86 ÷ coverage_factor = bags.
   const useRCalc = (mat.r_per_inch>0 && rValue);
-  const t = useRCalc
-    ? parseRValueNumber(rValue)/Number(mat.r_per_inch)
-    : (THICK_MAP[thick] || 0);
-  let q = u==="board_ft" ? sqft*t
-        : u==="bag"      ? Math.ceil((sqft*t)/(mat.coverage_factor||1))
-        : sqft;
+  const t = useRCalc ? parseRValueNumber(rValue)/Number(mat.r_per_inch) : (THICK_MAP[thick] || 0);
+  let q = u==="board_ft" ? sqft*t : u==="bag" ? Math.ceil((sqft*t)/(mat.coverage_factor||1)) : sqft;
   q = Math.round(q);
   return { qty:q, unit:u, unit_price:p, line_total:Math.round(q*p*100)/100 };
 }
@@ -1447,8 +1460,9 @@ export default function ProjectEstimate() {
     // ── Two-layer system (new): material_types + material_products ────────────
     if(matTypesLive.length>0){
       return Object.fromEntries(matTypesLive.map(t=>{
-        const prods = matProductsLive.filter(p=>p.material_type_id===t.id&&p.is_active);
-        const prod = prods[0];
+        const allProds = matProductsLive.filter(p=>p.material_type_id===t.id);
+        // R-value lookup happens per-area at calc time; for the map we use the generic active product
+        const prod = allProds.find(p=>p.is_active&&!p.r_value) || allProds.find(p=>p.is_active) || allProds[0];
         const nameL = t.name.toLowerCase();
         const rpi = t.r_per_inch ? Number(t.r_per_inch)
           : t.unit==="board_ft" ? (nameL.includes("closed")?6.8:nameL.includes("open")?3.75:null)
@@ -1460,6 +1474,8 @@ export default function ProjectEstimate() {
           price_per_unit:sellPrice,
           coverage_factor:prod?Number(prod.coverage_factor||1):1,
           r_per_inch:rpi,
+          // Store all products so per-area R-value lookup works
+          allProducts: allProds,
         }];
       }));
     }

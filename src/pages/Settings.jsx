@@ -859,8 +859,7 @@ export default function Settings() {
   const TABS = [
     { id:"trades",     label:"Trades" },
     { id:"overhead",   label:"Overhead" },
-    { id:"materials",  label:"Materials" },
-    { id:"variants",   label:"Batt/Rigid Pricing" },
+    { id:"materials",  label:"Materials & Pricing" },
     { id:"lists",      label:"Area Types & Lists" },
     { id:"labor",      label:"Labor & Margin" },
     { id:"laboroles",  label:"Labor Roles" },
@@ -1138,44 +1137,36 @@ export default function Settings() {
                         No products yet — add at least one brand/product to price this material.
                       </div>
                     )}
-                    {(t.products||[]).map((p,pi)=>{
-                      return (
-                        <div key={pi} style={{display:"grid",gridTemplateColumns:"1.2fr 1fr 80px"+(t.unit==="bag"?" 70px":"")+" 90px 24px",
+                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 55px 80px"+(t.unit==="bag"?" 70px":"")+" 90px 24px",
+                        gap:5,padding:"0 8px 4px",fontSize:9,fontWeight:700,color:C.faint,textTransform:"uppercase",letterSpacing:0.3}}>
+                      <span>Brand</span><span>SKU / Description</span><span>R-Val</span>
+                      <span>Cost</span>{t.unit==="bag"&&<span>Coverage</span>}<span></span><span></span>
+                    </div>
+                    {(t.products||[]).map((p,pi)=>(
+                        <div key={pi} style={{display:"grid",gridTemplateColumns:"1fr 1fr 55px 80px"+(t.unit==="bag"?" 70px":"")+" 90px 24px",
                             gap:5,padding:"6px 8px",marginBottom:4,borderRadius:6,
                             background:p.is_active?"#f0fdf4":"#fafbfc",
                             border:`1px solid ${p.is_active?"#86efac":C.border}`,
                             alignItems:"center"}}>
-                          <input placeholder="Brand (e.g. Owens Corning)" value={p.brand||""}
-                            onChange={e=>updateProduct(pi,"brand",e.target.value)}
-                            style={{...I,height:26,fontSize:11}} />
-                          <input placeholder="Description / SKU" value={p.description||""}
-                            onChange={e=>updateProduct(pi,"description",e.target.value)}
-                            style={{...I,height:26,fontSize:11}} />
+                          <input placeholder="Brand" value={p.brand||""} onChange={e=>updateProduct(pi,"brand",e.target.value)} style={{...I,height:26,fontSize:11}} />
+                          <input placeholder="SKU / Description" value={p.description||""} onChange={e=>updateProduct(pi,"description",e.target.value)} style={{...I,height:26,fontSize:11}} />
+                          <input placeholder="R-val" value={p.r_value||""} onChange={e=>updateProduct(pi,"r_value",e.target.value)} title="Optional: match only areas with this R-value. Leave blank as fallback." style={{...I,height:26,fontSize:11,textAlign:"center"}} />
                           <div style={{display:"flex",alignItems:"center",gap:2}}>
                             <span style={{fontSize:10,color:C.muted}}>$</span>
-                            <input type="number" value={p.cost_per_unit}
-                              onChange={e=>updateProduct(pi,"cost_per_unit",e.target.value)}
-                              style={{...I,height:26,fontSize:11,textAlign:"right"}} />
+                            <input type="number" value={p.cost_per_unit} onChange={e=>updateProduct(pi,"cost_per_unit",e.target.value)} style={{...I,height:26,fontSize:11,textAlign:"right"}} />
                           </div>
                           {t.unit==="bag"&&(
                             <div style={{display:"flex",alignItems:"center",gap:2}}>
-                              <input type="number" value={p.coverage_factor||1} title="sqft·in one bag covers"
-                                onChange={e=>updateProduct(pi,"coverage_factor",e.target.value)}
-                                style={{...I,height:26,fontSize:11,textAlign:"right"}} />
+                              <input type="number" value={p.coverage_factor||1} title="sqft·in one bag covers" onChange={e=>updateProduct(pi,"coverage_factor",e.target.value)} style={{...I,height:26,fontSize:11,textAlign:"right"}} />
                               <span style={{fontSize:9,color:C.muted}}>ft²·in</span>
                             </div>
                           )}
-                          <button onClick={()=>setActive(pi)}
-                            style={{border:"none",borderRadius:5,height:26,fontSize:10,fontWeight:700,cursor:"pointer",
-                              background:p.is_active?"#059669":"#e5e7eb",
-                              color:p.is_active?"white":C.muted,whiteSpace:"nowrap"}}>
+                          <button onClick={()=>setActive(pi)} style={{border:"none",borderRadius:5,height:26,fontSize:10,fontWeight:700,cursor:"pointer",background:p.is_active?"#059669":"#e5e7eb",color:p.is_active?"white":C.muted,whiteSpace:"nowrap"}}>
                             {p.is_active?"✓ Active":"Set Active"}
                           </button>
-                          <button onClick={()=>removeProduct(pi)}
-                            style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:16,padding:0}}>✕</button>
+                          <button onClick={()=>removeProduct(pi)} style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:16,padding:0}}>✕</button>
                         </div>
-                      );
-                    })}
+                    ))}
                     <button onClick={addProduct}
                       style={{border:`1px dashed ${C.border}`,background:"none",color:C.muted,
                         padding:"5px 12px",borderRadius:6,cursor:"pointer",fontSize:11,marginTop:2}}>
