@@ -44,13 +44,13 @@ function fmt(n) {
   return Number(n || 0).toLocaleString("en-US", { maximumFractionDigits: 0 });
 }
 
-const DEFAULT_FLOORS = ["Attic","3rd","2nd","1st","Basement","Crawlspace"];
+const DEFAULT_FLOORS = ["Floor","3rd","2nd","1st","Basement","Crawlspace"];
 const AREA_TYPES = [
-  "Roof Rafter w/ Strapping","Roof Rafter behind knee walls","Attic Floor",
+  "Roof Rafter w/ Strapping","Roof Rafter behind knee walls","Floor",
   "Exterior Wall","Demising Wall","Rim Joist","Concrete Wall",
   "Ceiling","Interior Walls","Fire Blocking","Other",
 ];
-const THICK_OPTS = ["2x3","2x4","2x6","2x8","2x10","2x12","I-joist 14in","I-joist 16in","I-joist 18in","1in","1.5in","2in","2.5in","3in","3.5in","4in"];
+const THICK_OPTS = ["2x3","2x4","2x6","2x8","2x10","2x12","I-joist 14in","I-joist 16in","I-joist 18in"];
 const THICK_MAP  = { "2x4":3.5,"2x6":5.5,"2x8":7.25,"2x10":9.25,"2x12":11.25,"I-joist":11.875 };
 const R_VALS     = ["R-11","R-13","R-15","R-19","R-21","R-28","R-30","R-38","R-49","R-60"];
 function loadCustomList(key, defaults) {
@@ -304,7 +304,7 @@ async function saveNew() {
 }
 
 // ── AreaRow ───────────────────────────────────────────────────────────────────
-function AreaRow({ area, materials, materialMap, variantMap, onChange, onDelete, onMove, floors, activeFloor, saveOptionsOnly, onMaterialAdded }) {
+function AreaRow({ area, materials, materialMap, variantMap, onChange, onDelete, onMove, floors, activeFloor, saveOptionsOnly, onMaterialAdded, customAreaTypes, onSaveCustomAreaType }) {
   const [expanded, setExpanded] = useState(!area._collapsed);
 
   const [thickOpts, setThickOpts] = useState(()=>loadCustomList("custom_thick_opts", THICK_OPTS));
@@ -575,15 +575,20 @@ function useCalcResult(field) {
           }}>
           <option value="">Area type</option>
           {AREA_TYPES.map(a=><option key={a}>{a}</option>)}
-          <option value="__other__">✏️ Other</option>
+          {(customAreaTypes||[]).filter(t=>!AREA_TYPES.includes(t)).map(t=>(
+            <option key={t}>{t}</option>
+          ))}
+          <option value="__other__">✏️ Other (custom)</option>
         </select>
         {!isComplete && (
         <button onClick={onDelete} style={{ border:"none", background:"none", color:C.faint, cursor:"pointer", fontSize:16, padding:"0 2px", lineHeight:1, flexShrink:0 }}>✕</button>
       )}
       </div>
-      {(area._show_custom_area || (area.area_type && !AREA_TYPES.includes(area.area_type))) && (
-        <input placeholder="Type area type…" style={{...XS, width:"100%", marginBottom:3}}
-          value={area.area_type||""} onChange={e=>onChange("area_type",e.target.value)} />
+      {(area._show_custom_area || (area.area_type && !AREA_TYPES.includes(area.area_type) && !(customAreaTypes||[]).includes(area.area_type))) && (
+        <input placeholder="Type area name… (saved for reuse)" style={{...XS, width:"100%", marginBottom:3}}
+          value={area.area_type||""}
+          onChange={e=>onChange("area_type",e.target.value)}
+          onBlur={e=>{ if(e.target.value.trim()) onSaveCustomAreaType?.(e.target.value.trim()); }} />
       )}
 
       {/* MATERIAL — single */}
@@ -1096,11 +1101,12 @@ export default function ProjectEstimate() {
   const addressParam=searchParams.get("address")||"";
   const isEditing=!!projectId;
 
-  const [floors,setFloors]=useState(["Attic","3rd","2nd","1st","Basement"]);
-  const [activeFloor,setActiveFloor]=useState("Attic");
+  const [floors,setFloors]=useState(["Floor","3rd","2nd","1st","Basement"]);
+  const [activeFloor,setActiveFloor]=useState("Floor");
   const [pendingFloor,setPendingFloor]=useState(null);
   const [areas,setAreas]=useState(()=>{const i={};DEFAULT_FLOORS.forEach(f=>{i[f]=[];});return i;});
   const [materials,setMaterials]=useState([]);
+  const [customAreaTypes,setCustomAreaTypes]=useState([]);  // extra area types saved to DB
   const [matCostsLive,setMatCostsLive]=useState([]);
   const [variantsLive,setVariantsLive]=useState([]);
   const [leads,setLeads]=useState([]);
@@ -1254,12 +1260,30 @@ export default function ProjectEstimate() {
       if(fuel) setFuelRate(Number(fuel.amount||0.67));
       const {data:reps}=await supabase.from("sales_reps").select("*").eq("company_id",cd.id).eq("active",true).order("created_at");
       if(reps?.length) setSalesReps(reps);
+      // Load custom area types saved by this company (via the "Other" path)
+      const {data:cats}=await supabase.from("cost_settings").select("*").eq("company_id",cd.id).eq("period","custom_area_type").order("sort_order");
+      if(cats?.length) setCustomAreaTypes(cats.map(c=>c.name).filter(Boolean));
     });
   },[]);
 
   function loadMaterials(newMaterial){
     if(newMaterial) setMaterials(prev=>[...prev,newMaterial]);
     supabase.from("materials").select("*").then(({data})=>{if(data) setMaterials(data);});
+  }
+
+  async function saveCustomAreaType(name){
+    if(!name||AREA_TYPES.includes(name)||customAreaTypes.includes(name)) return;
+    setCustomAreaTypes(prev=>[...prev,name]);
+    try{
+      const {data:{user}}=await supabase.auth.getUser();
+      if(!user) return;
+      const {data:cd}=await supabase.from("companies").select("id").eq("user_id",user.id).maybeSingle();
+      if(!cd) return;
+      await supabase.from("cost_settings").insert([{
+        company_id:cd.id, category:"Custom Area Types", name, period:"custom_area_type",
+        amount:0, sort_order:Date.now(),
+      }]);
+    }catch(e){ console.warn("Could not save custom area type:",e.message); }
   }
 
   function loadPricing(companyId){
@@ -1720,11 +1744,11 @@ async function saveProject({silent=false}={}) {
           ):(
             <>
               {currentAreas.map((area,idx)=>({area,idx})).filter(({area})=>!isAreaComplete(area)).map(({area,idx})=>(
-                <AreaRow key={area.id||area.temp_id} area={area} materials={materials} materialMap={materialMap} variantMap={variantMap} onChange={(field,value)=>updateArea(activeFloor,idx,field,value)} onDelete={()=>deleteArea(activeFloor,idx)} onMove={(toFloor)=>{const realI=(areas[activeFloor]||[]).indexOf(area);moveArea(activeFloor,realI>=0?realI:idx,toFloor);}} floors={floors} activeFloor={activeFloor} saveOptionsOnly={saveOptionsOnly} onMaterialAdded={loadMaterials} />
+                <AreaRow key={area.id||area.temp_id} area={area} materials={materials} materialMap={materialMap} variantMap={variantMap} onChange={(field,value)=>updateArea(activeFloor,idx,field,value)} onDelete={()=>deleteArea(activeFloor,idx)} onMove={(toFloor)=>{const realI=(areas[activeFloor]||[]).indexOf(area);moveArea(activeFloor,realI>=0?realI:idx,toFloor);}} floors={floors} activeFloor={activeFloor} saveOptionsOnly={saveOptionsOnly} onMaterialAdded={loadMaterials} customAreaTypes={customAreaTypes} onSaveCustomAreaType={saveCustomAreaType} />
               ))}
               {currentAreas.some(a=>isAreaComplete(a))&&(<div style={{fontSize:9,fontWeight:700,color:"#059669",textTransform:"uppercase",letterSpacing:0.5,marginBottom:4,marginTop:2,paddingLeft:2}}>✓ Completed areas</div>)}
               {currentAreas.map((area,idx)=>({area,idx})).filter(({area})=>isAreaComplete(area)).map(({area,idx})=>(
-                <AreaRow key={area.id||area.temp_id} area={area} materials={materials} materialMap={materialMap} variantMap={variantMap} onChange={(field,value)=>updateArea(activeFloor,idx,field,value)} onDelete={()=>deleteArea(activeFloor,idx)} onMove={(toFloor)=>{const realI=(areas[activeFloor]||[]).indexOf(area);moveArea(activeFloor,realI>=0?realI:idx,toFloor);}} floors={floors} activeFloor={activeFloor} saveOptionsOnly={saveOptionsOnly} onMaterialAdded={loadMaterials} />
+                <AreaRow key={area.id||area.temp_id} area={area} materials={materials} materialMap={materialMap} variantMap={variantMap} onChange={(field,value)=>updateArea(activeFloor,idx,field,value)} onDelete={()=>deleteArea(activeFloor,idx)} onMove={(toFloor)=>{const realI=(areas[activeFloor]||[]).indexOf(area);moveArea(activeFloor,realI>=0?realI:idx,toFloor);}} floors={floors} activeFloor={activeFloor} saveOptionsOnly={saveOptionsOnly} onMaterialAdded={loadMaterials} customAreaTypes={customAreaTypes} onSaveCustomAreaType={saveCustomAreaType} />
               ))}
             </>
           )}
