@@ -520,58 +520,62 @@ function useCalcResult(field) {
         borderRadius:7, padding:"6px 8px", marginBottom:4 }}>
 
      {isComplete && (
-    <div style={{ margin:"-6px -8px 8px -8px", padding:"10px 12px", background:"#059669",
-        borderRadius:"7px 7px 0 0", display:"flex", justifyContent:"space-between", alignItems:"center", gap:6 }}>
-      <button onClick={()=>setExpanded(false)}
-        style={{border:"none",background:"rgba(255,255,255,0.2)",color:"#fff",
-          padding:"6px 16px",borderRadius:6,cursor:"pointer",fontSize:13,fontWeight:700}}>
-        ✓ Done
-      </button>
-      <button onClick={()=>onChange("is_optional",!area.is_optional)}
-        style={{border:"none",background:area.is_optional?"#fbbf24":"rgba(255,255,255,0.2)",
-          color:area.is_optional?"#78350f":"#fff",
-          padding:"6px 12px",borderRadius:6,cursor:"pointer",fontSize:13,fontWeight:700,whiteSpace:"nowrap"}}>
-        {area.is_optional?"⭐ Optional":"☆ Mark Optional"}
-      </button>
-      <button onClick={()=>{ if(overrideOpen){ onChange("price_override",""); } setOverrideOpen(p=>!p); }}
-        title="Override the price per sqft for this area, just on this job"
-        style={{border:"none",background:overrideOpen?"#7c3aed":"rgba(255,255,255,0.2)",
-          color:"#fff",
-          padding:"6px 12px",borderRadius:6,cursor:"pointer",fontSize:13,fontWeight:700,whiteSpace:"nowrap"}}>
-        {overrideOpen?"✕ Custom Price":"💲 Custom Price"}
-      </button>
-
-      {/* Phase selector — tap to cycle: none → Phase 1 → Phase 2 → none */}
-      <button
-        onClick={()=>onChange("phase", area.phase===1 ? 2 : area.phase===2 ? null : 1)}
-        title="Mark this area as Phase 1 (before rough inspection) or Phase 2 (after)"
-        style={{border:"none",whiteSpace:"nowrap",padding:"6px 10px",borderRadius:6,cursor:"pointer",fontSize:11,fontWeight:800,
-          background: area.phase===1?"#3b82f6":area.phase===2?"#8b5cf6":"rgba(255,255,255,0.2)",
-          color:"#fff"}}>
-        {area.phase===1?"🔵 Phase 1":area.phase===2?"🟣 Phase 2":"◯ Phase"}
-      </button>
-      {onMove && floors && floors.length>1 && (
-        movingTo
-          ? <select autoFocus
-              style={{height:32,borderRadius:6,border:"none",background:"#1d4ed8",color:"#fff",padding:"0 8px",fontSize:12,fontWeight:700,cursor:"pointer"}}
-              onChange={e=>{ if(e.target.value){ onMove(e.target.value); setMovingTo(false); } }}
-              onBlur={()=>setMovingTo(false)}>
-              <option value="">Move to…</option>
-              {floors.filter(f=>f!==activeFloor).map(f=>(
-                <option key={f} value={f}>{f}</option>
-              ))}
-            </select>
-          : <button onClick={()=>setMovingTo(true)}
-              style={{border:"none",background:"rgba(255,255,255,0.2)",color:"#fff",
-                padding:"6px 12px",borderRadius:6,cursor:"pointer",fontSize:13,fontWeight:700,whiteSpace:"nowrap"}}>
-              ↗ Move to…
-            </button>
-      )}
-      <button onClick={onDelete}
-        style={{border:"none",background:"rgba(255,0,0,0.3)",color:"#fff",
-          padding:"6px 12px",borderRadius:6,cursor:"pointer",fontSize:13,fontWeight:700}}>
-        🗑 Delete
-      </button>
+    <div style={{ margin:"-6px -8px 8px -8px", background:"#059669", borderRadius:"7px 7px 0 0" }}>
+      {/* Row 1: primary actions */}
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"8px 10px 4px", gap:5 }}>
+        <button onClick={()=>setExpanded(false)}
+          style={{border:"none",background:"rgba(255,255,255,0.25)",color:"#fff",
+            padding:"7px 18px",borderRadius:6,cursor:"pointer",fontSize:13,fontWeight:700,flex:1}}>
+          ✓ Done
+        </button>
+        <button onClick={onDelete}
+          style={{border:"none",background:"rgba(255,0,0,0.35)",color:"#fff",
+            padding:"7px 14px",borderRadius:6,cursor:"pointer",fontSize:13,fontWeight:700}}>
+          🗑 Delete
+        </button>
+      </div>
+      {/* Row 2: secondary actions */}
+      <div style={{ display:"flex", alignItems:"center", padding:"0 10px 8px", gap:5, flexWrap:"wrap" }}>
+        <button onClick={()=>onChange("is_optional",!area.is_optional)}
+          title="Mark as optional item"
+          style={{border:"none",borderRadius:6,cursor:"pointer",fontSize:11,fontWeight:700,padding:"5px 10px",flex:1,
+            background:area.is_optional?"#fbbf24":"rgba(255,255,255,0.2)",
+            color:area.is_optional?"#78350f":"#fff"}}>
+          {area.is_optional?"⭐ Optional":"☆ Optional"}
+        </button>
+        <button onClick={()=>{ if(overrideOpen){ onChange("price_override",""); } setOverrideOpen(p=>!p); }}
+          title="Override price per sqft for this area"
+          style={{border:"none",borderRadius:6,cursor:"pointer",fontSize:11,fontWeight:700,padding:"5px 10px",flex:1,
+            background:overrideOpen?"#7c3aed":"rgba(255,255,255,0.2)",color:"#fff"}}>
+          💲 {overrideOpen?"✕ Price":"Price"}
+        </button>
+        <button
+          onClick={()=>onChange("phase", area.phase===1 ? 2 : area.phase===2 ? null : 1)}
+          title="Set phase (1st before inspection, 2nd after)"
+          style={{border:"none",borderRadius:6,cursor:"pointer",fontSize:11,fontWeight:800,padding:"5px 10px",flex:1,
+            background:area.phase===1?"#3b82f6":area.phase===2?"#8b5cf6":"rgba(255,255,255,0.2)",
+            color:"#fff"}}>
+          {area.phase===1?"🔵 Ph.1":area.phase===2?"🟣 Ph.2":"◯ Phase"}
+        </button>
+        {onMove && floors && floors.length>1 && (
+          movingTo
+            ? <select autoFocus
+                style={{height:30,borderRadius:6,border:"none",background:"#1d4ed8",color:"#fff",padding:"0 6px",fontSize:11,fontWeight:700,cursor:"pointer",flex:1}}
+                onChange={e=>{ if(e.target.value){ onMove(e.target.value); setMovingTo(false); } }}
+                onBlur={()=>setMovingTo(false)}>
+                <option value="">Move to…</option>
+                {floors.filter(f=>f!==activeFloor).map(f=>(
+                  <option key={f} value={f}>{f}</option>
+                ))}
+              </select>
+            : <button onClick={()=>setMovingTo(true)}
+                title="Move this area to another floor"
+                style={{border:"none",background:"rgba(255,255,255,0.2)",color:"#fff",
+                  padding:"5px 10px",borderRadius:6,cursor:"pointer",fontSize:11,fontWeight:700,flex:1}}>
+                ↗ Move
+              </button>
+        )}
+      </div>
     </div>
     )}
 
