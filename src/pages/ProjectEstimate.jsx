@@ -449,17 +449,26 @@ function useCalcResult(field) {
   <div
     style={{ background:area.is_optional?"#fffbeb":"#f0fdf4", border:`1px solid ${area.is_optional?"#fde68a":"#86efac"}`, borderLeft:`3px solid ${area.is_optional?"#f59e0b":"#059669"}`, borderRadius:7, padding:"4px 8px", marginBottom:3 }}>
       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:2, gap:6 }}>
-        {/* Phase toggle — tap without opening the card */}
+        {/* Phase toggle — always visible, no need to open the card */}
         <button
-          onClick={e=>{ e.stopPropagation(); onChange("phase", area.phase===1?null:1); }}
-          title="Mark as 1st phase (tap again to remove)"
+          onClick={e=>{
+            e.stopPropagation();
+            if(area.phase===1){
+              // Clear ALL phases from the entire job — customer changed mind
+              onChange("phase","__clear_all__");
+            } else {
+              // Set this as Phase 1 — rest auto-become Phase 2
+              onChange("phase",1);
+            }
+          }}
+          title={area.phase===1?"Tap to remove all phases (customer changed mind)":area.phase===2?"Tap to move 1st phase here":"Tap to mark as 1st phase"}
           style={{
-            border:"none", borderRadius:4, padding:"1px 6px", fontSize:9, fontWeight:800,
+            border:"none", borderRadius:4, padding:"2px 6px", fontSize:9, fontWeight:800,
             cursor:"pointer", flexShrink:0, whiteSpace:"nowrap",
             background: area.phase===1?"#3b82f6":area.phase===2?"#8b5cf6":"#e5e7eb",
             color: area.phase?"#fff":"#94a3b8",
           }}>
-          {area.phase===1?"🔵 Ph.1":area.phase===2?"🟣 Ph.2":"◯ Ph."}
+          {area.phase===1?"🔵 Ph.1 ✕":area.phase===2?"🟣 Ph.2":"◯ Ph."}
         </button>
         <span onClick={()=>{ setExpanded(true); onChange("_collapsed",false); }}
           style={{ fontSize:11, fontWeight:700, color:C.ink, flex:1, cursor:"pointer" }}>
@@ -1510,16 +1519,26 @@ export default function ProjectEstimate() {
         const match=Object.values(prev).flat().reverse().find(a=>a.area_type===value&&a.material&&a.material!=="__custom_mat__");
         if(match) upd[idx]={...upd[idx],material:match.material,thickness_in:match.thickness_in,r_value:match.r_value,oc:match.oc,mat_lines:match.mat_lines?match.mat_lines.map(ml=>({...ml})):undefined,options:existing.options||[]};
       }
-      // When an area is marked Phase 1, auto-assign Phase 2 to all other
-      // areas that don't have a phase yet — one tap does the whole job
-      if(field==="phase" && value===1){
-        const newState = {...prev,[floor]:upd};
-        Object.keys(newState).forEach(f=>{
-          newState[f]=(newState[f]||[]).map((a,i)=>
-            (f===floor&&i===idx) ? a : (a.phase?a:{...a,phase:2})
-          );
-        });
-        return newState;
+      // Phase logic
+      if(field==="phase"){
+        if(value==="__clear_all__"){
+          // Customer changed mind — remove ALL phases from entire job
+          const cleared = {};
+          Object.keys(prev).forEach(f=>{
+            cleared[f]=(prev[f]||[]).map(a=>({...a,phase:null}));
+          });
+          return cleared;
+        }
+        if(value===1){
+          // Set this area as Phase 1; all unphased areas become Phase 2
+          const newState = {...prev,[floor]:upd};
+          Object.keys(newState).forEach(f=>{
+            newState[f]=(newState[f]||[]).map((a,i)=>
+              (f===floor&&i===idx) ? a : (a.phase?a:{...a,phase:2})
+            );
+          });
+          return newState;
+        }
       }
       // When an area is expanded (un-collapsed), move it to position 0
       // so it's always at the top — important for mobile where the screen
