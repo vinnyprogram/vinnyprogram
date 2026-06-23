@@ -446,21 +446,34 @@ function useCalcResult(field) {
 
   // ── COLLAPSED ──
   if (isComplete && !expanded) return (
-  <div onClick={()=>{ setExpanded(true); onChange("_collapsed",false); }}
-    style={{ background:area.is_optional?"#fffbeb":"#f0fdf4", border:`1px solid ${area.is_optional?"#fde68a":"#86efac"}`, borderLeft:`3px solid ${area.is_optional?"#f59e0b":"#059669"}`, borderRadius:7, padding:"4px 8px", marginBottom:3, cursor:"pointer" }}>
-      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:2 }}>
-        <span style={{ fontSize:11, fontWeight:700, color:C.ink }}>
+  <div
+    style={{ background:area.is_optional?"#fffbeb":"#f0fdf4", border:`1px solid ${area.is_optional?"#fde68a":"#86efac"}`, borderLeft:`3px solid ${area.is_optional?"#f59e0b":"#059669"}`, borderRadius:7, padding:"4px 8px", marginBottom:3 }}>
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:2, gap:6 }}>
+        {/* Phase toggle — tap without opening the card */}
+        <button
+          onClick={e=>{ e.stopPropagation(); onChange("phase", area.phase===1?null:1); }}
+          title="Mark as 1st phase (tap again to remove)"
+          style={{
+            border:"none", borderRadius:4, padding:"1px 6px", fontSize:9, fontWeight:800,
+            cursor:"pointer", flexShrink:0, whiteSpace:"nowrap",
+            background: area.phase===1?"#3b82f6":area.phase===2?"#8b5cf6":"#e5e7eb",
+            color: area.phase?"#fff":"#94a3b8",
+          }}>
+          {area.phase===1?"🔵 Ph.1":area.phase===2?"🟣 Ph.2":"◯ Ph."}
+        </button>
+        <span onClick={()=>{ setExpanded(true); onChange("_collapsed",false); }}
+          style={{ fontSize:11, fontWeight:700, color:C.ink, flex:1, cursor:"pointer" }}>
           {area.is_optional&&<span style={{color:"#f59e0b",marginRight:4}}>⭐</span>}
-          {area.phase===1&&<span style={{background:"#3b82f6",color:"#fff",borderRadius:4,padding:"1px 5px",fontSize:9,fontWeight:800,marginRight:4}}>PH 1</span>}
-          {area.phase===2&&<span style={{background:"#8b5cf6",color:"#fff",borderRadius:4,padding:"1px 5px",fontSize:9,fontWeight:800,marginRight:4}}>PH 2</span>}
           {area.area_type||"—"}
         </span>
-        <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+        <div onClick={()=>{ setExpanded(true); onChange("_collapsed",false); }}
+          style={{ display:"flex", alignItems:"center", gap:6, cursor:"pointer" }}>
           {isOverridden && <span style={{fontSize:9,color:"#7c3aed",fontWeight:700}}>✏️ custom</span>}
           <span style={{ fontSize:11, fontWeight:700, color:"#059669" }}>${fmt(totalCost)}</span>
           <span style={{ color:"#059669", fontSize:14, padding:"0 2px" }}>✏️</span>
         </div>
       </div>
+      <div onClick={()=>{ setExpanded(true); onChange("_collapsed",false); }} style={{cursor:"pointer"}}>
       {matLines.map((ml,i)=>(
         <div key={i} style={{ fontSize:10, color:C.muted, lineHeight:1.6 }}>
           {[ml.material, ml.thickness_in, ml.r_value, ml.oc].filter(Boolean).join(" · ")}
@@ -486,6 +499,7 @@ function useCalcResult(field) {
           </div>
         );
       })}
+      </div>
     </div>
   );
 
@@ -1495,6 +1509,17 @@ export default function ProjectEstimate() {
       if(field==="area_type"){
         const match=Object.values(prev).flat().reverse().find(a=>a.area_type===value&&a.material&&a.material!=="__custom_mat__");
         if(match) upd[idx]={...upd[idx],material:match.material,thickness_in:match.thickness_in,r_value:match.r_value,oc:match.oc,mat_lines:match.mat_lines?match.mat_lines.map(ml=>({...ml})):undefined,options:existing.options||[]};
+      }
+      // When an area is marked Phase 1, auto-assign Phase 2 to all other
+      // areas that don't have a phase yet — one tap does the whole job
+      if(field==="phase" && value===1){
+        const newState = {...prev,[floor]:upd};
+        Object.keys(newState).forEach(f=>{
+          newState[f]=(newState[f]||[]).map((a,i)=>
+            (f===floor&&i===idx) ? a : (a.phase?a:{...a,phase:2})
+          );
+        });
+        return newState;
       }
       // When an area is expanded (un-collapsed), move it to position 0
       // so it's always at the top — important for mobile where the screen
