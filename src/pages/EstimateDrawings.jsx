@@ -13,11 +13,11 @@ const SCALES = [
 ];
 
 const AREA_TYPES = [
-  "Roof Rafter w/ Strapping","Roof Rafter behind knee walls","Attic Floor",
+  "Roof Rafter w/ Strapping","Roof Rafter behind knee walls","Floor",
   "Exterior Wall","Demising Wall","Rim Joist","Concrete Wall",
   "Ceiling","Interior Walls","Fire Blocking","Other",
 ];
-const THICK_OPTS = ["2x3","2x4","2x6","2x8","2x10","2x12","I-joist","14in","16in"];
+const THICK_OPTS = ["2x3","2x4","2x6","2x8","2x10","2x12","I-joist 14in","I-joist 16in","I-joist 18in"];
 const R_VALS     = ["R-11","R-13","R-14","R-15","R-19","R-21","R-25","R-30","R-38","R-49","R-60"];
 const OC_OPTS    = ['3"cc','7"oc','8"oc','12"oc','16"oc','24"oc','open cell'];
 const FLOORS_DEFAULT = ["Attic","3rd Floor","2nd Floor","1st Floor","Basement","Crawlspace"];

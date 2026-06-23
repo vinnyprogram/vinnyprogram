@@ -25,8 +25,8 @@ import JobStart from "./pages/JobStart";
 import Projects from "./pages/Projects";
 
 
-function Dashboard() { return <h2 style={{padding:20}}>Dashboard</h2>; }
-function Jobs()      { return <h2 style={{padding:20}}>Jobs</h2>; }
+function Dashboard() { return <Navigate to="/estimates/search" replace />; }
+function Jobs()      { return <Navigate to="/estimates/search" replace />; }
 
 function ProtectedApp() {
   const { user, company, loading } = useAuth();
