@@ -80,8 +80,6 @@ function parseRValueNumber(rValue){
 
 function calcArea(sqft, thick, mat, rValue, variantMap) {
   if (!sqft || !mat) return { qty:0, unit:"-", line_total:0, unit_price:0 };
-  // Discrete per-thickness/R-value product (batt, rigid foam sheet) takes
-  // priority when a matching variant exists — priced flat per sqft.
   if(variantMap && mat.name){
     const variant = variantMap[`${mat.name}|${rValue||""}`.toLowerCase()];
     if(variant){
@@ -91,14 +89,16 @@ function calcArea(sqft, thick, mat, rValue, variantMap) {
     }
   }
   const u = mat.unit, p = mat.price_per_unit || 0;
-  // Spray foam: the sprayed thickness is calculated from the target
-  // R-value (R-value ÷ R-per-inch), not picked from a stud-cavity
-  // dropdown — the stud/rafter size the area happens to be in is
-  // irrelevant to how much foam gets sprayed.
-  const t = (u==="board_ft" && mat.r_per_inch>0 && rValue)
+  // Depth/thickness from R-value applies to BOTH spray foam (board_ft) and
+  // blown-in cellulose/fiberglass (bag). Example: R-38 cellulose at 3.5 R/in
+  // → depth = 38/3.5 = 10.86 inches → sqft × 10.86 ÷ coverage_factor = bags.
+  const useRCalc = (mat.r_per_inch>0 && rValue);
+  const t = useRCalc
     ? parseRValueNumber(rValue)/Number(mat.r_per_inch)
     : (THICK_MAP[thick] || 0);
-  let q = u==="board_ft" ? sqft*t : u==="bag" ? Math.ceil((sqft*t)/(mat.coverage_factor||1)) : sqft;
+  let q = u==="board_ft" ? sqft*t
+        : u==="bag"      ? Math.ceil((sqft*t)/(mat.coverage_factor||1))
+        : sqft;
   q = Math.round(q);
   return { qty:q, unit:u, unit_price:p, line_total:Math.round(q*p*100)/100 };
 }
@@ -1447,12 +1447,12 @@ export default function ProjectEstimate() {
     // ── Two-layer system (new): material_types + material_products ────────────
     if(matTypesLive.length>0){
       return Object.fromEntries(matTypesLive.map(t=>{
-        // Find the active product for this type
         const prods = matProductsLive.filter(p=>p.material_type_id===t.id&&p.is_active);
         const prod = prods[0];
+        const nameL = t.name.toLowerCase();
         const rpi = t.r_per_inch ? Number(t.r_per_inch)
-          : t.name.toLowerCase().includes("closed") ? 6.8
-          : t.name.toLowerCase().includes("open") ? 3.75
+          : t.unit==="board_ft" ? (nameL.includes("closed")?6.8:nameL.includes("open")?3.75:null)
+          : t.unit==="bag" ? (nameL.includes("cellulose")||nameL.includes("blown")?3.5:null)
           : null;
         const sellPrice = prod ? Number(prod.cost_per_unit||0)*(1+Number(prod.markup_pct||20)/100) : 0;
         return [t.name, {
@@ -1609,13 +1609,12 @@ export default function ProjectEstimate() {
         return;
       }
       const mc=matCostMap[a.material];if(!mc)return;
+      const matNameL=(a.material||"").toLowerCase();
       const rpi = mc.r_per_inch>0 ? Number(mc.r_per_inch)
-        : mc.unit==="board_ft" ? (
-            a.material.toLowerCase().includes("closed") ? 6.8
-          : a.material.toLowerCase().includes("open")   ? 3.75
-          : 0)
+        : mc.unit==="board_ft" ? (matNameL.includes("closed")?6.8:matNameL.includes("open")?3.75:0)
+        : mc.unit==="bag" ? (matNameL.includes("cellulose")||matNameL.includes("blown")?3.5:0)
         : 0;
-      const thick = (mc.unit==="board_ft" && rpi>0 && a.r_value)
+      const thick = (rpi>0 && a.r_value)
         ? parseRValueNumber(a.r_value)/rpi
         : (TM[a.thickness_in]||0);
       let qty=mc.unit==="board_ft"?(a.sqft||0)*thick:mc.unit==="bag"?Math.ceil(((a.sqft||0)*thick)/(mc.coverage_factor||1)):(a.sqft||0);

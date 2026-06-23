@@ -227,15 +227,20 @@ export default function QuotePricing() {
       } else if(product && matType){
         // Two-layer system
         const unit = matType.unit||"sqft";
+        const nameL = matType.name.toLowerCase();
         const rpi = matType.r_per_inch ? Number(matType.r_per_inch)
-          : unit==="board_ft" ? (matType.name.toLowerCase().includes("closed")?6.8:matType.name.toLowerCase().includes("open")?3.75:0) : 0;
-        const thick = (unit==="board_ft"&&rpi>0&&a.r_value) ? parseR(a.r_value)/rpi : (THICK_MAP[a.thickness_in]||0);
+          : unit==="board_ft" ? (nameL.includes("closed")?6.8:nameL.includes("open")?3.75:0)
+          : unit==="bag" ? (nameL.includes("cellulose")||nameL.includes("blown")?3.5:0)
+          : 0;
+        const thick = (rpi>0&&a.r_value) ? parseR(a.r_value)/rpi : (THICK_MAP[a.thickness_in]||0);
         const covFactor = Number(product.coverage_factor||1);
         qty = unit==="board_ft"?(a.sqft||0)*thick : unit==="bag"?Math.ceil((a.sqft||0)*thick/covFactor):(a.sqft||0);
         const sell = Number(product.cost_per_unit||0)*(1+Number(product.markup_pct||20)/100);
         lineTotal = qty*sell;
         if(unit==="board_ft") pricingNote=`${thick.toFixed(2)}" (${rpi} R/in) × $${product.cost_per_unit}/bf`;
-        else if(unit==="bag") pricingNote=`${Math.ceil((a.sqft||0)*thick/covFactor)} bags × $${product.cost_per_unit}`;
+        else if(unit==="bag") pricingNote=rpi>0
+          ? `${thick.toFixed(2)}" depth (${rpi} R/in) · ${Math.ceil((a.sqft||0)*thick/covFactor)} bags × $${product.cost_per_unit}`
+          : `${Math.ceil((a.sqft||0)*thick/covFactor)} bags × $${product.cost_per_unit}`;
         else pricingNote=`$${product.cost_per_unit}/sqft`;
         effectivePerSqft=(a.sqft||0)>0?lineTotal/(a.sqft||0):0;
       } else {
@@ -250,12 +255,17 @@ export default function QuotePricing() {
           const mc=matCostMap[a.material];
           if(mc){
             const matNameL=(a.material||"").toLowerCase();
-            const rpi=mc.r_per_inch>0?Number(mc.r_per_inch):mc.unit==="board_ft"?(matNameL.includes("closed")?6.8:matNameL.includes("open")?3.75:0):0;
-            const thick=(mc.unit==="board_ft"&&rpi>0&&a.r_value)?parseR(a.r_value)/rpi:(THICK_MAP[a.thickness_in]||0);
+            const rpi=mc.r_per_inch>0?Number(mc.r_per_inch)
+              :mc.unit==="board_ft"?(matNameL.includes("closed")?6.8:matNameL.includes("open")?3.75:0)
+              :mc.unit==="bag"?(matNameL.includes("cellulose")||matNameL.includes("blown")?3.5:0)
+              :0;
+            const thick=(rpi>0&&a.r_value)?parseR(a.r_value)/rpi:(THICK_MAP[a.thickness_in]||0);
             qty=mc.unit==="board_ft"?(a.sqft||0)*thick:mc.unit==="bag"?Math.ceil((a.sqft||0)*thick/(mc.coverage_factor||1)):(a.sqft||0);
             lineTotal=qty*Number(mc.cost_per_unit||0)*(1+Number(mc.markup_pct||0)/100);
             if(mc.unit==="board_ft") pricingNote=`${thick.toFixed(2)}" (${rpi} R/in) × $${mc.cost_per_unit}/bf`;
-            else if(mc.unit==="bag") pricingNote=`${Math.ceil((a.sqft||0)*thick/(mc.coverage_factor||1))} bags × $${mc.cost_per_unit}`;
+            else if(mc.unit==="bag") pricingNote=rpi>0
+              ?`${thick.toFixed(2)}" depth (${rpi} R/in) · ${Math.ceil((a.sqft||0)*thick/(mc.coverage_factor||1))} bags × $${mc.cost_per_unit}`
+              :`${Math.ceil((a.sqft||0)*thick/(mc.coverage_factor||1))} bags × $${mc.cost_per_unit}`;
             else pricingNote=`$${mc.cost_per_unit}/sqft`;
             effectivePerSqft=(a.sqft||0)>0?lineTotal/(a.sqft||0):0;
           } else { pricingNote="⚠️ no price in Settings"; }

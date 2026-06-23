@@ -583,12 +583,10 @@ export default function Settings() {
           if(!mc) return;
           const matNameL = (a.material||"").toLowerCase();
           const rpi = mc.r_per_inch>0 ? Number(mc.r_per_inch)
-            : mc.unit==="board_ft" ? (
-                matNameL.includes("closed") ? 6.8
-              : matNameL.includes("open")   ? 3.75
-              : 0)
+            : mc.unit==="board_ft" ? (matNameL.includes("closed")?6.8:matNameL.includes("open")?3.75:0)
+            : mc.unit==="bag" ? (matNameL.includes("cellulose")||matNameL.includes("blown")?3.5:0)
             : 0;
-          const thick = (mc.unit==="board_ft" && rpi>0 && a.r_value)
+          const thick = (rpi>0 && a.r_value)
             ? parseRValueLocal(a.r_value)/rpi
             : (THICK_MAP_LOCAL[a.thickness_in]||0);
           let qty = mc.unit==="board_ft" ? Number(a.sqft||0)*thick
@@ -1114,11 +1112,13 @@ export default function Settings() {
                       <option value="board_ft">board ft (spray foam)</option>
                       <option value="bag">bag (cellulose)</option>
                     </select>
-                    {t.unit==="board_ft"&&(
+                    {(t.unit==="board_ft"||t.unit==="bag")&&(
                       <div style={{display:"flex",alignItems:"center",gap:4}}>
                         <input type="number" placeholder="R/in" value={t.r_per_inch||""}
                           onChange={e=>updateType("r_per_inch",e.target.value)}
-                          title="R-value per inch (closed cell≈6.8, open cell≈3.75)"
+                          title={t.unit==="board_ft"
+                            ?"R-value per inch — thickness sprayed = R-value ÷ R/in (closed cell≈6.8, open cell≈3.75)"
+                            :"R-value per inch — depth blown = R-value ÷ R/in (cellulose≈3.5, blown fiberglass≈2.2)"}
                           style={{...I,height:32,fontSize:12,width:60,textAlign:"right"}} />
                         <span style={{fontSize:11,color:C.muted}}>R/in</span>
                       </div>
