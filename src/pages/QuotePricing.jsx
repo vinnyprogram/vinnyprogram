@@ -595,25 +595,36 @@ export default function QuotePricing() {
               ⚠️ No crew roles yet — set them up in <b>Settings → Labor Roles</b> with hourly rates.
             </div>
           )}
-          {laborRoles.length>0 && (
-            <div style={{display:"grid",gridTemplateColumns:"1fr 52px 52px 52px 52px 52px 72px 24px",gap:3,marginBottom:6}}>
-              {["Role","Hrs","Days","Ppl","$/hr","Extra","Cost",""].map((h,i)=>(
-                <div key={i} style={{fontSize:8,color:C.faint,fontWeight:700,textTransform:"uppercase",textAlign:i>0?"center":"left"}}>{h}</div>
-              ))}
-            </div>
-          )}
           {laborRoles.map((r,i)=>{
             const rowCost = Number(r.hours||8)*Number(r.days||1)*Number(r.people||1)*Number(r.rate||0)+Number(r.extra||0)*Number(r.people||1);
             return (
-              <div key={i} style={{display:"grid",gridTemplateColumns:"1fr 52px 52px 52px 52px 52px 72px 24px",gap:3,marginBottom:5,alignItems:"center"}}>
-                <input value={r.role||""} onChange={e=>setLaborRoles(p=>p.map((x,j)=>j===i?{...x,role:e.target.value}:x))} placeholder="Role name" style={{...I,height:28,fontSize:11}} />
-                <input type="number" value={r.hours} onChange={e=>setLaborRoles(p=>p.map((x,j)=>j===i?{...x,hours:e.target.value}:x))} style={{...I,height:28,fontSize:11,textAlign:"center"}} />
-                <input type="number" value={r.days} onChange={e=>setLaborRoles(p=>p.map((x,j)=>j===i?{...x,days:e.target.value}:x))} style={{...I,height:28,fontSize:11,textAlign:"center"}} />
-                <input type="number" value={r.people} onChange={e=>setLaborRoles(p=>p.map((x,j)=>j===i?{...x,people:e.target.value}:x))} style={{...I,height:28,fontSize:11,textAlign:"center",fontWeight:700,color:Number(r.people)>1?"#059669":C.ink}} />
-                <input type="number" value={r.rate} onChange={e=>setLaborRoles(p=>p.map((x,j)=>j===i?{...x,rate:e.target.value}:x))} style={{...I,height:28,fontSize:11,textAlign:"center"}} />
-                <input type="number" placeholder="0" value={r.extra} onChange={e=>setLaborRoles(p=>p.map((x,j)=>j===i?{...x,extra:e.target.value}:x))} style={{...I,height:28,fontSize:11,textAlign:"center"}} />
-                <div style={{fontSize:12,fontWeight:700,color:rowCost>0?C.green:C.faint,textAlign:"right",paddingRight:2}}>${fmt(rowCost)}</div>
-                <button onClick={()=>setLaborRoles(p=>p.filter((_,j)=>j!==i))} style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:16,padding:0,lineHeight:1}}>✕</button>
+              <div key={i} style={{background:"#f8fafc",borderRadius:8,border:`1px solid ${C.border}`,padding:"8px 10px",marginBottom:6}}>
+                {/* Row 1: role name + cost + remove */}
+                <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6}}>
+                  <input value={r.role||""} onChange={e=>setLaborRoles(p=>p.map((x,j)=>j===i?{...x,role:e.target.value}:x))}
+                    placeholder="Role name" style={{...I,flex:1,height:30,fontSize:13,fontWeight:600}} />
+                  <div style={{fontSize:13,fontWeight:700,color:rowCost>0?C.green:C.faint,flexShrink:0}}>${fmt(rowCost)}</div>
+                  <button onClick={()=>setLaborRoles(p=>p.filter((_,j)=>j!==i))} style={{border:"none",background:"none",color:"#ef4444",cursor:"pointer",fontSize:18,padding:0,lineHeight:1,flexShrink:0}}>✕</button>
+                </div>
+                {/* Row 2: numeric fields with labels */}
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr 1fr",gap:6}}>
+                  {[
+                    {label:"Hrs/day", field:"hours", val:r.hours},
+                    {label:"Days",    field:"days",   val:r.days},
+                    {label:"People",  field:"people", val:r.people},
+                    {label:"$/hr",    field:"rate",   val:r.rate},
+                    {label:"Extra/p", field:"extra",  val:r.extra, placeholder:"0"},
+                  ].map(({label,field,val,placeholder:ph})=>(
+                    <div key={field}>
+                      <div style={{fontSize:8,color:C.faint,fontWeight:700,textTransform:"uppercase",marginBottom:2,textAlign:"center"}}>{label}</div>
+                      <input type="number" value={val} placeholder={ph||""}
+                        onChange={e=>setLaborRoles(p=>p.map((x,j)=>j===i?{...x,[field]:e.target.value}:x))}
+                        style={{...I,height:32,fontSize:12,textAlign:"center",width:"100%",
+                          fontWeight:field==="people"&&Number(val)>1?700:400,
+                          color:field==="people"&&Number(val)>1?"#059669":C.ink}} />
+                    </div>
+                  ))}
+                </div>
               </div>
             );
           })}

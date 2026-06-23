@@ -1152,34 +1152,45 @@ export default function Settings() {
                         No products yet — add at least one brand/product to price this material.
                       </div>
                     )}
-                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 55px 80px"+(t.unit==="bag"?" 70px":"")+" 90px 24px",
-                        gap:5,padding:"0 8px 4px",fontSize:9,fontWeight:700,color:C.faint,textTransform:"uppercase",letterSpacing:0.3}}>
-                      <span>Brand</span><span>SKU / Description</span><span>R-Val</span>
-                      <span>Cost</span>{t.unit==="bag"&&<span>Coverage</span>}<span></span><span></span>
-                    </div>
                     {(t.products||[]).map((p,pi)=>(
-                        <div key={pi} style={{display:"grid",gridTemplateColumns:"1fr 1fr 55px 80px"+(t.unit==="bag"?" 70px":"")+" 90px 24px",
-                            gap:5,padding:"6px 8px",marginBottom:4,borderRadius:6,
+                        <div key={pi} style={{padding:"8px",marginBottom:6,borderRadius:6,
                             background:p.is_active?"#f0fdf4":"#fafbfc",
-                            border:`1px solid ${p.is_active?"#86efac":C.border}`,
-                            alignItems:"center"}}>
-                          <input placeholder="Brand" value={p.brand||""} onChange={e=>updateProduct(pi,"brand",e.target.value)} style={{...I,height:26,fontSize:11}} />
-                          <input placeholder="SKU / Description" value={p.description||""} onChange={e=>updateProduct(pi,"description",e.target.value)} style={{...I,height:26,fontSize:11}} />
-                          <input placeholder="R-val" value={p.r_value||""} onChange={e=>updateProduct(pi,"r_value",e.target.value)} title="Optional: match only areas with this R-value. Leave blank as fallback." style={{...I,height:26,fontSize:11,textAlign:"center"}} />
-                          <div style={{display:"flex",alignItems:"center",gap:2}}>
-                            <span style={{fontSize:10,color:C.muted}}>$</span>
-                            <input type="number" value={p.cost_per_unit} onChange={e=>updateProduct(pi,"cost_per_unit",e.target.value)} style={{...I,height:26,fontSize:11,textAlign:"right"}} />
+                            border:`1px solid ${p.is_active?"#86efac":C.border}`}}>
+                          {/* Row 1: Brand + SKU */}
+                          <div style={{display:"flex",gap:6,marginBottom:6}}>
+                            <input placeholder="Brand (e.g. Owens Corning)" value={p.brand||""} onChange={e=>updateProduct(pi,"brand",e.target.value)}
+                              style={{...I,height:32,fontSize:12,flex:1}} />
+                            <input placeholder="SKU / Description" value={p.description||""} onChange={e=>updateProduct(pi,"description",e.target.value)}
+                              style={{...I,height:32,fontSize:12,flex:1}} />
                           </div>
-                          {t.unit==="bag"&&(
-                            <div style={{display:"flex",alignItems:"center",gap:2}}>
-                              <input type="number" value={p.coverage_factor||1} title="sqft·in one bag covers" onChange={e=>updateProduct(pi,"coverage_factor",e.target.value)} style={{...I,height:26,fontSize:11,textAlign:"right"}} />
-                              <span style={{fontSize:9,color:C.muted}}>ft²·in</span>
+                          {/* Row 2: R-Val + Cost + Coverage + Active + Remove */}
+                          <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
+                            <div style={{display:"flex",alignItems:"center",gap:4}}>
+                              <span style={{fontSize:10,color:C.muted,whiteSpace:"nowrap"}}>R-Val</span>
+                              <input placeholder="e.g. R-21" value={p.r_value||""} onChange={e=>updateProduct(pi,"r_value",e.target.value)}
+                                title="Optional: match only areas with this R-value. Leave blank as fallback."
+                                style={{...I,height:28,fontSize:11,width:60,textAlign:"center"}} />
                             </div>
-                          )}
-                          <button onClick={()=>setActive(pi)} style={{border:"none",borderRadius:5,height:26,fontSize:10,fontWeight:700,cursor:"pointer",background:p.is_active?"#059669":"#e5e7eb",color:p.is_active?"white":C.muted,whiteSpace:"nowrap"}}>
-                            {p.is_active?"✓ Using":"Use this"}
-                          </button>
-                          <button onClick={()=>removeProduct(pi)} style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:16,padding:0}}>✕</button>
+                            <div style={{display:"flex",alignItems:"center",gap:4}}>
+                              <span style={{fontSize:10,color:C.muted}}>$</span>
+                              <input type="number" value={p.cost_per_unit} onChange={e=>updateProduct(pi,"cost_per_unit",e.target.value)}
+                                style={{...I,height:28,fontSize:11,textAlign:"right",width:70}} />
+                            </div>
+                            {t.unit==="bag"&&(
+                              <div style={{display:"flex",alignItems:"center",gap:4}}>
+                                <input type="number" value={p.coverage_factor||1} title="sqft·in one bag covers"
+                                  onChange={e=>updateProduct(pi,"coverage_factor",e.target.value)}
+                                  style={{...I,height:28,fontSize:11,textAlign:"right",width:60}} />
+                                <span style={{fontSize:9,color:C.muted}}>ft²·in</span>
+                              </div>
+                            )}
+                            <button onClick={()=>setActive(pi)} style={{border:"none",borderRadius:5,height:28,fontSize:10,fontWeight:700,cursor:"pointer",padding:"0 12px",
+                                background:p.is_active?"#059669":"#e5e7eb",color:p.is_active?"white":C.muted,whiteSpace:"nowrap"}}>
+                              {p.is_active?"✓ Using":"Use this"}
+                            </button>
+                            <button onClick={()=>removeProduct(pi)}
+                              style={{border:"none",background:"none",color:"#ef4444",cursor:"pointer",fontSize:18,padding:0,lineHeight:1,marginLeft:"auto"}}>✕</button>
+                          </div>
                         </div>
                     ))}
                     <button onClick={addProduct}
