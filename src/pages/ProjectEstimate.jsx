@@ -444,7 +444,8 @@ function useCalcResult(field) {
 
   // ── COLLAPSED ──
   if (isComplete && !expanded) return (
-  <div style={{ background:area.is_optional?"#fffbeb":"#f0fdf4", border:`1px solid ${area.is_optional?"#fde68a":"#86efac"}`, borderLeft:`3px solid ${area.is_optional?"#f59e0b":"#059669"}`, borderRadius:7, padding:"4px 8px", marginBottom:3 }}>
+  <div onClick={()=>{ setExpanded(true); onChange("_collapsed",false); }}
+    style={{ background:area.is_optional?"#fffbeb":"#f0fdf4", border:`1px solid ${area.is_optional?"#fde68a":"#86efac"}`, borderLeft:`3px solid ${area.is_optional?"#f59e0b":"#059669"}`, borderRadius:7, padding:"4px 8px", marginBottom:3, cursor:"pointer" }}>
       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:2 }}>
         <span style={{ fontSize:11, fontWeight:700, color:C.ink }}>
           {area.is_optional&&<span style={{color:"#f59e0b",marginRight:4}}>⭐</span>}
@@ -453,7 +454,7 @@ function useCalcResult(field) {
         <div style={{ display:"flex", alignItems:"center", gap:6 }}>
           {isOverridden && <span style={{fontSize:9,color:"#7c3aed",fontWeight:700}}>✏️ custom</span>}
           <span style={{ fontSize:11, fontWeight:700, color:"#059669" }}>${fmt(totalCost)}</span>
-          <button onClick={()=>setExpanded(true)} style={{ border:"none", background:"none", color:"#059669", cursor:"pointer", fontSize:14, padding:"0 2px", lineHeight:1 }}>✏️</button>
+          <span style={{ color:"#059669", fontSize:14, padding:"0 2px" }}>✏️</span>
         </div>
       </div>
       {matLines.map((ml,i)=>(
@@ -1371,18 +1372,25 @@ export default function ProjectEstimate() {
     setActiveFloor(name);setNewFloorName("");setAddingFloor(false);
   }
 
+  const areaListRef = useRef(null);
+
   function addArea(floor){
     setAreas(prev=>{
       const ex=prev[floor]||[];
       const hasIncomplete=ex.some(a=>!isAreaComplete(a));
       if(hasIncomplete) return prev;
+      // Collapse all existing areas first
       const collapsed=ex.map(a=>isAreaComplete(a)?{...a,_collapsed:true}:a);
-      const last=collapsed[collapsed.length-1];
+      // Copy defaults from the most recent area but start fresh for measurements
+      const last=collapsed[0]; // take from first (top) since that's most recent
       const n=last
-        ?{...last,temp_id:Date.now(),sqft:0,measurements:[],mh:"",ml:"",mq:"1",deduct_sqft:"",paint_sqft:"",_collapsed:false,options:[],is_optional:false}
-        :{temp_id:Date.now(),floor,area_type:"",material:"",thickness_in:"",r_value:"",oc:"",sqft:0,measurements:[],mh:"",ml:"",mq:"1",deduct_sqft:"",paint_sqft:"",_collapsed:false,options:[],is_optional:false};
-      return {...prev,[floor]:[...collapsed,n]};
+        ?{...last,temp_id:Date.now(),sqft:0,measurements:[],mh:"",ml:"",mq:"1",deduct_sqft:"",paint_sqft:"",price_override:"",_collapsed:false,options:[],is_optional:false}
+        :{temp_id:Date.now(),floor,area_type:"",material:"",thickness_in:"",r_value:"",oc:"",sqft:0,measurements:[],mh:"",ml:"",mq:"1",deduct_sqft:"",paint_sqft:"",price_override:"",_collapsed:false,options:[],is_optional:false};
+      // Prepend — new area appears at the top of the list
+      return {...prev,[floor]:[n,...collapsed]};
     });
+    // Scroll area list to top so new card is immediately visible
+    setTimeout(()=>{ areaListRef.current?.scrollTo({top:0,behavior:"smooth"}); }, 60);
   }
 
   function updateArea(floor,idx,field,value){
@@ -1395,6 +1403,14 @@ export default function ProjectEstimate() {
       if(field==="area_type"){
         const match=Object.values(prev).flat().reverse().find(a=>a.area_type===value&&a.material&&a.material!=="__custom_mat__");
         if(match) upd[idx]={...upd[idx],material:match.material,thickness_in:match.thickness_in,r_value:match.r_value,oc:match.oc,mat_lines:match.mat_lines?match.mat_lines.map(ml=>({...ml})):undefined,options:existing.options||[]};
+      }
+      // When an area is expanded (un-collapsed), move it to position 0
+      // so it's always at the top — important for mobile where the screen
+      // is small and you need to see the active area without scrolling.
+      if(field==="_collapsed" && value===false){
+        const area=upd.splice(idx,1)[0];
+        upd.unshift(area);
+        setTimeout(()=>{ areaListRef.current?.scrollTo({top:0,behavior:"smooth"}); }, 60);
       }
       return {...prev,[floor]:upd};
     });
@@ -1621,7 +1637,7 @@ async function saveProject({silent=false}={}) {
       </div>
 
       <div style={{display:"flex",flex:1,overflow:"hidden"}}>
-        <div style={{flex:1,overflowY:"auto",overflowX:"hidden",padding:"8px 12px 200px 12px",minWidth:0,boxSizing:"border-box",width:"100%"}}>
+        <div ref={areaListRef} style={{flex:1,overflowY:"auto",overflowX:"hidden",padding:"8px 12px 200px 12px",minWidth:0,boxSizing:"border-box",width:"100%"}}>
           <CustomerSection leads={leads} selectedLead={selectedLead} selectedLeadId={selectedLeadId}
             projectAddress={projectAddress} projectName={projectName}
             onSelect={(lead)=>{setSelectedLeadId(String(lead.id));setProjectName(lead.name||"");/* keep existing address — only blank if no address yet */if(!projectAddress) setProjectAddress("");}}
