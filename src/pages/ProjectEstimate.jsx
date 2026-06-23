@@ -620,16 +620,6 @@ function useCalcResult(field) {
             <input placeholder="Thickness e.g. 3in" style={{...XS,width:"100%",marginBottom:3}}
               value={matLines[0].thickness_in||""} onChange={e=>updateMatLine(0,"thickness_in",e.target.value)} />
           )}
-          {(()=>{
-            const mat=materialMap ? materialMap[matLines[0].material] : materials.find(m=>m.name===matLines[0].material);
-            const {qty,unit,unit_price,line_total}=calcArea(computedSqft,matLines[0].thickness_in,mat,matLines[0].r_value,variantMap);
-            return line_total>0?(
-              <div style={{display:"flex",justifyContent:"flex-end",gap:6,fontSize:10,color:C.muted,marginBottom:2}}>
-                <span>{fmt(qty)} {unit?.replace("_"," ")} × ${unit_price}</span>
-                <span style={{fontWeight:700,color:C.green,fontSize:11}}>${fmt(line_total)}</span>
-              </div>
-            ):null;
-          })()}
         </div>
       )}
 
@@ -710,11 +700,6 @@ function useCalcResult(field) {
                 <input placeholder="Custom R-Val e.g. R-22" style={{...XS,width:"100%",marginBottom:2}}
                   value={ml.r_value||""} onChange={e=>updateMatLine(idx,"r_value",e.target.value)} />
               )}
-              {(()=>{
-                const mat=materialMap ? materialMap[ml.material] : materials.find(m=>m.name===ml.material);
-                const {qty,unit,unit_price,line_total}=calcArea(computedSqft,ml.thickness_in,mat,ml.r_value,variantMap);
-                return line_total>0?(<div style={{display:"flex",justifyContent:"flex-end",gap:6,fontSize:10,color:"#0369a1"}}><span>{fmt(qty)} {unit?.replace("_"," ")} × ${unit_price}</span><span style={{fontWeight:700}}>${fmt(line_total)}</span></div>):null;
-              })()}
             </div>
           ))}
           <button onClick={addMatLine} style={{width:"100%",padding:"7px",borderRadius:6,border:"1px dashed #7dd3fc",background:"none",color:"#0369a1",cursor:"pointer",fontSize:11,fontWeight:600,height:"auto"}}>+ Add material to combo</button>
@@ -1123,6 +1108,23 @@ export default function ProjectEstimate() {
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const initialLoadDone = useRef(false);
   const wasSaved = useRef(false);
+  const autoSaveTimer = useRef(null);
+
+  // Auto-save to localStorage immediately on every area change,
+  // and to the DB 3 seconds after changes stop — so no data is lost
+  // even if the user navigates away without clicking Save.
+  useEffect(()=>{
+    if(!initialLoadDone.current) return;
+    saveDraftNow();
+    clearTimeout(autoSaveTimer.current);
+    autoSaveTimer.current = setTimeout(()=>{
+      if(selectedLeadId && !wasSaved.current){
+        saveProject({silent:true});
+      }
+    }, 3000);
+    return ()=>clearTimeout(autoSaveTimer.current);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[areas, crewNotes]);
 
   function getDraftKey(id, address){
     const addrSlug = (address||"").trim().toLowerCase().replace(/[^a-z0-9]/g,"_").slice(0,40);
@@ -1480,12 +1482,12 @@ export default function ProjectEstimate() {
     setSaving(false);
   }
 
-async function saveProject() {
+async function saveProject({silent=false}={}) {
   if(saving) return;
-  if(!selectedLeadId){ alert("Please select or register a customer before saving."); return; }
+  if(!selectedLeadId){ if(!silent) alert("Please select or register a customer before saving."); return; }
   const hasAreas = floors.some(f=>(areas[f]||[]).some(a=>isAreaComplete(a)));
-  if(!hasAreas){ alert("Add at least one area before saving."); return; }
-  setSaving(true);
+  if(!hasAreas){ if(!silent) alert("Add at least one area before saving."); return; }
+  if(!silent) setSaving(true);
   try {
     const {data:{user}} = await supabase.auth.getUser();
     const {data:cd} = await supabase.from("companies").select("id").eq("user_id",user.id).maybeSingle();
@@ -1541,7 +1543,10 @@ async function saveProject() {
         });
         if(segs.length>0) await supabase.from("segments").insert(segs);
       }
-    wasSaved.current = true; setSaved(true); setSavedProjectId(targetProjectId); clearDraft(); setHasUnsavedChanges(false);
+    wasSaved.current = true;
+    if(!silent){ setSaved(true); setSavedProjectId(targetProjectId); }
+    else { setSavedProjectId(targetProjectId); }
+    clearDraft(); setHasUnsavedChanges(false);
       return;
     }
 
@@ -1586,10 +1591,10 @@ async function saveProject() {
       const allOptions=floors.flatMap(floor=>(areas[floor]||[]).filter(a=>a.area_type&&a.sqft&&(a.options||[]).length>0).map(a=>({area_type:a.area_type,floor,sqft:a.sqft,options:a.options,mat_lines:a.mat_lines})));
       await supabase.from("quotes").insert([{project_id:proj.id,subtotal:pricing.material_cost,tax_rate:0,tax_total:0,grand_total:Math.round(finalPriceWithLabor*100)/100,final_price:Math.round(finalPriceWithLabor*100)/100,material_cost:pricing.material_cost,overhead_cost:pricing.overhead_cost,labor_cost:Math.round(finalLaborCost*100)/100,labor_hours:laborRoles.reduce((s,r)=>s+Number(r.hours||0)*Number(r.days||1)*Number(r.people||1),0),crew_size:laborRoles.filter(r=>Number(r.hours||0)>0).length,labor_rate:laborRoles.find(r=>Number(r.hours||0)>0)?.rate||45,profit_margin_pct:pricing.profit_margin_pct,fuel_cost:Math.round(fuelCostCalc*100)/100,commission_cost:Math.round(commissionCost*100)/100,commission_pct:commissionPct,job_miles:Number(jobMiles||0),sales_rep_id:selectedRep||null,notes:allOptions.length>0?JSON.stringify(allOptions):null,status:"Draft",company_id:companyId}]);
       wasSaved.current = true;
-      setSaved(true);setSavedProjectId(proj.id);clearDraft();
+      if(!silent){ setSaved(true); } setSavedProjectId(proj.id); clearDraft();
       setHasUnsavedChanges(false);
-    }catch(err){console.error(err);alert("Error: "+(err.message||JSON.stringify(err)));}
-    finally{setSaving(false);}
+    }catch(err){console.error(err);if(!silent)alert("Error: "+(err.message||JSON.stringify(err)));}
+    finally{if(!silent)setSaving(false);}
   }
 
   useEffect(()=>{if(saved){const t=setTimeout(()=>setSaved(false),3000);return()=>clearTimeout(t);}},[saved]);
