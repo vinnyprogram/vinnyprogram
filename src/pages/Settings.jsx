@@ -46,6 +46,17 @@ export default function Settings() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
+  // Configurable lists
+  const DEFAULT_AREA_TYPES = ["Roof Rafter w/ Strapping","Roof Rafter behind knee walls","Floor","Exterior Wall","Demising Wall","Rim Joist","Concrete Wall","Ceiling","Interior Walls","Fire Blocking"];
+  const DEFAULT_THICK_OPTS = ["2x3","2x4","2x6","2x8","2x10","2x12","I-joist 14in","I-joist 16in","I-joist 18in"];
+  const DEFAULT_R_VALS     = ["R-11","R-13","R-15","R-19","R-21","R-28","R-30","R-38","R-49","R-60"];
+  const [listAreaTypes, setListAreaTypes] = useState(DEFAULT_AREA_TYPES);
+  const [listThickOpts, setListThickOpts] = useState(DEFAULT_THICK_OPTS);
+  const [listRVals,     setListRVals]     = useState(DEFAULT_R_VALS);
+  const [newAreaType,   setNewAreaType]   = useState("");
+  const [newThickOpt,   setNewThickOpt]   = useState("");
+  const [newRVal,       setNewRVal]       = useState("");
+
   // Overhead
   const [costs, setCosts] = useState([]);
   const [jobsPerMonth, setJobsPerMonth] = useState(20);
@@ -186,6 +197,20 @@ export default function Settings() {
     if(co){
       setOffersInsulation(co.offers_insulation !== false); // default true
       setOffersHers(co.offers_hers !== false);             // default true
+    }
+
+    // load configurable lists (area types, thickness, R-values)
+    const { data:listRows } = await supabase.from("cost_settings").select("*")
+      .eq("company_id",company.id)
+      .in("period",["list_area_type","list_thick_opt","list_r_val"])
+      .order("sort_order");
+    if(listRows?.length){
+      const at = listRows.filter(r=>r.period==="list_area_type").map(r=>r.name);
+      const th = listRows.filter(r=>r.period==="list_thick_opt").map(r=>r.name);
+      const rv = listRows.filter(r=>r.period==="list_r_val").map(r=>r.name);
+      if(at.length) setListAreaTypes(at);
+      if(th.length) setListThickOpts(th);
+      if(rv.length) setListRVals(rv);
     }
   }
 
@@ -814,6 +839,16 @@ export default function Settings() {
         .update({ offers_insulation: offersInsulation, offers_hers: offersHers })
         .eq("id", company.id);
 
+      // save configurable lists
+      await supabase.from("cost_settings").delete().eq("company_id",company.id)
+        .in("period",["list_area_type","list_thick_opt","list_r_val"]);
+      const listInserts = [
+        ...listAreaTypes.filter(Boolean).map((name,i)=>({company_id:company.id,category:"Lists",name,period:"list_area_type",amount:0,sort_order:i})),
+        ...listThickOpts.filter(Boolean).map((name,i)=>({company_id:company.id,category:"Lists",name,period:"list_thick_opt",amount:0,sort_order:i})),
+        ...listRVals.filter(Boolean).map((name,i)=>({company_id:company.id,category:"Lists",name,period:"list_r_val",amount:0,sort_order:i})),
+      ];
+      if(listInserts.length>0) await supabase.from("cost_settings").insert(listInserts);
+
       setSaved(true);
       setTimeout(()=>setSaved(false), 2000);
       await load();
@@ -828,6 +863,7 @@ export default function Settings() {
     { id:"overhead",   label:"Overhead" },
     { id:"materials",  label:"Materials" },
     { id:"variants",   label:"Batt/Rigid Pricing" },
+    { id:"lists",      label:"Area Types & Lists" },
     { id:"labor",      label:"Labor & Margin" },
     { id:"laboroles",  label:"Labor Roles" },
     { id:"assets",     label:"Assets" },
@@ -1255,6 +1291,52 @@ export default function Settings() {
         )}
 
         {/* ── LABOR & MARGIN TAB ── */}
+        {/* ── AREA TYPES, THICKNESS & R-VALUES ── */}
+        {tab==="lists" && (
+          <div>
+            <div style={{fontSize:12,color:C.muted,marginBottom:16,lineHeight:1.6}}>
+              These lists appear in the estimate and HERS field measurement dropdowns.
+              Add, remove, or reorder items to match your workflow. Changes take effect
+              immediately on new estimates after saving.
+            </div>
+
+            {[
+              {label:"Area Types", description:"Location/type of insulation areas (e.g. Roof Rafter, Exterior Wall)", list:listAreaTypes, setList:setListAreaTypes, newVal:newAreaType, setNew:setNewAreaType, placeholder:"e.g. Cathedral Ceiling"},
+              {label:"Thickness / Stud Size", description:"Stud cavity and joist sizes that appear in the thickness dropdown", list:listThickOpts, setList:setListThickOpts, newVal:newThickOpt, setNew:setNewThickOpt, placeholder:"e.g. 2x4, I-joist 11in"},
+              {label:"R-Values", description:"R-value options available when selecting material for an area", list:listRVals, setList:setListRVals, newVal:newRVal, setNew:setNewRVal, placeholder:"e.g. R-25"},
+            ].map(({label,description,list,setList,newVal,setNew,placeholder})=>(
+              <div key={label} style={{background:C.white,borderRadius:10,border:`1px solid ${C.border}`,marginBottom:16,overflow:"hidden"}}>
+                <div style={{background:"#f8fafc",borderBottom:`1px solid ${C.border}`,padding:"10px 14px"}}>
+                  <div style={{fontWeight:700,fontSize:14,color:C.ink}}>{label}</div>
+                  <div style={{fontSize:11,color:C.muted,marginTop:2}}>{description}</div>
+                </div>
+                <div style={{padding:"10px 14px"}}>
+                  <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:10}}>
+                    {list.map((item,i)=>(
+                      <div key={i} style={{display:"flex",alignItems:"center",gap:4,background:"#f1f5f9",borderRadius:6,padding:"4px 8px",fontSize:12}}>
+                        <span style={{color:C.ink}}>{item}</span>
+                        <button onClick={()=>setList(p=>p.filter((_,j)=>j!==i))}
+                          style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:14,padding:0,lineHeight:1}}>✕</button>
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{display:"flex",gap:6}}>
+                    <input placeholder={placeholder} value={newVal}
+                      onChange={e=>setNew(e.target.value)}
+                      onKeyDown={e=>{ if(e.key==="Enter"&&newVal.trim()&&!list.includes(newVal.trim())){ setList(p=>[...p,newVal.trim()]); setNew(""); } }}
+                      style={{...I,flex:1,fontSize:12}} />
+                    <button onClick={()=>{ if(newVal.trim()&&!list.includes(newVal.trim())){ setList(p=>[...p,newVal.trim()]); setNew(""); } }}
+                      style={{...BtnG,height:32,padding:"0 14px",fontSize:12}}>
+                      + Add
+                    </button>
+                  </div>
+                  <div style={{fontSize:10,color:C.faint,marginTop:4}}>Press Enter or click Add. Click ✕ on any item to remove it.</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
         {tab==="labor" && (
           <div>
             <div style={{ background:C.white, borderRadius:10,

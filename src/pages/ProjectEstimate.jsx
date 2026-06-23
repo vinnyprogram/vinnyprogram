@@ -304,7 +304,9 @@ async function saveNew() {
 }
 
 // ── AreaRow ───────────────────────────────────────────────────────────────────
-function AreaRow({ area, matTypesLive, materials, materialMap, variantMap, onChange, onDelete, onMove, floors, activeFloor, saveOptionsOnly, onMaterialAdded, customAreaTypes, onSaveCustomAreaType }) {
+function AreaRow({ area, matTypesLive, materials, materialMap, variantMap, onChange, onDelete, onMove, floors, activeFloor, saveOptionsOnly, onMaterialAdded, customAreaTypes, onSaveCustomAreaType, dbThickOpts, dbRVals }) {
+  const effectiveThickOpts = (dbThickOpts&&dbThickOpts.length>0) ? dbThickOpts : THICK_OPTS;
+  const effectiveRVals     = (dbRVals&&dbRVals.length>0) ? dbRVals : R_VALS;
   const [expanded, setExpanded] = useState(!area._collapsed);
 
   const [thickOpts, setThickOpts] = useState(()=>loadCustomList("custom_thick_opts", THICK_OPTS));
@@ -622,7 +624,7 @@ function useCalcResult(field) {
                 else { updateMatLine(0,"thickness_in",e.target.value); onChange("_custom_thick",false); }
               }}>
               <option value="">Thick</option>
-              {THICK_OPTS.map(t=><option key={t}>{t}</option>)}
+              {effectiveThickOpts.map(t=><option key={t}>{t}</option>)}
               <option value="__other__">✏️</option>
             </select>
           </div>
@@ -689,7 +691,7 @@ function useCalcResult(field) {
                       onChange("mat_lines", lines);
                     }
                   }}>
-                  <option value="">Thick</option>{THICK_OPTS.map(t=><option key={t}>{t}</option>)}
+                  <option value="">Thick</option>{effectiveThickOpts.map(t=><option key={t}>{t}</option>)}
                   <option value="__other__">✏️ Other</option>
                 </select>
                 <select style={{...XS,flex:1}}
@@ -703,7 +705,7 @@ function useCalcResult(field) {
                       onChange("mat_lines", lines);
                     }
                   }}>
-                  <option value="">R-Val</option>{R_VALS.map(r=><option key={r}>{r}</option>)}
+                  <option value="">R-Val</option>{effectiveRVals.map(r=><option key={r}>{r}</option>)}
                   <option value="__other__">✏️ Other</option>
                 </select>
                 <select style={{...XS,flex:1}} value={ml.oc||""} onChange={e=>updateMatLine(idx,"oc",e.target.value)}>
@@ -754,8 +756,8 @@ function useCalcResult(field) {
                   }}>
                     <option value="">Material</option>{(matTypesLive&&matTypesLive.length>0?matTypesLive:materials).map(m=><option key={m.id||m.name}>{m.name}</option>)}<option value="__combo__">⚡ Combo</option>
                   </select>
-                  <select style={{...XS,flex:1}} value={opt.thickness_in||matLines[0].thickness_in||""} onChange={e=>updateOpt("thickness_in",e.target.value)}><option value="">Thick</option>{THICK_OPTS.map(t=><option key={t}>{t}</option>)}</select>
-                  <select style={{...XS,flex:1}} value={opt.r_value||matLines[0].r_value||""} onChange={e=>updateOpt("r_value",e.target.value)}><option value="">R-Val</option>{R_VALS.map(r=><option key={r}>{r}</option>)}</select>
+                  <select style={{...XS,flex:1}} value={opt.thickness_in||matLines[0].thickness_in||""} onChange={e=>updateOpt("thickness_in",e.target.value)}><option value="">Thick</option>{effectiveThickOpts.map(t=><option key={t}>{t}</option>)}</select>
+                  <select style={{...XS,flex:1}} value={opt.r_value||matLines[0].r_value||""} onChange={e=>updateOpt("r_value",e.target.value)}><option value="">R-Val</option>{effectiveRVals.map(r=><option key={r}>{r}</option>)}</select>
                 </div>
               ):(
                 <div style={{background:"#fff7ed",borderRadius:6,padding:"6px 8px",marginBottom:4}}>
@@ -767,8 +769,8 @@ function useCalcResult(field) {
                         {optLines.length>2&&<button onClick={()=>{const lines=optLines.filter((_,j)=>j!==li);const opts=[...areaOptions];opts[oi]={...opts[oi],mat_lines:lines};onChange("options",opts);}} style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:13,padding:0}}>✕</button>}
                       </div>
                       <div style={{display:"flex",gap:4}}>
-                        <select style={{...XS,flex:1}} value={ol.thickness_in||""} onChange={e=>updateOptLine(li,"thickness_in",e.target.value)}><option value="">Thick</option>{THICK_OPTS.map(t=><option key={t}>{t}</option>)}</select>
-                        <select style={{...XS,flex:1}} value={ol.r_value||""} onChange={e=>updateOptLine(li,"r_value",e.target.value)}><option value="">R-Val</option>{R_VALS.map(r=><option key={r}>{r}</option>)}</select>
+                        <select style={{...XS,flex:1}} value={ol.thickness_in||""} onChange={e=>updateOptLine(li,"thickness_in",e.target.value)}><option value="">Thick</option>{effectiveThickOpts.map(t=><option key={t}>{t}</option>)}</select>
+                        <select style={{...XS,flex:1}} value={ol.r_value||""} onChange={e=>updateOptLine(li,"r_value",e.target.value)}><option value="">R-Val</option>{effectiveRVals.map(r=><option key={r}>{r}</option>)}</select>
                         <select style={{...XS,flex:1}} value={ol.oc||""} onChange={e=>updateOptLine(li,"oc",e.target.value)}><option value="">OC</option>{OC_OPTS.map(o=><option key={o}>{o}</option>)}</select>
                       </div>
                     </div>
@@ -844,7 +846,7 @@ function useCalcResult(field) {
                     else { updateMatLine(0,"r_value",e.target.value); onChange("_custom_rval",false); }
                   }}>
                   <option value="">R-Val</option>
-                  {R_VALS.map(r=><option key={r}>{r}</option>)}
+                  {effectiveRVals.map(r=><option key={r}>{r}</option>)}
                   <option value="__other__">✏️</option>
                 </select>
                {area._custom_rval && (
@@ -1107,6 +1109,8 @@ export default function ProjectEstimate() {
   const [areas,setAreas]=useState(()=>{const i={};DEFAULT_FLOORS.forEach(f=>{i[f]=[];});return i;});
   const [materials,setMaterials]=useState([]);
   const [customAreaTypes,setCustomAreaTypes]=useState([]);  // extra area types saved to DB
+  const [dbThickOpts,setDbThickOpts]=useState([]);  // DB-driven thickness options
+  const [dbRVals,setDbRVals]=useState([]);           // DB-driven R-value options
   const [matCostsLive,setMatCostsLive]=useState([]);
   const [variantsLive,setVariantsLive]=useState([]);
   const [matTypesLive,setMatTypesLive]=useState([]);      // Layer 1
@@ -1265,6 +1269,16 @@ export default function ProjectEstimate() {
       // Load custom area types saved by this company (via the "Other" path)
       const {data:cats}=await supabase.from("cost_settings").select("*").eq("company_id",cd.id).eq("period","custom_area_type").order("sort_order");
       if(cats?.length) setCustomAreaTypes(cats.map(c=>c.name).filter(Boolean));
+      const {data:listRows}=await supabase.from("cost_settings").select("name,period").eq("company_id",cd.id)
+        .in("period",["list_area_type","list_thick_opt","list_r_val"]).order("sort_order");
+      if(listRows?.length){
+        const th=listRows.filter(r=>r.period==="list_thick_opt").map(r=>r.name);
+        const rv=listRows.filter(r=>r.period==="list_r_val").map(r=>r.name);
+        if(th.length) setDbThickOpts(th);
+        if(rv.length) setDbRVals(rv);
+        const at=listRows.filter(r=>r.period==="list_area_type").map(r=>r.name);
+        if(at.length) setCustomAreaTypes(prev=>[...new Set([...at,...prev])]);
+      }
     });
   },[]);
 
@@ -1770,11 +1784,11 @@ async function saveProject({silent=false}={}) {
           ):(
             <>
               {currentAreas.map((area,idx)=>({area,idx})).filter(({area})=>!isAreaComplete(area)).map(({area,idx})=>(
-                <AreaRow key={area.id||area.temp_id} area={area} matTypesLive={matTypesLive} materials={materials} materialMap={materialMap} variantMap={variantMap} onChange={(field,value)=>updateArea(activeFloor,idx,field,value)} onDelete={()=>deleteArea(activeFloor,idx)} onMove={(toFloor)=>{const realI=(areas[activeFloor]||[]).indexOf(area);moveArea(activeFloor,realI>=0?realI:idx,toFloor);}} floors={floors} activeFloor={activeFloor} saveOptionsOnly={saveOptionsOnly} onMaterialAdded={loadMaterials} customAreaTypes={customAreaTypes} onSaveCustomAreaType={saveCustomAreaType} />
+                <AreaRow key={area.id||area.temp_id} area={area} matTypesLive={matTypesLive} materials={materials} materialMap={materialMap} variantMap={variantMap} onChange={(field,value)=>updateArea(activeFloor,idx,field,value)} onDelete={()=>deleteArea(activeFloor,idx)} onMove={(toFloor)=>{const realI=(areas[activeFloor]||[]).indexOf(area);moveArea(activeFloor,realI>=0?realI:idx,toFloor);}} floors={floors} activeFloor={activeFloor} saveOptionsOnly={saveOptionsOnly} onMaterialAdded={loadMaterials} customAreaTypes={customAreaTypes} onSaveCustomAreaType={saveCustomAreaType} dbThickOpts={dbThickOpts} dbRVals={dbRVals} />
               ))}
               {currentAreas.some(a=>isAreaComplete(a))&&(<div style={{fontSize:9,fontWeight:700,color:"#059669",textTransform:"uppercase",letterSpacing:0.5,marginBottom:4,marginTop:2,paddingLeft:2}}>✓ Completed areas</div>)}
               {currentAreas.map((area,idx)=>({area,idx})).filter(({area})=>isAreaComplete(area)).map(({area,idx})=>(
-                <AreaRow key={area.id||area.temp_id} area={area} matTypesLive={matTypesLive} materials={materials} materialMap={materialMap} variantMap={variantMap} onChange={(field,value)=>updateArea(activeFloor,idx,field,value)} onDelete={()=>deleteArea(activeFloor,idx)} onMove={(toFloor)=>{const realI=(areas[activeFloor]||[]).indexOf(area);moveArea(activeFloor,realI>=0?realI:idx,toFloor);}} floors={floors} activeFloor={activeFloor} saveOptionsOnly={saveOptionsOnly} onMaterialAdded={loadMaterials} customAreaTypes={customAreaTypes} onSaveCustomAreaType={saveCustomAreaType} />
+                <AreaRow key={area.id||area.temp_id} area={area} matTypesLive={matTypesLive} materials={materials} materialMap={materialMap} variantMap={variantMap} onChange={(field,value)=>updateArea(activeFloor,idx,field,value)} onDelete={()=>deleteArea(activeFloor,idx)} onMove={(toFloor)=>{const realI=(areas[activeFloor]||[]).indexOf(area);moveArea(activeFloor,realI>=0?realI:idx,toFloor);}} floors={floors} activeFloor={activeFloor} saveOptionsOnly={saveOptionsOnly} onMaterialAdded={loadMaterials} customAreaTypes={customAreaTypes} onSaveCustomAreaType={saveCustomAreaType} dbThickOpts={dbThickOpts} dbRVals={dbRVals} />
               ))}
             </>
           )}
