@@ -31,12 +31,46 @@ export default function QuotePricing() {
   const [liveMaterialCost, setLiveMaterialCost] = useState(null);
   const [liveOverheadCost, setLiveOverheadCost] = useState(null);
 
-  // detailed breakdown for display
-  const [areaCostLines, setAreaCostLines] = useState([]);   // [{floor, area_type, material, r_value, sqft, lineTotal, pricingNote}]
-  const [overheadLines, setOverheadLines] = useState([]);   // [{name, category, monthlyAmt, perJob}]
-  const [jobsPerMonth, setJobsPerMonth] = useState(20);
+  // per-job material brand selections
+  const [matTypes, setMatTypes]     = useState([]);
+  const [matProducts, setMatProducts] = useState([]);
+  const [qmsMap, setQmsMap]         = useState({}); // area_id → product_id override
 
-  // labor roles from settings
+  // ── Switch the brand for one area on this job ──────────────────────────────
+  async function setAreaProduct(areaId, productId, line, product){
+    // Update UI immediately
+    const updatedLines = areaCostLines.map(l=>{
+      if(l.area_id!==areaId) return l;
+      if(!product||!l.matType) return l;
+      const unit=l.matType.unit||"sqft";
+      const rpi=l.matType.r_per_inch?Number(l.matType.r_per_inch):unit==="board_ft"?(l.material.toLowerCase().includes("closed")?6.8:l.material.toLowerCase().includes("open")?3.75:0):0;
+      const THICK_MAP={"2x4":3.5,"2x6":5.5,"2x8":7.25,"2x10":9.25,"2x12":11.25,"I-joist":11.875};
+      const parseR=v=>{const m=String(v||"").match(/(\d+(\.\d+)?)/);return m?parseFloat(m[1]):0;};
+      const thick=(unit==="board_ft"&&rpi>0&&l.r_value)?parseR(l.r_value)/rpi:(THICK_MAP[l.thickness_in]||0);
+      const cov=Number(product.coverage_factor||1);
+      const qty=unit==="board_ft"?l.sqft*thick:unit==="bag"?Math.ceil(l.sqft*thick/cov):l.sqft;
+      const sell=Number(product.cost_per_unit||0)*(1+Number(product.markup_pct||20)/100);
+      const lineTotal=Math.round(qty*sell*100)/100;
+      let pricingNote=unit==="board_ft"?`${thick.toFixed(2)}" (${rpi} R/in) × $${product.cost_per_unit}/bf`:unit==="bag"?`${Math.ceil(l.sqft*thick/cov)} bags × $${product.cost_per_unit}`:`$${product.cost_per_unit}/sqft`;
+      return {...l,activeProductId:productId,lineTotal,pricingNote,effectivePerSqft:l.sqft>0?lineTotal/l.sqft:0};
+    });
+    setAreaCostLines(updatedLines);
+    setLiveMaterialCost(Math.round(updatedLines.reduce((s,l)=>s+l.lineTotal,0)*100)/100);
+    setQmsMap(prev=>({...prev,[areaId]:productId}));
+    // Persist
+    try{
+      const updated = updatedLines.find(l=>l.area_id===areaId);
+      await supabase.from("quote_material_selections").upsert({
+        project_id:projectId, area_id:areaId, material_coverage_id:productId,
+        qty:updated?.qty||0, unit_price:updated?.effectivePerSqft||0, line_total:updated?.lineTotal||0,
+      },{onConflict:"project_id,area_id"});
+    }catch(e){ console.warn("QMS save error:",e.message); }
+  }
+
+  // detailed breakdown for display
+  const [areaCostLines, setAreaCostLines] = useState([]);
+  const [overheadLines, setOverheadLines] = useState([]);
+  const [jobsPerMonth, setJobsPerMonth] = useState(20);
   const [laborRoles, setLaborRoles] = useState([]);
   const [allRoles, setAllRoles]     = useState([]); // full list from Settings for the picker
   const [showRolePicker, setShowRolePicker] = useState(false);
@@ -104,6 +138,9 @@ export default function QuotePricing() {
       { data:variants },
       { data:overheadRows },
       { data:jpmRow },
+      { data:types },
+      { data:products },
+      { data:qmsRows },
     ] = await Promise.all([
       supabase.from("cost_settings").select("*").eq("company_id",cd.id).eq("period","labor_role").order("sort_order"),
       supabase.from("cost_settings").select("*").eq("company_id",cd.id).eq("period","fuel").maybeSingle(),
@@ -117,7 +154,19 @@ export default function QuotePricing() {
         .not("period","eq","labor_role").not("period","eq","job_consumable")
         .not("period","eq","fuel").not("period","eq","jobs_per_month"),
       supabase.from("cost_settings").select("*").eq("company_id",cd.id).eq("period","jobs_per_month").maybeSingle(),
+      supabase.from("material_types").select("*").eq("company_id",cd.id).order("sort_order"),
+      supabase.from("material_products").select("*").eq("company_id",cd.id).order("sort_order"),
+      supabase.from("quote_material_selections").select("*").eq("project_id",projectId),
     ]);
+
+    // store for brand-switching UI
+    setMatTypes(types||[]);
+    setMatProducts(products||[]);
+
+    // build per-area overrides map: area_id → product_id
+    const savedQms = {};
+    (qmsRows||[]).forEach(s=>{ savedQms[s.area_id]=s.material_coverage_id; });
+    setQmsMap(savedQms);
 
     // build floor name lookup
     const floorNameMap = {};
@@ -155,82 +204,98 @@ export default function QuotePricing() {
       setConsumables(cons.map(c=>({ name:c.name, amount:Number(c.amount||0), qty:"1" })));
     }
 
-    // ── Live material cost recalculation ──────────────────────────────────
+    // ── Helpers for price lookup ──────────────────────────────────────────────
     const THICK_MAP = {"2x4":3.5,"2x6":5.5,"2x8":7.25,"2x10":9.25,"2x12":11.25,"I-joist":11.875};
     const matCostMap = {};
     (matCosts||[]).forEach(m=>{ matCostMap[m.material_name]=m; });
+    // Build type/product maps — material_types takes priority over material_costs
+    const typesByName = {};
+    (types||[]).forEach(t=>{ typesByName[t.name]=t; });
+
     const variantMap = {};
     (variants||[]).forEach(v=>{ variantMap[`${v.material_name}|${v.r_value||""}`.toLowerCase()]=v; });
     function parseR(rValue){ const m=String(rValue||"").match(/(\d+(\.\d+)?)/); return m?parseFloat(m[1]):0; }
 
+    // ── Compute pricing for one area given a specific product (or fallback) ──
+    function computeAreaLine(a, product, matType){
+      let lineTotal=0, pricingNote="", effectivePerSqft=0, qty=0;
+      if(a.price_override && Number(a.price_override)>0){
+        effectivePerSqft=Number(a.price_override);
+        lineTotal=(a.sqft||0)*effectivePerSqft;
+        pricingNote=`$${Number(a.price_override).toFixed(2)}/sqft (custom)`;
+        qty=a.sqft||0;
+      } else if(product && matType){
+        // Two-layer system
+        const unit = matType.unit||"sqft";
+        const rpi = matType.r_per_inch ? Number(matType.r_per_inch)
+          : unit==="board_ft" ? (matType.name.toLowerCase().includes("closed")?6.8:matType.name.toLowerCase().includes("open")?3.75:0) : 0;
+        const thick = (unit==="board_ft"&&rpi>0&&a.r_value) ? parseR(a.r_value)/rpi : (THICK_MAP[a.thickness_in]||0);
+        const covFactor = Number(product.coverage_factor||1);
+        qty = unit==="board_ft"?(a.sqft||0)*thick : unit==="bag"?Math.ceil((a.sqft||0)*thick/covFactor):(a.sqft||0);
+        const sell = Number(product.cost_per_unit||0)*(1+Number(product.markup_pct||20)/100);
+        lineTotal = qty*sell;
+        if(unit==="board_ft") pricingNote=`${thick.toFixed(2)}" (${rpi} R/in) × $${product.cost_per_unit}/bf`;
+        else if(unit==="bag") pricingNote=`${Math.ceil((a.sqft||0)*thick/covFactor)} bags × $${product.cost_per_unit}`;
+        else pricingNote=`$${product.cost_per_unit}/sqft`;
+        effectivePerSqft=(a.sqft||0)>0?lineTotal/(a.sqft||0):0;
+      } else {
+        // Legacy fallback: material_costs
+        const vKey=`${a.material||""}|${a.r_value||""}`.toLowerCase();
+        const variant=variantMap[vKey];
+        if(variant){
+          effectivePerSqft=Number(variant.cost_per_sqft||0)*(1+Number(variant.markup_pct||0)/100);
+          lineTotal=(a.sqft||0)*effectivePerSqft; qty=a.sqft||0;
+          pricingNote=`$${effectivePerSqft.toFixed(3)}/sqft`;
+        } else {
+          const mc=matCostMap[a.material];
+          if(mc){
+            const matNameL=(a.material||"").toLowerCase();
+            const rpi=mc.r_per_inch>0?Number(mc.r_per_inch):mc.unit==="board_ft"?(matNameL.includes("closed")?6.8:matNameL.includes("open")?3.75:0):0;
+            const thick=(mc.unit==="board_ft"&&rpi>0&&a.r_value)?parseR(a.r_value)/rpi:(THICK_MAP[a.thickness_in]||0);
+            qty=mc.unit==="board_ft"?(a.sqft||0)*thick:mc.unit==="bag"?Math.ceil((a.sqft||0)*thick/(mc.coverage_factor||1)):(a.sqft||0);
+            lineTotal=qty*Number(mc.cost_per_unit||0)*(1+Number(mc.markup_pct||0)/100);
+            if(mc.unit==="board_ft") pricingNote=`${thick.toFixed(2)}" (${rpi} R/in) × $${mc.cost_per_unit}/bf`;
+            else if(mc.unit==="bag") pricingNote=`${Math.ceil((a.sqft||0)*thick/(mc.coverage_factor||1))} bags × $${mc.cost_per_unit}`;
+            else pricingNote=`$${mc.cost_per_unit}/sqft`;
+            effectivePerSqft=(a.sqft||0)>0?lineTotal/(a.sqft||0):0;
+          } else { pricingNote="⚠️ no price in Settings"; }
+        }
+      }
+      return {lineTotal:Math.round(lineTotal*100)/100,effectivePerSqft:Math.round(effectivePerSqft*1000)/1000,pricingNote,qty:Math.round(qty)};
+    }
+
+    // ── Live material cost recalculation using qms overrides ──────────────────
     let matTotal = 0;
     const lines = [];
     const seenOverride = new Set();
     (areas||[]).filter(a=>a.area_type&&a.sqft>0).forEach(a=>{
-      let lineTotal = 0;
-      let pricingNote = "";
-      let effectivePerSqft = 0;
       const floorName = floorNameMap[a.floor_id]||"";
+      if(a.price_override&&Number(a.price_override)>0&&seenOverride.has(a.id)) return;
+      if(a.price_override&&Number(a.price_override)>0) seenOverride.add(a.id);
 
-      if(a.price_override && Number(a.price_override)>0){
-        const key = a.id||`${a.area_type}${a.sqft}`;
-        if(seenOverride.has(key)) return;
-        seenOverride.add(key);
-        effectivePerSqft = Number(a.price_override);
-        lineTotal = (a.sqft||0)*effectivePerSqft;
-        pricingNote = `$${Number(a.price_override).toFixed(2)}/sqft (custom)`;
+      // Determine which product to use: job-specific override → global active → legacy
+      const matType = typesByName[a.material];
+      let usedProduct = null;
+      const availProds = matType ? (products||[]).filter(p=>p.material_type_id===matType.id) : [];
+      if(savedQms[a.id]){
+        usedProduct = availProds.find(p=>p.id===savedQms[a.id]) || availProds.find(p=>p.is_active) || availProds[0];
       } else {
-        const vKey = `${a.material||""}|${a.r_value||""}`.toLowerCase();
-        const variant = variantMap[vKey];
-        if(variant){
-          effectivePerSqft = Number(variant.cost_per_sqft||0)*(1+Number(variant.markup_pct||0)/100);
-          lineTotal = (a.sqft||0)*effectivePerSqft;
-          pricingNote = `$${effectivePerSqft.toFixed(3)}/sqft`;
-        } else {
-          const mc = matCostMap[a.material];
-          if(mc){
-            // Auto-detect r_per_inch from name if not stored in DB:
-            //   Closed cell ≈ 6.8 R/in  (e.g. R30 → 30/6.8 = 4.4")
-            //   Open cell   ≈ 3.75 R/in (e.g. R30 → 30/3.75 = 8.0")
-            const matNameL = (a.material||"").toLowerCase();
-            const rpi = mc.r_per_inch>0 ? Number(mc.r_per_inch)
-              : mc.unit==="board_ft" ? (
-                  matNameL.includes("closed") ? 6.8
-                : matNameL.includes("open")   ? 3.75
-                : 0)
-              : 0;
-            const thick = (mc.unit==="board_ft" && rpi>0 && a.r_value)
-              ? parseR(a.r_value)/rpi
-              : (THICK_MAP[a.thickness_in]||0);
-            const qty = mc.unit==="board_ft" ? (a.sqft||0)*thick
-                      : mc.unit==="bag" ? Math.ceil((a.sqft||0)*thick/(mc.coverage_factor||1))
-                      : (a.sqft||0);
-            lineTotal = qty*Number(mc.cost_per_unit||0)*(1+Number(mc.markup_pct||0)/100);
-            if(mc.unit==="board_ft"){
-              const rLabel = rpi>0 ? ` (${rpi} R/in)` : "";
-              pricingNote = `${thick.toFixed(2)}" thick${rLabel} × $${mc.cost_per_unit}/bf`;
-            } else if(mc.unit==="bag"){
-              pricingNote = `${Math.ceil((a.sqft||0)*thick/(mc.coverage_factor||1))} bags × $${mc.cost_per_unit}`;
-            } else {
-              pricingNote = `$${mc.cost_per_unit}/sqft`;
-            }
-            effectivePerSqft = (a.sqft||0)>0 ? lineTotal/(a.sqft||0) : 0;
-          } else {
-            pricingNote = "⚠️ no price in Settings";
-          }
-        }
+        usedProduct = availProds.find(p=>p.is_active) || availProds[0];
       }
-
-      matTotal += lineTotal;
+      const lineData = computeAreaLine(a, usedProduct, matType);
+      matTotal += lineData.lineTotal;
       lines.push({
+        area_id: a.id,
         floor: floorName,
         area_type: a.area_type||"",
         material: a.material||"",
         r_value: a.r_value||"",
         sqft: a.sqft||0,
-        lineTotal: Math.round(lineTotal*100)/100,
-        effectivePerSqft: Math.round(effectivePerSqft*1000)/1000,
-        pricingNote,
+        ...lineData,
+        // For brand-switching UI
+        availProds,
+        activeProductId: usedProduct?.id||null,
+        matType,
       });
     });
     setAreaCostLines(lines);
@@ -430,6 +495,30 @@ export default function QuotePricing() {
                     {a.area_type}{a.floor?` · ${a.floor}`:""}{a.r_value?` · ${a.r_value}`:""}
                   </div>
                   <div style={{fontSize:10,color:C.muted}}>{a.material} · {fmt0(a.sqft)} ft² · {a.pricingNote}</div>
+                  {/* Brand selector — only shown when material_types exist for this material */}
+                  {a.availProds&&a.availProds.length>1&&(
+                    <div style={{display:"flex",alignItems:"center",gap:4,marginTop:3}}>
+                      <span style={{fontSize:9,color:C.faint,fontWeight:700,textTransform:"uppercase"}}>Brand:</span>
+                      <select value={a.activeProductId||""}
+                        onChange={e=>{
+                          const prod=a.availProds.find(p=>p.id===e.target.value);
+                          if(prod) setAreaProduct(a.area_id,prod.id,a,prod);
+                        }}
+                        style={{fontSize:10,height:22,borderRadius:4,border:`1px solid ${C.border}`,background:"white",color:C.ink,padding:"0 4px"}}>
+                        {a.availProds.map(p=>(
+                          <option key={p.id} value={p.id}>
+                            {p.brand||p.description||"(unnamed)"} — ${Number(p.cost_per_unit||0).toFixed(2)}/{a.matType?.unit==="board_ft"?"bf":a.matType?.unit==="bag"?"bag":"sqft"}
+                            {p.is_active?" ✓":""}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                  {a.availProds&&a.availProds.length===1&&(
+                    <div style={{fontSize:9,color:C.faint,marginTop:2}}>
+                      {a.availProds[0].brand||a.availProds[0].description||""}{a.availProds[0].brand?" — add more brands in Settings → Materials":""}
+                    </div>
+                  )}
                 </div>
                 <div style={{fontWeight:700,color:a.lineTotal>0?C.ink:C.faint,marginLeft:12,flexShrink:0}}>
                   {a.lineTotal>0?`$${fmt(a.lineTotal)}`:"—"}
