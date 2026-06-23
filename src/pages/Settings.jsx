@@ -861,8 +861,7 @@ export default function Settings() {
     { id:"overhead",   label:"Overhead" },
     { id:"materials",  label:"Materials & Pricing" },
     { id:"lists",      label:"Area Types & Lists" },
-    { id:"labor",      label:"Labor & Margin" },
-    { id:"laboroles",  label:"Labor Roles" },
+    { id:"laboroles",  label:"Crew & Margin" },
     { id:"assets",     label:"Assets" },
     { id:"fuel",       label:"Fuel" },
     { id:"salesreps",  label:"Sales Reps" },
@@ -1579,9 +1578,31 @@ export default function Settings() {
         {/* ── LABOR ROLES TAB ── */}
         {tab==="laboroles" && (
           <div>
+            {/* Profit Margin — moved here from the removed Labor & Margin tab */}
+            <div style={{ background:C.white, borderRadius:10,
+                border:`1px solid ${C.border}`, padding:"16px", marginBottom:12 }}>
+              <div style={{ fontWeight:700, fontSize:14, marginBottom:4 }}>
+                Profit Margin
+              </div>
+              <div style={{ fontSize:12, color:C.muted, marginBottom:12 }}>
+                Applied once to total job cost (materials + labor + overhead + consumables + fuel) on the Quote screen.
+              </div>
+              <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                <input type="range" min="5" max="60" value={margin}
+                  onChange={e=>setMargin(Number(e.target.value))}
+                  style={{ flex:1, accentColor:C.green }} />
+                <div style={{ fontSize:24, fontWeight:800, color:C.green,
+                    minWidth:60, textAlign:"right" }}>
+                  {margin}%
+                </div>
+              </div>
+              <div style={{ fontSize:11, color:C.muted, marginTop:8 }}>
+                Example: total cost $5,000 → final price ${fmt(5000*(1+margin/100))}
+              </div>
+            </div>
+
             <div style={{ fontSize:12, color:C.muted, marginBottom:10 }}>
-              Define your crew roles and hourly rates once.
-              These auto-fill into every estimate automatically.
+              Define your crew roles and hourly rates. These auto-fill into the Quote screen for every job.
             </div>
 
             <div style={{ background:C.white, borderRadius:10,
