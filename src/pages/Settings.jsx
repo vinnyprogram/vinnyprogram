@@ -1,3 +1,4 @@
+import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
@@ -1294,41 +1295,80 @@ export default function Settings() {
           <div>
             <div style={{fontSize:12,color:C.muted,marginBottom:16,lineHeight:1.6}}>
               These lists appear in the estimate and HERS field measurement dropdowns.
-              Add, remove, or reorder items to match your workflow. Changes take effect
-              immediately on new estimates after saving.
+              <b> Drag ☰ to reorder</b>, or use ↑↓ buttons. Changes take effect after saving.
             </div>
 
             {[
-              {label:"Area Types", description:"Location/type of insulation areas (e.g. Roof Rafter, Exterior Wall)", list:listAreaTypes, setList:setListAreaTypes, newVal:newAreaType, setNew:setNewAreaType, placeholder:"e.g. Cathedral Ceiling"},
-              {label:"Thickness / Stud Size", description:"Stud cavity and joist sizes that appear in the thickness dropdown", list:listThickOpts, setList:setListThickOpts, newVal:newThickOpt, setNew:setNewThickOpt, placeholder:"e.g. 2x4, I-joist 11in"},
-              {label:"R-Values", description:"R-value options available when selecting material for an area", list:listRVals, setList:setListRVals, newVal:newRVal, setNew:setNewRVal, placeholder:"e.g. R-25"},
-            ].map(({label,description,list,setList,newVal,setNew,placeholder})=>(
-              <div key={label} style={{background:C.white,borderRadius:10,border:`1px solid ${C.border}`,marginBottom:16,overflow:"hidden"}}>
+              {id:"area",  label:"Area Types", description:"Location/type of insulation areas", list:listAreaTypes, setList:setListAreaTypes, newVal:newAreaType, setNew:setNewAreaType, placeholder:"e.g. Cathedral Ceiling"},
+              {id:"thick", label:"Thickness / Stud Size", description:"Stud cavity and joist sizes", list:listThickOpts, setList:setListThickOpts, newVal:newThickOpt, setNew:setNewThickOpt, placeholder:"e.g. I-joist 11in"},
+              {id:"rval",  label:"R-Values", description:"R-value options for the area dropdown", list:listRVals, setList:setListRVals, newVal:newRVal, setNew:setNewRVal, placeholder:"e.g. R-25"},
+            ].map(({id,label,description,list,setList,newVal,setNew,placeholder})=>(
+              <div key={id} style={{background:C.white,borderRadius:10,border:`1px solid ${C.border}`,marginBottom:16,overflow:"hidden"}}>
                 <div style={{background:"#f8fafc",borderBottom:`1px solid ${C.border}`,padding:"10px 14px"}}>
                   <div style={{fontWeight:700,fontSize:14,color:C.ink}}>{label}</div>
                   <div style={{fontSize:11,color:C.muted,marginTop:2}}>{description}</div>
                 </div>
                 <div style={{padding:"10px 14px"}}>
-                  <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:10}}>
-                    {list.map((item,i)=>(
-                      <div key={i} style={{display:"flex",alignItems:"center",gap:4,background:"#f1f5f9",borderRadius:6,padding:"4px 8px",fontSize:12}}>
-                        <span style={{color:C.ink}}>{item}</span>
-                        <button onClick={()=>setList(p=>p.filter((_,j)=>j!==i))}
-                          style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:14,padding:0,lineHeight:1}}>✕</button>
-                      </div>
-                    ))}
-                  </div>
+                  <DragDropContext onDragEnd={result=>{
+                    if(!result.destination) return;
+                    const from=result.source.index, to=result.destination.index;
+                    if(from===to) return;
+                    setList(prev=>{
+                      const arr=[...prev];
+                      const [moved]=arr.splice(from,1);
+                      arr.splice(to,0,moved);
+                      return arr;
+                    });
+                  }}>
+                    <Droppable droppableId={id}>
+                      {provided=>(
+                        <div ref={provided.innerRef} {...provided.droppableProps}
+                          style={{marginBottom:10}}>
+                          {list.map((item,i)=>(
+                            <Draggable key={item+i} draggableId={id+i} index={i}>
+                              {(prov,snap)=>(
+                                <div ref={prov.innerRef} {...prov.draggableProps}
+                                  style={{...prov.draggableProps.style,
+                                    display:"flex",alignItems:"center",gap:6,
+                                    background:snap.isDragging?"#e0f2fe":"#f1f5f9",
+                                    border:`1px solid ${snap.isDragging?"#38bdf8":C.border}`,
+                                    borderRadius:6,padding:"6px 8px",marginBottom:4,
+                                    boxShadow:snap.isDragging?"0 4px 12px rgba(0,0,0,0.15)":"none"}}>
+                                  {/* drag handle */}
+                                  <span {...prov.dragHandleProps}
+                                    style={{color:C.faint,cursor:"grab",fontSize:14,padding:"0 2px",userSelect:"none",touchAction:"none"}}>
+                                    ☰
+                                  </span>
+                                  <span style={{flex:1,fontSize:12,color:C.ink}}>{item}</span>
+                                  {/* up/down for mobile */}
+                                  <button onClick={()=>setList(p=>{if(i===0)return p;const a=[...p];[a[i-1],a[i]]=[a[i],a[i-1]];return a;})}
+                                    disabled={i===0}
+                                    style={{border:"none",background:"none",color:i===0?C.chip:C.muted,cursor:i===0?"default":"pointer",fontSize:13,padding:"0 2px",lineHeight:1}}>↑</button>
+                                  <button onClick={()=>setList(p=>{if(i===p.length-1)return p;const a=[...p];[a[i],a[i+1]]=[a[i+1],a[i]];return a;})}
+                                    disabled={i===list.length-1}
+                                    style={{border:"none",background:"none",color:i===list.length-1?C.chip:C.muted,cursor:i===list.length-1?"default":"pointer",fontSize:13,padding:"0 2px",lineHeight:1}}>↓</button>
+                                  <button onClick={()=>setList(p=>p.filter((_,j)=>j!==i))}
+                                    style={{border:"none",background:"none",color:"#ef4444",cursor:"pointer",fontSize:14,padding:"0 2px",lineHeight:1}}>✕</button>
+                                </div>
+                              )}
+                            </Draggable>
+                          ))}
+                          {provided.placeholder}
+                        </div>
+                      )}
+                    </Droppable>
+                  </DragDropContext>
                   <div style={{display:"flex",gap:6}}>
                     <input placeholder={placeholder} value={newVal}
                       onChange={e=>setNew(e.target.value)}
-                      onKeyDown={e=>{ if(e.key==="Enter"&&newVal.trim()&&!list.includes(newVal.trim())){ setList(p=>[...p,newVal.trim()]); setNew(""); } }}
+                      onKeyDown={e=>{ if(e.key==="Enter"&&newVal.trim()&&!list.includes(newVal.trim())){ setList(p=>[newVal.trim(),...p]); setNew(""); } }}
                       style={{...I,flex:1,fontSize:12}} />
-                    <button onClick={()=>{ if(newVal.trim()&&!list.includes(newVal.trim())){ setList(p=>[...p,newVal.trim()]); setNew(""); } }}
+                    <button onClick={()=>{ if(newVal.trim()&&!list.includes(newVal.trim())){ setList(p=>[newVal.trim(),...p]); setNew(""); } }}
                       style={{...BtnG,height:32,padding:"0 14px",fontSize:12}}>
-                      + Add
+                      + Add to top
                     </button>
                   </div>
-                  <div style={{fontSize:10,color:C.faint,marginTop:4}}>Press Enter or click Add. Click ✕ on any item to remove it.</div>
+                  <div style={{fontSize:10,color:C.faint,marginTop:4}}>New items are added to the top. Drag ☰ or use ↑↓ to reorder.</div>
                 </div>
               </div>
             ))}
