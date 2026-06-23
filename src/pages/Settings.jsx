@@ -1094,7 +1094,22 @@ export default function Settings() {
               const updateType=(field,val)=>setMatTypes(p=>p.map((x,i)=>i===ti?{...x,[field]:val}:x));
               const updateProduct=(pi,field,val)=>setMatTypes(p=>p.map((x,i)=>i===ti?{...x,products:x.products.map((pp,j)=>j===pi?{...pp,[field]:val}:pp)}:x));
               const removeProduct=(pi)=>setMatTypes(p=>p.map((x,i)=>i===ti?{...x,products:x.products.filter((_,j)=>j!==pi)}:x));
-              const setActive=(pi)=>setMatTypes(p=>p.map((x,i)=>i===ti?{...x,products:x.products.map((pp,j)=>({...pp,is_active:j===pi}))}:x));
+              const setActive=(pi)=>setMatTypes(p=>p.map((x,i)=>{
+                if(i!==ti) return x;
+                const clickedR = x.products[pi]?.r_value||"";
+                // Turning ON: deactivate others in the same R-value group first
+                // Turning OFF: just toggle
+                const isCurrentlyActive = x.products[pi]?.is_active;
+                return {...x, products:x.products.map((pp,j)=>{
+                  if(j===pi) return {...pp, is_active:!pp.is_active};
+                  // If turning ON, deactivate others with the same R-value (or same "no R-value" group)
+                  if(!isCurrentlyActive){
+                    const sameGroup = (pp.r_value||"")===(clickedR);
+                    if(sameGroup) return {...pp, is_active:false};
+                  }
+                  return pp;
+                })};
+              }));
               const addProduct=()=>setMatTypes(p=>p.map((x,i)=>i===ti?{...x,products:[...x.products,{id:null,brand:"",description:"",cost_per_unit:0,markup_pct:20,coverage_factor:1,is_active:false,r_value:null}]}:x));
               const activeProduct=(t.products||[]).find(p=>p.is_active);
               const activeCost = activeProduct ? Number(activeProduct.cost_per_unit||0) : 0;
@@ -1162,7 +1177,7 @@ export default function Settings() {
                             </div>
                           )}
                           <button onClick={()=>setActive(pi)} style={{border:"none",borderRadius:5,height:26,fontSize:10,fontWeight:700,cursor:"pointer",background:p.is_active?"#059669":"#e5e7eb",color:p.is_active?"white":C.muted,whiteSpace:"nowrap"}}>
-                            {p.is_active?"✓ Active":"Set Active"}
+                            {p.is_active?"✓ Using":"Use this"}
                           </button>
                           <button onClick={()=>removeProduct(pi)} style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:16,padding:0}}>✕</button>
                         </div>
