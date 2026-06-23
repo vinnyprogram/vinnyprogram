@@ -1454,7 +1454,7 @@ export default function ProjectEstimate() {
           : t.unit==="board_ft" ? (nameL.includes("closed")?6.8:nameL.includes("open")?3.75:null)
           : t.unit==="bag" ? (nameL.includes("cellulose")||nameL.includes("blown")?3.5:null)
           : null;
-        const sellPrice = prod ? Number(prod.cost_per_unit||0)*(1+Number(prod.markup_pct||20)/100) : 0;
+        const sellPrice = prod ? Number(prod.cost_per_unit||0) : 0;
         return [t.name, {
           name:t.name, unit:t.unit||"sqft",
           price_per_unit:sellPrice,
@@ -1467,7 +1467,7 @@ export default function ProjectEstimate() {
     const costMap=Object.fromEntries(matCostsLive.map(m=>[m.material_name,m]));
     return Object.fromEntries(materials.map(m=>{
       const mc=costMap[m.name];
-      const sellPrice=mc ? Number(mc.cost_per_unit||0)*(1+Number(mc.markup_pct||0)/100) : Number(m.price_per_unit||0);
+      const sellPrice=mc ? Number(mc.cost_per_unit||0) : Number(m.price_per_unit||0);
       return [m.name, { name:m.name, unit: mc?mc.unit:m.unit, price_per_unit: sellPrice, coverage_factor: mc?Number(mc.coverage_factor||1):1,
         r_per_inch: mc&&mc.r_per_inch ? Number(mc.r_per_inch)
           : mc?.unit==="board_ft" ? (
@@ -1618,7 +1618,7 @@ export default function ProjectEstimate() {
         ? parseRValueNumber(a.r_value)/rpi
         : (TM[a.thickness_in]||0);
       let qty=mc.unit==="board_ft"?(a.sqft||0)*thick:mc.unit==="bag"?Math.ceil(((a.sqft||0)*thick)/(mc.coverage_factor||1)):(a.sqft||0);
-      materialCost+=qty*Number(mc.cost_per_unit||0)*(1+Number(mc.markup_pct||0)/100);
+      materialCost+=qty*Number(mc.cost_per_unit||0);
     });
     const overheadCost=(overheadCosts||[]).reduce((s,c)=>s+Number(c.amount||0),0)/20;
     const consumableCost=(consumables||[]).reduce((s,c)=>s+Number(c.amount||0)*(totalSqft>0?totalSqft/1000:1),0);

@@ -49,7 +49,7 @@ export default function QuotePricing() {
       const thick=(unit==="board_ft"&&rpi>0&&l.r_value)?parseR(l.r_value)/rpi:(THICK_MAP[l.thickness_in]||0);
       const cov=Number(product.coverage_factor||1);
       const qty=unit==="board_ft"?l.sqft*thick:unit==="bag"?Math.ceil(l.sqft*thick/cov):l.sqft;
-      const sell=Number(product.cost_per_unit||0)*(1+Number(product.markup_pct||20)/100);
+      const sell=Number(product.cost_per_unit||0);
       const lineTotal=Math.round(qty*sell*100)/100;
       let pricingNote=unit==="board_ft"?`${thick.toFixed(2)}" (${rpi} R/in) × $${product.cost_per_unit}/bf`:unit==="bag"?`${Math.ceil(l.sqft*thick/cov)} bags × $${product.cost_per_unit}`:`$${product.cost_per_unit}/sqft`;
       return {...l,activeProductId:productId,lineTotal,pricingNote,effectivePerSqft:l.sqft>0?lineTotal/l.sqft:0};
@@ -235,7 +235,7 @@ export default function QuotePricing() {
         const thick = (rpi>0&&a.r_value) ? parseR(a.r_value)/rpi : (THICK_MAP[a.thickness_in]||0);
         const covFactor = Number(product.coverage_factor||1);
         qty = unit==="board_ft"?(a.sqft||0)*thick : unit==="bag"?Math.ceil((a.sqft||0)*thick/covFactor):(a.sqft||0);
-        const sell = Number(product.cost_per_unit||0)*(1+Number(product.markup_pct||20)/100);
+        const sell = Number(product.cost_per_unit||0);
         lineTotal = qty*sell;
         if(unit==="board_ft") pricingNote=`${thick.toFixed(2)}" (${rpi} R/in) × $${product.cost_per_unit}/bf`;
         else if(unit==="bag") pricingNote=rpi>0
@@ -261,7 +261,7 @@ export default function QuotePricing() {
               :0;
             const thick=(rpi>0&&a.r_value)?parseR(a.r_value)/rpi:(THICK_MAP[a.thickness_in]||0);
             qty=mc.unit==="board_ft"?(a.sqft||0)*thick:mc.unit==="bag"?Math.ceil((a.sqft||0)*thick/(mc.coverage_factor||1)):(a.sqft||0);
-            lineTotal=qty*Number(mc.cost_per_unit||0)*(1+Number(mc.markup_pct||0)/100);
+            lineTotal=qty*Number(mc.cost_per_unit||0);
             if(mc.unit==="board_ft") pricingNote=`${thick.toFixed(2)}" (${rpi} R/in) × $${mc.cost_per_unit}/bf`;
             else if(mc.unit==="bag") pricingNote=rpi>0
               ?`${thick.toFixed(2)}" depth (${rpi} R/in) · ${Math.ceil((a.sqft||0)*thick/(mc.coverage_factor||1))} bags × $${mc.cost_per_unit}`

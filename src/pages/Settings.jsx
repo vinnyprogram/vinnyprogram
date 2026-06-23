@@ -593,7 +593,7 @@ export default function Settings() {
                   : mc.unit==="bag" ? Math.ceil((Number(a.sqft||0)*thick)/(mc.coverage_factor||1))
                   : Number(a.sqft||0);
           const cost = qty * Number(mc.cost_per_unit||0);
-          materialCost += cost * (1 + Number(mc.markup_pct||0)/100);
+          materialCost += cost;
         });
 
         // scale consumables by sqft
@@ -1098,7 +1098,7 @@ export default function Settings() {
               const setActive=(pi)=>setMatTypes(p=>p.map((x,i)=>i===ti?{...x,products:x.products.map((pp,j)=>({...pp,is_active:j===pi}))}:x));
               const addProduct=()=>setMatTypes(p=>p.map((x,i)=>i===ti?{...x,products:[...x.products,{id:null,brand:"",description:"",cost_per_unit:0,markup_pct:20,coverage_factor:1,is_active:false,r_value:null}]}:x));
               const activeProduct=(t.products||[]).find(p=>p.is_active);
-              const activeSell=activeProduct?Number(activeProduct.cost_per_unit||0)*(1+Number(activeProduct.markup_pct||20)/100):0;
+              const activeCost = activeProduct ? Number(activeProduct.cost_per_unit||0) : 0;
               return (
                 <div key={ti} style={{background:C.white,borderRadius:10,border:`1px solid ${C.border}`,marginBottom:12,overflow:"hidden"}}>
                   {/* Type header */}
@@ -1123,7 +1123,7 @@ export default function Settings() {
                         <span style={{fontSize:11,color:C.muted}}>R/in</span>
                       </div>
                     )}
-                    {activeSell>0&&<div style={{fontSize:12,color:C.green,fontWeight:700,marginLeft:"auto"}}>Sell: ${activeSell.toFixed(2)}/{t.unit==="board_ft"?"bf":t.unit==="bag"?"bag":"sqft"}</div>}
+                    {activeCost>0&&<div style={{fontSize:12,color:C.muted,fontWeight:600,marginLeft:"auto"}}>Cost: ${activeCost.toFixed(2)}/{t.unit==="board_ft"?"bf":t.unit==="bag"?"bag":"sqft"}</div>}
                     <button onClick={()=>setMatTypes(p=>p.filter((_,i)=>i!==ti))}
                       style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:18,padding:"0 4px",flexShrink:0}}>✕</button>
                   </div>
@@ -1139,9 +1139,8 @@ export default function Settings() {
                       </div>
                     )}
                     {(t.products||[]).map((p,pi)=>{
-                      const sell=Number(p.cost_per_unit||0)*(1+Number(p.markup_pct||20)/100);
                       return (
-                        <div key={pi} style={{display:"grid",gridTemplateColumns:"1.2fr 1fr 70px 50px"+(t.unit==="bag"?" 60px":"")+" 65px 90px 24px",
+                        <div key={pi} style={{display:"grid",gridTemplateColumns:"1.2fr 1fr 80px"+(t.unit==="bag"?" 70px":"")+" 90px 24px",
                             gap:5,padding:"6px 8px",marginBottom:4,borderRadius:6,
                             background:p.is_active?"#f0fdf4":"#fafbfc",
                             border:`1px solid ${p.is_active?"#86efac":C.border}`,
@@ -1158,20 +1157,14 @@ export default function Settings() {
                               onChange={e=>updateProduct(pi,"cost_per_unit",e.target.value)}
                               style={{...I,height:26,fontSize:11,textAlign:"right"}} />
                           </div>
-                          <div style={{display:"flex",alignItems:"center",gap:1}}>
-                            <input type="number" value={p.markup_pct}
-                              onChange={e=>updateProduct(pi,"markup_pct",e.target.value)}
-                              style={{...I,height:26,fontSize:11,textAlign:"right"}} />
-                            <span style={{fontSize:10,color:C.muted}}>%</span>
-                          </div>
                           {t.unit==="bag"&&(
-                            <input type="number" value={p.coverage_factor||1} title="sqft·in one bag covers"
-                              onChange={e=>updateProduct(pi,"coverage_factor",e.target.value)}
-                              style={{...I,height:26,fontSize:11,textAlign:"right"}} />
+                            <div style={{display:"flex",alignItems:"center",gap:2}}>
+                              <input type="number" value={p.coverage_factor||1} title="sqft·in one bag covers"
+                                onChange={e=>updateProduct(pi,"coverage_factor",e.target.value)}
+                                style={{...I,height:26,fontSize:11,textAlign:"right"}} />
+                              <span style={{fontSize:9,color:C.muted}}>ft²·in</span>
+                            </div>
                           )}
-                          <div style={{fontSize:11,fontWeight:700,color:C.green,textAlign:"right"}}>
-                            ${sell.toFixed(2)}
-                          </div>
                           <button onClick={()=>setActive(pi)}
                             style={{border:"none",borderRadius:5,height:26,fontSize:10,fontWeight:700,cursor:"pointer",
                               background:p.is_active?"#059669":"#e5e7eb",
