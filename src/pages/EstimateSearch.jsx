@@ -330,6 +330,12 @@ export default function EstimateSearch() {
                     cursor:"pointer",fontSize:11,fontWeight:700}}>
                   ✏️ Edit
                 </button>
+                <button onClick={()=>navigate(`/project/drawings/${p.id}`)}
+                  style={{flex:1,border:"none",background:"#7c3aed",color:"white",
+                    padding:"5px 0",borderRadius:6,cursor:"pointer",
+                    fontSize:11,fontWeight:700}}>
+                  📐 Draw
+                </button>
                 <button onClick={()=>setOpenCost(openCost===p.id?null:p.id)}
                   style={{flex:1,border:"1px solid #e2e8f0",
                     background:openCost===p.id?"#f0fdf4":"white",

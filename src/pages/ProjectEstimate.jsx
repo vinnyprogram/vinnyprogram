@@ -1874,7 +1874,16 @@ async function saveProject({silent=false}={}) {
             )}
           </div>
 
-          <button onClick={()=>addArea(activeFloor)} className={currentAreas.some(a=>!isAreaComplete(a))?"area-focus-bg":""} style={{width:"100%",padding:"7px",borderRadius:7,border:`1px dashed ${C.border}`,background:C.white,color:C.muted,cursor:"pointer",fontSize:11,fontWeight:600,marginBottom:6,height:"auto"}}>+ Add area to {activeFloor}</button>
+          <div style={{display:"flex",gap:6,marginBottom:6}}>
+            <button onClick={()=>addArea(activeFloor)} className={currentAreas.some(a=>!isAreaComplete(a))?"area-focus-bg":""} style={{flex:1,padding:"7px",borderRadius:7,border:`1px dashed ${C.border}`,background:C.white,color:C.muted,cursor:"pointer",fontSize:11,fontWeight:600,height:"auto"}}>+ Add area to {activeFloor}</button>
+            {savedProjectId&&(
+              <button onClick={()=>navigate(`/project/drawings/${savedProjectId}`)}
+                title="Measure areas from a PDF floor plan"
+                style={{border:"none",background:"#7c3aed",color:"#fff",borderRadius:7,padding:"0 12px",cursor:"pointer",fontSize:11,fontWeight:700,whiteSpace:"nowrap",flexShrink:0}}>
+                📐 From Drawing
+              </button>
+            )}
+          </div>
 
           {/* Focus overlay when an area is being edited */}
          {currentAreas.some(a=>!isAreaComplete(a)) && (
