@@ -153,6 +153,14 @@ export default function MainLayout() {
                   <span>🏠</span> On Site
                 </Link>
 
+                <Link to="/project/drawings/new"
+                  onClick={()=>{ setEstimateOpen(false); setMenuOpen(false); }}
+                  style={subLink}
+                  onMouseEnter={e=>e.currentTarget.style.background="#374151"}
+                  onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                  <span>📐</span> By Drawings
+                </Link>
+
               </div>
             )}
           </div>}
