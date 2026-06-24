@@ -52,6 +52,7 @@ export default function EstimateDrawings(){
   const [currentPage, setCurrentPage] = useState(1);
   const [pdfLoading, setPdfLoading]   = useState(false);
   const [pageNames, setPageNames]     = useState({});
+  const [zoom, setZoom]               = useState(1);
   const [storagePath, setStoragePath] = useState(null);  // path in Supabase Storage
   const pdfRef = useRef(null);
   const overRef= useRef(null);
@@ -133,8 +134,6 @@ export default function EstimateDrawings(){
   }
 
   useEffect(()=>{ if(pdfDoc) renderPage(currentPage); },[pdfDoc, currentPage, zoom]); // eslint-disable-line
-
-  const [zoom, setZoom] = useState(1);
 
   async function renderPage(n){
     if(!pdfDoc||!pdfRef.current) return;
