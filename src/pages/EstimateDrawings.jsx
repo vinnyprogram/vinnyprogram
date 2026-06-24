@@ -165,6 +165,7 @@ export default function EstimateDrawings(){
         body:{ imageBase64:jpeg, mediaType:"image/jpeg" },
       });
       if(error) throw new Error(error.message);
+      if(data?.error) throw new Error(data.error);
       const areas=(data.areas||[]).map((a,i)=>({
         ...a, id:Date.now()+i,
         floor: floors.includes(a.floor)?a.floor:floors[0]||DEFAULT_FLOORS[0],
