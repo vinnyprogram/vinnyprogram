@@ -132,12 +132,15 @@ export default function EstimateDrawings(){
     setPdfLoading(false); e.target.value="";
   }
 
-  useEffect(()=>{ if(pdfDoc) renderPage(currentPage); },[pdfDoc,currentPage]);
+  useEffect(()=>{ if(pdfDoc) renderPage(currentPage); },[pdfDoc,currentPage,zoom]);
+
+  const [zoom, setZoom] = useState(1);
 
   async function renderPage(n){
     if(!pdfDoc||!pdfRef.current) return;
     const page=await pdfDoc.getPage(n);
-    const w=Math.min((pdfRef.current.parentElement?.clientWidth||800)-4,1400);
+    const container=pdfRef.current.parentElement;
+    const w=Math.min((container?.clientWidth||1200)-4, 2400) * zoom;
     const vp=page.getViewport({scale:w/page.getViewport({scale:1}).width});
     pdfRef.current.width=vp.width; pdfRef.current.height=vp.height;
     await page.render({canvasContext:pdfRef.current.getContext("2d"),viewport:vp}).promise;
@@ -368,6 +371,17 @@ export default function EstimateDrawings(){
                 placeholder="Page name (e.g. Attic, 1st Floor)"
                 style={{height:26,border:`1px solid ${C.border}`,borderRadius:5,padding:"0 8px",fontSize:12,flex:1,minWidth:120}}/>
 
+              {/* Zoom controls */}
+              <div style={{display:"flex",alignItems:"center",gap:4,flexShrink:0}}>
+                <button onClick={()=>setZoom(p=>Math.max(0.5,p-0.25))}
+                  style={{border:`1px solid ${C.border}`,background:C.white,color:C.ink,width:28,height:28,borderRadius:5,cursor:"pointer",fontSize:16,fontWeight:700}}>−</button>
+                <span style={{fontSize:11,color:C.muted,minWidth:36,textAlign:"center"}}>{Math.round(zoom*100)}%</span>
+                <button onClick={()=>setZoom(p=>Math.min(3,p+0.25))}
+                  style={{border:`1px solid ${C.border}`,background:C.white,color:C.ink,width:28,height:28,borderRadius:5,cursor:"pointer",fontSize:16,fontWeight:700}}>+</button>
+                <button onClick={()=>setZoom(1)}
+                  style={{border:`1px solid ${C.border}`,background:C.white,color:C.muted,height:28,padding:"0 8px",borderRadius:5,cursor:"pointer",fontSize:11}}>fit</button>
+              </div>
+
               {/* AI mode: Analyze button */}
               {mode==="ai"&&(
                 <button onClick={()=>analyzePage(currentPage)} disabled={analyzing}
@@ -482,7 +496,7 @@ export default function EstimateDrawings(){
         </div>
 
         {/* ── RIGHT: Results panel ── */}
-        <div style={{width:260,background:C.white,borderLeft:`1px solid ${C.border}`,display:"flex",flexDirection:"column",overflow:"hidden",flexShrink:0}}>
+        <div style={{width:260,background:C.white,borderLeft:`1px solid ${C.border}`,display:"flex",flexDirection:"column",overflow:"hidden",flexShrink:0,transition:"width 0.2s"}}>
           <div style={{padding:"10px 12px",borderBottom:`1px solid ${C.border}`,fontWeight:700,fontSize:13,display:"flex",alignItems:"center",gap:6}}>
             {mode==="ai"&&currAiAreas.length>0?"Detected Areas":"Measured Areas"}
             {(currAiAreas.length>0||saved.length>0)&&(
