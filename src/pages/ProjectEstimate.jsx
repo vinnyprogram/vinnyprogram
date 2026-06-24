@@ -1342,6 +1342,49 @@ export default function ProjectEstimate() {
     }catch(e){ console.warn("Could not save custom area type:",e.message); }
   }
 
+  // Import areas from saved drawing measurements
+  async function importFromDrawings(){
+    const targetId = projectId || savedProjectId;
+    if(!targetId){ alert("Save the estimate first, then import drawings."); return; }
+    const {data:drawingAreas,error} = await supabase
+      .from("drawing_areas").select("*").eq("project_id",targetId);
+    if(error||!drawingAreas?.length){
+      alert("No drawing measurements found for this project.\nGo to 📐 Drawings, trace the areas, and save them first.");
+      return;
+    }
+    // Group by floor_name and merge into current areas state
+    const imported = {};
+    drawingAreas.forEach(da=>{
+      const floor = da.floor_name||"Floor";
+      if(!imported[floor]) imported[floor]=[];
+      imported[floor].push({
+        temp_id:Date.now()+Math.random(),
+        floor, area_type:da.area_type||"", material:"", thickness_in:"", r_value:"", oc:"",
+        sqft:Number(da.sqft||0), measurements:[], mh:"",ml:"",mq:"1",
+        deduct_sqft:"",paint_sqft:"",price_override:"",phase:null,
+        _collapsed:false, options:[], is_optional:false,
+        _from_drawing:true,
+      });
+    });
+    // Add floors that don't exist yet
+    const newFloors=[...floors];
+    Object.keys(imported).forEach(f=>{ if(!newFloors.includes(f)) newFloors.push(f); });
+    setFloors(newFloors);
+    // Prepend imported areas (collapse existing)
+    setAreas(prev=>{
+      const next={...prev};
+      Object.entries(imported).forEach(([floor,newAreas])=>{
+        const existing=(next[floor]||[]).map(a=>isAreaComplete(a)?{...a,_collapsed:true}:a);
+        next[floor]=[...newAreas,...existing];
+      });
+      return next;
+    });
+    // Switch to the first imported floor
+    const firstFloor=Object.keys(imported)[0];
+    if(firstFloor) setActiveFloor(firstFloor);
+    alert(`Imported ${drawingAreas.length} area${drawingAreas.length>1?"s":""} from drawings.\nNow assign material and R-value to each area.`);
+  }
+
   function loadPricing(companyId){
     if(!companyId) return;
     supabase.from("material_costs").select("*").eq("company_id",companyId)
@@ -1780,13 +1823,13 @@ async function saveProject({silent=false}={}) {
       {saved&&(
         <div style={{position:"fixed",top:12,left:"50%",transform:"translateX(-50%)",zIndex:300,display:"flex",alignItems:"center",gap:10,background:"#059669",color:"#fff",padding:"8px 16px",borderRadius:20,fontSize:12,fontWeight:700,boxShadow:"0 4px 16px rgba(0,0,0,.15)"}}>
           <span>✅ Saved!</span>
-          {savedProjectId&&(<><button onClick={()=>navigate(`/field-report/${savedProjectId}`)} style={{background:"#3b82f6",color:"white",border:"none",borderRadius:12,padding:"3px 10px",fontSize:11,fontWeight:700,cursor:"pointer"}}>📋 Office Report</button><button onClick={()=>navigate(`/quote/${savedProjectId}`)} style={{background:"white",color:"#059669",border:"none",borderRadius:12,padding:"3px 10px",fontSize:11,fontWeight:700,cursor:"pointer"}}>📄 Quote</button></>)}
+          {savedProjectId&&(<><button onClick={()=>navigate(`/project/drawings/${savedProjectId}`)} style={{background:"#7c3aed",color:"white",border:"none",borderRadius:12,padding:"3px 10px",fontSize:11,fontWeight:700,cursor:"pointer"}}>📐 Drawings</button><button onClick={()=>navigate(`/field-report/${savedProjectId}`)} style={{background:"#3b82f6",color:"white",border:"none",borderRadius:12,padding:"3px 10px",fontSize:11,fontWeight:700,cursor:"pointer"}}>📋 Office Report</button><button onClick={()=>navigate(`/quote/${savedProjectId}`)} style={{background:"white",color:"#059669",border:"none",borderRadius:12,padding:"3px 10px",fontSize:11,fontWeight:700,cursor:"pointer"}}>📄 Quote</button></>)}
         </div>
       )}
       <div style={{position:"sticky",top:0,zIndex:100,background:C.white,borderBottom:`1px solid ${C.border}`,padding:"8px 12px",display:"flex",justifyContent:"space-between",alignItems:"center",flexShrink:0}}>
         <span style={{fontWeight:700,fontSize:14,flex:1,overflow:"hidden",whiteSpace:"nowrap",textOverflow:"ellipsis"}}>{isEditing?"✏️ Edit Estimate":(projectName||"New Project")}</span>
         <div style={{display:"flex",gap:6}}>
-          {savedProjectId&&(<><button onClick={()=>navigate(`/field-report/${savedProjectId}`)} style={{...BtnD,background:"#3b82f6",height:32,fontSize:12,padding:"0 10px",borderRadius:8}}>📋 Office</button><button onClick={()=>navigate(`/quote-pricing/${savedProjectId}`)} style={{...BtnD,background:"#f97316",height:32,fontSize:12,padding:"0 10px",borderRadius:8}}>📄 Quote</button></>)}
+          {savedProjectId&&(<><button onClick={()=>navigate(`/project/drawings/${savedProjectId}`)} style={{...BtnD,background:"#7c3aed",height:32,fontSize:12,padding:"0 10px",borderRadius:8}}>📐 Drawings</button><button onClick={importFromDrawings} style={{...BtnD,background:"#6d28d9",height:32,fontSize:12,padding:"0 10px",borderRadius:8}}>📥 Import</button><button onClick={()=>navigate(`/field-report/${savedProjectId}`)} style={{...BtnD,background:"#3b82f6",height:32,fontSize:12,padding:"0 10px",borderRadius:8}}>📋 Office</button><button onClick={()=>navigate(`/quote-pricing/${savedProjectId}`)} style={{...BtnD,background:"#f97316",height:32,fontSize:12,padding:"0 10px",borderRadius:8}}>📄 Quote</button></>)}
           <button onClick={saveProject} disabled={saving} style={{...BtnD,fontSize:13,height:32,padding:"0 14px",background:saving?"#64748b":C.ink,borderRadius:8,opacity:!selectedLeadId?0.4:1}}>{saving?"…":"Save"}</button>
         </div>
       </div>

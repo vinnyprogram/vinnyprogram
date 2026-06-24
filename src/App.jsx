@@ -78,7 +78,7 @@ function ProtectedApp() {
         <Route path="customer/:customerId" element={<CustomerProfile />} />
         <Route path="settings" element={<Settings />} />
         <Route path="quote-pricing/:projectId" element={<QuotePricing />} />
-        <Route path="project/drawings" element={<EstimateDrawings />} />
+        <Route path="project/drawings/:projectId" element={<EstimateDrawings />} />
         
         <Route path="/projects" element={<Projects />} />
         <Route path="/projects/:customerId" element={<Projects />} />
