@@ -132,7 +132,7 @@ export default function EstimateDrawings(){
     setPdfLoading(false); e.target.value="";
   }
 
-  useEffect(()=>{ if(pdfDoc) renderPage(currentPage); },[pdfDoc,currentPage,zoom]);
+  useEffect(()=>{ if(pdfDoc) renderPage(currentPage); },[pdfDoc, currentPage, zoom]); // eslint-disable-line
 
   const [zoom, setZoom] = useState(1);
 
