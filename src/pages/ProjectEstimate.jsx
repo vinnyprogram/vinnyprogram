@@ -1140,6 +1140,7 @@ export default function ProjectEstimate() {
   const {id:projectId}=useParams();
   const leadId=searchParams.get("leadId");
   const resumeMode=searchParams.get("resume")==="1";
+  const fromDrawing=searchParams.get("from_drawing")==="1";
   const addressParam=searchParams.get("address")||"";
   const isEditing=!!projectId;
 
@@ -1807,6 +1808,30 @@ async function saveProject({silent=false}={}) {
       wasSaved.current = true;
       if(!silent){ setSaved(true); } setSavedProjectId(proj.id); clearDraft();
       setHasUnsavedChanges(false);
+
+      // If started from "By Drawings", import the drawing draft into the new estimate
+      if(fromDrawing){
+        try{
+          const draft=JSON.parse(localStorage.getItem("drawing_draft")||"[]");
+          if(draft.length>0){
+            const {data:floorRows}=await supabase.from("floors").select("id,name").eq("project_id",proj.id);
+            const fmap={}; (floorRows||[]).forEach(f=>fmap[f.name]=f.id);
+            const {data:{user:u}}=await supabase.auth.getUser();
+            const {data:cd2}=await supabase.from("companies").select("id").eq("user_id",u.id).maybeSingle();
+            const inserts=draft.map((a,i)=>({
+              project_id:proj.id, floor_id:fmap[a.floor]||floorRows?.[0]?.id,
+              company_id:cd2?.id, area_type:a.areaType, sqft:a.sqft,
+              order_index:i*10, material:null, r_value:null, thickness_in:null,
+              options:[], paint_sqft:0, deduct_sqft:0,
+            })).filter(a=>a.floor_id);
+            if(inserts.length) await supabase.from("areas").insert(inserts);
+            localStorage.removeItem("drawing_draft");
+            // Reload so the imported areas appear as cards
+            window.location.href=`/project/${proj.id}`;
+            return;
+          }
+        }catch(e){ console.warn("Drawing draft import error:",e.message); }
+      }
     }catch(err){console.error(err);if(!silent)alert("Error: "+(err.message||JSON.stringify(err)));}
     finally{if(!silent)setSaving(false);}
   }

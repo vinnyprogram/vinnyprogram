@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
 import AddressInput from "./AddressInput";
@@ -17,6 +17,8 @@ const I = {
 
 export default function JobStart() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const fromDrawing = searchParams.get("from_drawing")==="1";
   const { company } = useAuth();
 
   // Trade prefs: use company settings if column exists, otherwise detect from data loaded later
@@ -132,7 +134,7 @@ export default function JobStart() {
     const p = new URLSearchParams();
     if(selected) p.set("leadId", String(selected.id));
     if(address) p.set("address", address);
-    navigate(`/project/new?type=onsite&${p.toString()}`);
+    navigate(`/project/new?type=onsite${fromDrawing?"&from_drawing=1":""}&${p.toString()}`);
   }
 
   function launchHersEstimate(estimateId){

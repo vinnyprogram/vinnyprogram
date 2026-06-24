@@ -75,27 +75,33 @@ export default function EstimateDrawings(){
   const pdfCanvasRef  = useRef(null);
   const drawCanvasRef = useRef(null);
 
-  const CALIB_KEY = `drawing_calib_${projectId}`;
+  const isNewProject = !projectId || projectId === "new";
+  const DRAFT_KEY = "drawing_draft";
+  const CALIB_KEY = `drawing_calib_${projectId||"new"}`;
 
   // Load floors from DB + calibration from localStorage
   useEffect(()=>{
-    if(!projectId) return;
-    // Calibration from localStorage
+    if(!projectId || projectId === "new") {
+      // New project mode — use default floor names, no DB needed
+      setFloorNames(DEFAULT_FLOORS);
+      setSelFloor(DEFAULT_FLOORS[0]);
+    } else {
+      supabase.from("floors").select("id,name").eq("project_id",projectId).order("order_index")
+        .then(({data})=>{
+          if(data?.length){
+            const map={};
+            data.forEach(f=>map[f.name]=f.id);
+            setFloorMap(map);
+            setFloorNames(data.map(f=>f.name));
+            setSelFloor(data[0].name);
+          }
+        });
+    }
+    // Calibration from localStorage (always)
     try{
       const saved=JSON.parse(localStorage.getItem(CALIB_KEY)||"{}");
       setCalibrations(saved);
     }catch(e){}
-    // Floors from DB
-    supabase.from("floors").select("id,name").eq("project_id",projectId).order("order_index")
-      .then(({data})=>{
-        if(data?.length){
-          const map={};
-          data.forEach(f=>map[f.name]=f.id);
-          setFloorMap(map);
-          setFloorNames(data.map(f=>f.name));
-          setSelFloor(data[0].name);
-        }
-      });
   },[projectId]);
 
   // Persist calibrations to localStorage whenever they change
@@ -249,30 +255,36 @@ export default function EstimateDrawings(){
     const calib=calibrations[currentPage];
     if(!calib?.pixPerFoot){ alert("Calibrate the scale first."); return; }
     if(currentPoly.length<3){ alert("Need at least 3 points to close a shape."); return; }
-    const floorId=floorMap[selFloor];
-    if(!floorId){ alert(`Floor "${selFloor}" not found in the estimate. Save the estimate first with at least one floor.`); return; }
     const pitchFactor=PITCH_FACTORS[selPitch]||1;
     const sqft=Math.round(shoelace(currentPoly)/(calib.pixPerFoot**2)*pitchFactor*10)/10;
+    const newArea = {
+      page:currentPage, areaType:selAreaType, floor:selFloor,
+      sqft, points:[...currentPoly], pitch:pitchFactor,
+    };
+
+    if(isNewProject){
+      // No project yet — save to localStorage draft, carry into estimate later
+      const existing = JSON.parse(localStorage.getItem(DRAFT_KEY)||"[]");
+      localStorage.setItem(DRAFT_KEY, JSON.stringify([...existing, newArea]));
+      setAddedAreas(prev=>[...prev, newArea]);
+      setCurrentPoly([]); setHoverPt(null);
+      return;
+    }
+
+    // Existing project — save directly to areas table
+    const floorId=floorMap[selFloor];
+    if(!floorId){ alert(`Floor "${selFloor}" not found. Save the estimate first with at least one floor.`); return; }
     setAdding(true);
     try{
       const {data:{user}}=await supabase.auth.getUser();
       const {data:cd}=await supabase.from("companies").select("id").eq("user_id",user.id).maybeSingle();
-      // Insert directly into areas — same table the estimate uses
       await supabase.from("areas").insert([{
-        project_id:projectId,
-        floor_id:floorId,
-        company_id:cd?.id,
-        area_type:selAreaType,
-        sqft,
-        order_index:Date.now(),
-        // Leave material/r_value/thickness_in empty — user fills in on estimate
+        project_id:projectId, floor_id:floorId, company_id:cd?.id,
+        area_type:selAreaType, sqft, order_index:Date.now(),
         material:null, r_value:null, thickness_in:null,
         options:[], paint_sqft:0, deduct_sqft:0,
       }]);
-      setAddedAreas(prev=>[...prev,{
-        page:currentPage, areaType:selAreaType, floor:selFloor,
-        sqft, points:[...currentPoly], pitch:pitchFactor,
-      }]);
+      setAddedAreas(prev=>[...prev, newArea]);
       setCurrentPoly([]); setHoverPt(null);
     }catch(err){ alert("Error saving area: "+err.message); }
     setAdding(false);
@@ -486,13 +498,29 @@ export default function EstimateDrawings(){
               <div style={{fontSize:11,color:C.muted,marginBottom:8}}>
                 Total: <b>{fmt(addedAreas.reduce((s,a)=>s+(a.sqft||0),0))} ft²</b> across {addedAreas.length} area{addedAreas.length>1?"s":""}
               </div>
-              <button onClick={()=>navigate(projectId?`/project/${projectId}`:"/estimates/search")}
-                style={{width:"100%",background:C.ink,color:"#fff",border:"none",padding:"10px",borderRadius:8,cursor:"pointer",fontSize:13,fontWeight:700}}>
-                ← Back to Estimate
-              </button>
-              <div style={{fontSize:10,color:C.faint,marginTop:6,textAlign:"center"}}>
-                Open each area card and set material + R-value
-              </div>
+              {isNewProject ? (
+                <>
+                  <button onClick={()=>navigate("/job/new?from_drawing=1")}
+                    style={{width:"100%",background:"#7c3aed",color:"#fff",border:"none",
+                      padding:"11px",borderRadius:8,cursor:"pointer",fontSize:14,fontWeight:800,marginBottom:6}}>
+                    Start Estimate →
+                  </button>
+                  <div style={{fontSize:10,color:C.faint,textAlign:"center"}}>
+                    Select the customer, then your measurements will auto-fill the estimate
+                  </div>
+                </>
+              ) : (
+                <>
+                  <button onClick={()=>navigate(`/project/${projectId}`)}
+                    style={{width:"100%",background:C.ink,color:"#fff",border:"none",
+                      padding:"10px",borderRadius:8,cursor:"pointer",fontSize:13,fontWeight:700}}>
+                    ← Back to Estimate
+                  </button>
+                  <div style={{fontSize:10,color:C.faint,marginTop:6,textAlign:"center"}}>
+                    Open each area card and set material + R-value
+                  </div>
+                </>
+              )}
             </div>
           )}
         </div>

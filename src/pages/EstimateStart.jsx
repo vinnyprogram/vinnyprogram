@@ -66,25 +66,26 @@ export default function EstimateStart() {
           <div style={{ marginLeft: "auto", color: "#94a3b8", fontSize: 18 }}>›</div>
         </button>
 
-        {/* By Drawings — disabled for now */}
+        {/* By Drawings */}
         <button
-          disabled
+          onClick={() => navigate("/project/drawings/new")}
           style={{
             display: "flex",
             alignItems: "center",
             gap: 16,
             padding: "18px 20px",
             borderRadius: 12,
-            border: "1.5px solid #e2e8f0",
-            background: "#f8fafc",
-            cursor: "not-allowed",
+            border: "1.5px solid #7c3aed",
+            background: "#faf5ff",
+            cursor: "pointer",
             textAlign: "left",
-            opacity: 0.6,
           }}
+          onMouseEnter={e => e.currentTarget.style.borderColor = "#6d28d9"}
+          onMouseLeave={e => e.currentTarget.style.borderColor = "#7c3aed"}
         >
           <div style={{
             width: 44, height: 44, borderRadius: 10,
-            background: "#e2e8f0", display: "flex",
+            background: "#7c3aed", display: "flex",
             alignItems: "center", justifyContent: "center",
             fontSize: 22, flexShrink: 0,
           }}>
@@ -93,20 +94,12 @@ export default function EstimateStart() {
           <div>
             <div style={{ fontWeight: 700, fontSize: 14, color: "#0f172a", marginBottom: 3 }}>
               By Drawings
-              <span style={{
-                marginLeft: 8, fontSize: 9, fontWeight: 700,
-                background: "#e2e8f0", color: "#94a3b8",
-                padding: "2px 6px", borderRadius: 4,
-                textTransform: "uppercase", letterSpacing: 0.5,
-              }}>
-                Coming soon
-              </span>
             </div>
             <div style={{ fontSize: 12, color: "#64748b", lineHeight: 1.4 }}>
-              Upload or sketch floor plans and calculate from drawings.
+              Upload a PDF floor plan, trace areas to measure, then start the estimate.
             </div>
           </div>
-          <div style={{ marginLeft: "auto", color: "#94a3b8", fontSize: 18 }}>›</div>
+          <div style={{ marginLeft: "auto", color: "#7c3aed", fontSize: 18 }}>›</div>
         </button>
 
       </div>
