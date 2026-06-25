@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { useSearchParams, useNavigate, useParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
+import { enqueue, flushQueue } from "../utils/offlineQueue";
 import AddressInput from "./AddressInput";
 
 const C = {
@@ -1197,7 +1198,7 @@ export default function ProjectEstimate() {
       // In new-project mode: only auto-save once a project ID exists (after first manual save).
       const targetId = projectId || savedProjectId;
       if(selectedLeadId && targetId){
-        saveProject({silent:true});
+        if(!navigator.onLine){ enqueue({ type:"pending_save", table:"projects", data:{ id:targetId }, opts:{} }); } else { saveProject({silent:true}); }
       }
     }, 3000);
     return ()=>clearTimeout(autoSaveTimer.current);
@@ -1551,7 +1552,17 @@ export default function ProjectEstimate() {
     setActiveFloor(name);setNewFloorName("");setAddingFloor(false);
   }
 
-  const areaListRef = useRef(null);
+  // When connection returns, save any pending changes to the DB
+  useEffect(()=>{
+    const handleOnline = ()=>{
+      flushQueue();
+      const targetId = projectId || savedProjectId;
+      if(selectedLeadId && targetId) saveProject({silent:true});
+    };
+    window.addEventListener("online", handleOnline);
+    return ()=>window.removeEventListener("online", handleOnline);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[projectId, savedProjectId, selectedLeadId]);
 
   function addArea(floor){
     setAreas(prev=>{
