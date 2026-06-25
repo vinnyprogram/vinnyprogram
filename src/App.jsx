@@ -25,7 +25,20 @@ import JobStart from "./pages/JobStart";
 import Projects from "./pages/Projects";
 
 
-function Dashboard() { return <Navigate to="/estimates/search" replace />; }
+function Dashboard() {
+  return (
+    <div style={{display:"flex",alignItems:"center",justifyContent:"center",
+      height:"100%",minHeight:"80vh",fontFamily:"Inter,system-ui,sans-serif"}}>
+      <div style={{textAlign:"center",color:"#94a3b8"}}>
+        <div style={{fontSize:48,marginBottom:16}}>🏠</div>
+        <div style={{fontSize:22,fontWeight:700,color:"#0f172a",marginBottom:8}}>
+          InsulationPro
+        </div>
+        <div style={{fontSize:14}}>Select an option from the menu</div>
+      </div>
+    </div>
+  );
+}
 function Jobs()      { return <Navigate to="/estimates/search" replace />; }
 
 function ProtectedApp() {
