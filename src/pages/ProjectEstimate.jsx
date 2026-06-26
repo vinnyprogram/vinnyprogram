@@ -1250,7 +1250,7 @@ export default function ProjectEstimate() {
       const draft=loadDraft(key);
       if(draft){
         if(draft.crewNotes) setCrewNotes(draft.crewNotes);
-        if(draft.floors?.length) setFloors(draft.floors);
+        if(draft.floors?.length) setFloors(draft.floors.filter(f=>f!=="Floor"));
         if(draft.areas){
           const merged={};
           const allFloors=[...new Set([...DEFAULT_FLOORS,...(draft.floors||[])])];
@@ -1417,7 +1417,7 @@ export default function ProjectEstimate() {
       if(proj.lead_id) setSelectedLeadId(String(proj.lead_id));
       const {data:floorRows}=await supabase.from("floors").select("*").eq("project_id",projectId).order("order_index");
       if(!floorRows?.length){setLoadingProject(false);return;}
-      const floorNames=floorRows.map(f=>f.name);
+      const floorNames=floorRows.map(f=>f.name).filter(f=>f!=="Floor");
       setFloors(floorNames); setActiveFloor(floorNames[0]);
       const {data:areaRows}=await supabase.from("areas").select("*").eq("project_id",projectId).order("order_index");
       const areaIds=(areaRows||[]).map(a=>a.id);
@@ -1451,7 +1451,7 @@ export default function ProjectEstimate() {
           const draft=loadDraft(dKey);
           if(draft && draft.editingProjectId===projectId){
             if(draft.crewNotes) setCrewNotes(draft.crewNotes);
-            if(draft.floors?.length) setFloors(draft.floors);
+            if(draft.floors?.length) setFloors(draft.floors.filter(f=>f!=="Floor"));
             if(draft.areas) setAreas(draft.areas);
             if(draft.projectName) setProjectName(draft.projectName);
             if(draft.projectAddress) setProjectAddress(draft.projectAddress);
@@ -1472,7 +1472,7 @@ export default function ProjectEstimate() {
         const areaCount=Object.values(draft.areas||{}).flat().filter(a=>a.area_type).length;
         if(areaCount>0&&window.confirm(`You have a draft from ${age} min ago with ${areaCount} area(s). Resume it?`)){
           if(draft.crewNotes) setCrewNotes(draft.crewNotes);
-          if(draft.floors) setFloors(draft.floors);
+          if(draft.floors) setFloors(draft.floors.filter(f=>f!=="Floor"));
           if(draft.areas) setAreas(draft.areas);
           if(draft.projectName) setProjectName(draft.projectName);
           if(draft.projectAddress) setProjectAddress(draft.projectAddress);
