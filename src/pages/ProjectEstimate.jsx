@@ -45,7 +45,7 @@ function fmt(n) {
   return Number(n || 0).toLocaleString("en-US", { maximumFractionDigits: 0 });
 }
 
-const DEFAULT_FLOORS = ["Attic","Floor","3rd","2nd","1st","Basement","Crawlspace"];
+const DEFAULT_FLOORS = ["Attic","3rd","2nd","1st","Basement","Crawlspace"];
 const AREA_TYPES = [
   "Roof Rafter w/ Strapping","Roof Rafter behind knee walls","Floor",
   "Exterior Wall","Demising Wall","Rim Joist","Concrete Wall",
@@ -1145,7 +1145,7 @@ export default function ProjectEstimate() {
   const addressParam=searchParams.get("address")||"";
   const isEditing=!!projectId;
 
-  const [floors,setFloors]=useState(["Attic","Floor","3rd","2nd","1st","Basement"]);
+  const [floors,setFloors]=useState(["Attic","3rd","2nd","1st","Basement"]);
   const [activeFloor,setActiveFloor]=useState("Attic");
   const [pendingFloor,setPendingFloor]=useState(null);
   const [areas,setAreas]=useState(()=>{const i={};DEFAULT_FLOORS.forEach(f=>{i[f]=[];});return i;});
