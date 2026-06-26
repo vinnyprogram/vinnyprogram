@@ -948,7 +948,17 @@ export default function HersFieldMeasurements() {
           await supabase.from("areas").update({sqft:Math.round(area.sqft*100)/100,measurements:meas,...specs}).eq("id",existingMap[area.area_type].id);
           updated++;
         } else {
-          await supabase.from("areas").insert([{project_id:proj.id,floor_id:targetFloor.id,area_type:area.area_type,sqft:Math.round(area.sqft*100)/100,measurements:meas,...specs,qty:1,unit:"sqft",unit_price:0,line_total:0,order_index:(existing||[]).length*10+created*10,company_id:invoice.company_id}]);
+          await supabase.from("areas").insert([{
+            project_id: proj.id,
+            floor_id: targetFloor.id,
+            area_type: area.area_type,
+            sqft: Math.round(area.sqft*100)/100,
+            material: area.material||"",
+            thickness_in: area.thickness_in||"",
+            r_value: area.r_value||"",
+            order_index: (existing||[]).length*10+created*10,
+            company_id: invoice.company_id,
+          }]);
           created++;
         }
       }

@@ -1185,6 +1185,7 @@ export default function ProjectEstimate() {
   const initialLoadDone = useRef(false);
   const wasSaved = useRef(false);
   const autoSaveTimer = useRef(null);
+  const areaListRef = useRef(null);
 
   // Auto-save to localStorage immediately on every area change,
   // and to the DB 3 seconds after changes stop — so no data is lost
