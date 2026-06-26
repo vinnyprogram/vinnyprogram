@@ -38,6 +38,8 @@ function CustomerSection({ leads, selectedLead, selectedLeadId, jobAddress,
     onSelect, onClear, onSaveNew, onAddressChange }) {
   const [query, setQuery]     = useState("");
   const [mode, setMode]       = useState(selectedLead ? "selected" : "search");
+  const [editForm, setEditForm] = useState({ name:"", phone:"", email:"", company_name:"", address:"" });
+  const [editSaving, setEditSaving] = useState(false);
   const [saving, setSaving]   = useState(false);
   const [newForm, setNewForm] = useState({ name:"", phone:"", company_name:"", email:"", address:"" });
 
@@ -88,11 +90,14 @@ function CustomerSection({ leads, selectedLead, selectedLeadId, jobAddress,
     );
 
     if(phoneMatch){
-      alert(`⚠️ "${phoneMatch.name}" already exists with this phone. Loading their profile.`);
-      setNewForm({ name:"", phone:"", company_name:"", email:"", address:"" });
-      setMode("selected");
-      onSelect(phoneMatch);
-      return;
+      const useExisting = window.confirm(`"${phoneMatch.name}" already exists with this phone.\n\nOK = Use existing customer\nCancel = Register as new anyway`);
+      if(useExisting){
+        setNewForm({ name:"", phone:"", company_name:"", email:"", address:"" });
+        setMode("selected");
+        onSelect(phoneMatch);
+        return;
+      }
+      // Fall through — allow registering new customer with same phone
     }
     if(emailMatch){
       alert(`⚠️ "${emailMatch.name}" already exists with this email. Loading their profile.`);
@@ -130,12 +135,61 @@ function CustomerSection({ leads, selectedLead, selectedLeadId, jobAddress,
               {selectedLead.phone && <span style={{ color:C.muted, fontSize:11, marginLeft:6 }}>{selectedLead.phone}</span>}
               {selectedLead.company_name && <span style={{ color:C.muted, fontSize:11, marginLeft:6 }}>· {selectedLead.company_name}</span>}
             </div>
-            <button onClick={clear} style={{ border:"none", background:"none", color:C.faint, fontSize:13, cursor:"pointer", padding:"0 4px" }}>Change</button>
+            <div style={{display:"flex",gap:6}}>
+              <button onClick={()=>{ setEditForm({name:selectedLead.name||"",phone:selectedLead.phone||"",email:selectedLead.email||"",company_name:selectedLead.company_name||"",address:selectedLead.address||""}); setMode("edit"); }}
+                style={{ border:"none", background:"none", color:"#3b82f6", fontSize:13, cursor:"pointer", padding:"0 4px", fontWeight:600 }}>✏️ Edit</button>
+              <button onClick={clear} style={{ border:"none", background:"none", color:C.faint, fontSize:13, cursor:"pointer", padding:"0 4px" }}>Change</button>
+            </div>
           </div>
           <div style={{fontSize:10,color:C.faint,marginBottom:4}}>Job address</div>
           <AddressInput style={{...I,width:"100%"}}
             placeholder="Job address for this estimate…" value={jobAddress}
             onChange={onAddressChange} />
+        </div>
+      )}
+
+      {/* EDIT CUSTOMER */}
+      {mode==="edit" && selectedLead && (
+        <div>
+          <div style={{fontSize:11,fontWeight:700,color:"#3b82f6",marginBottom:8}}>Edit Customer</div>
+          {[
+            {label:"Name",     field:"name",         placeholder:"Full name"},
+            {label:"Phone",    field:"phone",         placeholder:"Phone number"},
+            {label:"Email",    field:"email",         placeholder:"Email address"},
+            {label:"Company",  field:"company_name",  placeholder:"Company (optional)"},
+          ].map(({label,field,placeholder})=>(
+            <div key={field} style={{marginBottom:6}}>
+              <div style={{fontSize:10,color:C.faint,marginBottom:2}}>{label}</div>
+              <input value={editForm[field]||""} onChange={e=>setEditForm(p=>({...p,[field]:e.target.value}))}
+                placeholder={placeholder}
+                style={{...I,width:"100%",boxSizing:"border-box"}}/>
+            </div>
+          ))}
+          <div style={{display:"flex",gap:6,marginTop:8}}>
+            <button disabled={editSaving} onClick={async()=>{
+                if(!editForm.name.trim()){ alert("Name is required"); return; }
+                setEditSaving(true);
+                try{
+                  const {error}=await supabase.from("customers").update({
+                    name:editForm.name.trim(),
+                    phone:editForm.phone.trim(),
+                    email:editForm.email.trim(),
+                    company_name:editForm.company_name.trim(),
+                  }).eq("id",selectedLead.id);
+                  if(error) throw error;
+                  onSelect({...selectedLead,...editForm});
+                  setMode("selected");
+                }catch(e){ alert("Error saving: "+e.message); }
+                setEditSaving(false);
+              }}
+              style={{flex:1,border:"none",background:"#059669",color:"#fff",padding:"8px",borderRadius:6,cursor:"pointer",fontSize:13,fontWeight:700}}>
+              {editSaving?"Saving…":"Save Changes"}
+            </button>
+            <button onClick={()=>setMode("selected")}
+              style={{border:`1px solid ${C.border}`,background:"#fff",color:C.muted,padding:"8px 14px",borderRadius:6,cursor:"pointer",fontSize:13}}>
+              Cancel
+            </button>
+          </div>
         </div>
       )}
 
