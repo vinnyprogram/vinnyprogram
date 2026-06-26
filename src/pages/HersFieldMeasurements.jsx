@@ -897,17 +897,45 @@ export default function HersFieldMeasurements() {
     if(!invoice?.customer_id) return;
     const allAreas = Object.values(areas).flat().filter(a=>a.area_type&&a.sqft>0);
     if(!allAreas.length){ alert("No completed areas to push."); return; }
-    if(!window.confirm("Push measurements to the insulation project?")) return;
+    if(!window.confirm("Push measurements to the insulation estimate?\n\nIf no insulation estimate exists for this customer, a new one will be created.")) return;
     setPushing(true);
     try {
+      let proj = null;
       const { data:projs } = await supabase.from("projects").select("id,name,address").eq("lead_id",invoice.customer_id).order("created_at",{ascending:false}).limit(5);
-      if(!projs?.length){ alert("No insulation project found."); setPushing(false); return; }
-      const proj = projs.find(p=>(p.address||"").toLowerCase().includes((invoice.address||"").split(",")[0].toLowerCase()))||projs[0];
-      if(invoice.address&&(!proj.address||proj.address!==invoice.address)){
+
+      if(projs?.length){
+        // Use existing project — prefer matching address
+        proj = projs.find(p=>(p.address||"").toLowerCase().includes((invoice.address||"").split(",")[0].toLowerCase()))||projs[0];
+      } else {
+        // No project exists — create one now
+        const { data:newProj, error:projErr } = await supabase.from("projects").insert([{
+          lead_id: invoice.customer_id,
+          company_id: invoice.company_id,
+          name: invoice.address || "HERS Estimate",
+          address: invoice.address || "",
+          status: "New",
+        }]).select().single();
+        if(projErr) throw projErr;
+        proj = newProj;
+        alert(`✅ New insulation estimate created for this customer.`);
+      }
+
+      // Update address if needed
+      if(invoice.address && (!proj.address || proj.address !== invoice.address)){
         await supabase.from("projects").update({address:invoice.address}).eq("id",proj.id);
       }
-      const { data:projFloors } = await supabase.from("floors").select("*").eq("project_id",proj.id).order("order_index").limit(1);
-      if(!projFloors?.length){ alert("Open the insulation estimate first to set up floors."); setPushing(false); return; }
+
+      // Get or create floors
+      let { data:projFloors } = await supabase.from("floors").select("*").eq("project_id",proj.id).order("order_index");
+      if(!projFloors?.length){
+        // Create default floors
+        const defaultFloors = ["Attic","Floor","1st","2nd","Basement"];
+        const { data:newFloors } = await supabase.from("floors").insert(
+          defaultFloors.map((name,i)=>({ project_id:proj.id, company_id:invoice.company_id, name, order_index:(i+1)*10 }))
+        ).select();
+        projFloors = newFloors || [];
+      }
+
       const targetFloor = projFloors[0];
       const { data:existing } = await supabase.from("areas").select("id,area_type").eq("project_id",proj.id);
       const existingMap = {};
@@ -924,7 +952,7 @@ export default function HersFieldMeasurements() {
           created++;
         }
       }
-      alert(`✅ Pushed to "${proj.name||proj.address}" — ${updated} updated, ${created} created.`);
+      alert(`✅ Pushed to insulation estimate — ${updated} updated, ${created} created.\n\nGo to Insulation Estimates to open it.`);
     } catch(err){ alert("Push error: "+(err.message||JSON.stringify(err))); }
     setPushing(false);
   }
