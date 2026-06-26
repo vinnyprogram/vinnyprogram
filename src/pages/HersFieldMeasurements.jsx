@@ -904,10 +904,8 @@ export default function HersFieldMeasurements() {
       const { data:projs } = await supabase.from("projects").select("id,name,address").eq("lead_id",invoice.customer_id).order("created_at",{ascending:false}).limit(5);
 
       if(projs?.length){
-        // Use existing project — prefer matching address
         proj = projs.find(p=>(p.address||"").toLowerCase().includes((invoice.address||"").split(",")[0].toLowerCase()))||projs[0];
       } else {
-        // No project exists — create one now
         const { data:newProj, error:projErr } = await supabase.from("projects").insert([{
           lead_id: invoice.customer_id,
           company_id: invoice.company_id,
@@ -917,52 +915,76 @@ export default function HersFieldMeasurements() {
         }]).select().single();
         if(projErr) throw projErr;
         proj = newProj;
-        alert(`✅ New insulation estimate created for this customer.`);
       }
 
-      // Update address if needed
       if(invoice.address && (!proj.address || proj.address !== invoice.address)){
         await supabase.from("projects").update({address:invoice.address}).eq("id",proj.id);
       }
 
-      // Get or create floors
+      // Get the floor names from HERS measurement areas
+      const hersFloorNames = [...new Set(
+        Object.entries(areas).flatMap(([floorName, floorAreas]) =>
+          floorAreas.filter(a=>a.area_type&&a.sqft>0).map(()=>floorName)
+        )
+      )];
+
+      // Get or create matching floors in the insulation project
       let { data:projFloors } = await supabase.from("floors").select("*").eq("project_id",proj.id).order("order_index");
-      if(!projFloors?.length){
-        // Create default floors
-        const defaultFloors = ["Attic","Floor","1st","2nd","Basement"];
-        const { data:newFloors } = await supabase.from("floors").insert(
-          defaultFloors.map((name,i)=>({ project_id:proj.id, company_id:invoice.company_id, name, order_index:(i+1)*10 }))
-        ).select();
-        projFloors = newFloors || [];
+      const floorNameToId = {};
+      (projFloors||[]).forEach(f=>{ floorNameToId[f.name]=f.id; });
+
+      // Create any missing floors
+      for(let i=0; i<hersFloorNames.length; i++){
+        const name = hersFloorNames[i];
+        if(!floorNameToId[name]){
+          const { data:newFloor } = await supabase.from("floors").insert([{
+            project_id: proj.id,
+            company_id: invoice.company_id,
+            name,
+            order_index: (Object.keys(floorNameToId).length + i + 1) * 10,
+          }]).select().single();
+          if(newFloor) floorNameToId[name] = newFloor.id;
+        }
       }
 
-      const targetFloor = projFloors[0];
-      const { data:existing } = await supabase.from("areas").select("id,area_type").eq("project_id",proj.id);
+      // Get existing areas to avoid duplicates
+      const { data:existing } = await supabase.from("areas").select("id,area_type,floor_id").eq("project_id",proj.id);
       const existingMap = {};
-      (existing||[]).forEach(a=>{ existingMap[a.area_type]=a; });
+      (existing||[]).forEach(a=>{ existingMap[`${a.area_type}__${a.floor_id}`]=a; });
+
       let updated=0, created=0;
-      for(const area of allAreas){
-        const meas = (area.measurements||[]).map(m=>({h:m.h,l:m.l,q:m.q||1,sqft:m.sqft}));
-        const specs = {material:area.material||"",thickness_in:area.thickness_in||"",r_value:area.r_value||""};
-        if(existingMap[area.area_type]){
-          await supabase.from("areas").update({sqft:Math.round(area.sqft*100)/100,measurements:meas,...specs}).eq("id",existingMap[area.area_type].id);
-          updated++;
-        } else {
-          await supabase.from("areas").insert([{
-            project_id: proj.id,
-            floor_id: targetFloor.id,
-            area_type: area.area_type,
+
+      // Push each floor's areas with correct floor mapping
+      for(const [floorName, floorAreas] of Object.entries(areas)){
+        const floorId = floorNameToId[floorName];
+        if(!floorId) continue;
+
+        for(const area of floorAreas.filter(a=>a.area_type&&a.sqft>0)){
+          const key = `${area.area_type}__${floorId}`;
+          const payload = {
             sqft: Math.round(area.sqft*100)/100,
             material: area.material||"",
             thickness_in: area.thickness_in||"",
             r_value: area.r_value||"",
-            order_index: (existing||[]).length*10+created*10,
-            company_id: invoice.company_id,
-          }]);
-          created++;
+          };
+          if(existingMap[key]){
+            await supabase.from("areas").update(payload).eq("id",existingMap[key].id);
+            updated++;
+          } else {
+            await supabase.from("areas").insert([{
+              project_id: proj.id,
+              floor_id: floorId,
+              company_id: invoice.company_id,
+              area_type: area.area_type,
+              order_index: created * 10,
+              ...payload,
+            }]);
+            created++;
+          }
         }
       }
-      alert(`✅ Pushed to insulation estimate — ${updated} updated, ${created} created.\n\nGo to Insulation Estimates to open it.`);
+
+      alert(`✅ Pushed to insulation estimate — ${updated} updated, ${created} created across ${hersFloorNames.length} floor(s).\n\nGo to Insulation Estimates to open it.`);
     } catch(err){ alert("Push error: "+(err.message||JSON.stringify(err))); }
     setPushing(false);
   }
