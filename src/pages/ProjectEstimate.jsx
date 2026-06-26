@@ -1774,8 +1774,10 @@ export default function ProjectEstimate() {
       const floorMap={};
       (floorRows||[]).forEach(f=>{floorMap[f.name]=f.id;});
 
-      // re-insert areas
-      const allAreas=floors.flatMap(floor=>(committedAreas[floor]||[]).filter(a=>a.area_type&&(a.sqft>0||a.measurements?.length>0)).flatMap((a,i)=>{
+      // re-insert areas — tag each row with its area's temp_id so we can match segments reliably
+      let _updateAreaIdx=0;
+      const allAreas=floors.flatMap(floor=>(committedAreas[floor]||[]).filter(a=>a.area_type&&(a.sqft>0||a.measurements?.length>0)).flatMap((a)=>{
+        const i=_updateAreaIdx++;
         const mls=(a.mat_lines&&a.mat_lines.length>0)?a.mat_lines:[{material:a.material||"",thickness_in:a.thickness_in||"",r_value:a.r_value||"",oc:a.oc||""}];
         return mls.map((ml,mi)=>{
           const mat=materialMap[ml.material];
@@ -1785,14 +1787,16 @@ export default function ProjectEstimate() {
       }));
       if(allAreas.length>0){
         const {data:areaRows}=await supabase.from("areas").insert(allAreas).select();
-        const segs=[];let ai=0;
+        // Build a map from order_index → DB id so we never rely on insert return order
+        const orderToId={};
+        (areaRows||[]).forEach(r=>{ orderToId[r.order_index]=r.id; });
+        const segs=[];let _si=0;
         floors.forEach(floor=>{
           (committedAreas[floor]||[]).filter(a=>a.area_type&&(a.sqft>0||a.measurements?.length>0)).forEach(a=>{
-            // Each area may produce multiple areaRows (one per mat_line in a combo).
-            // The PRIMARY row (mi===0) is always first — that's the one segments belong to.
-            const matLineCount=Math.max(1,(a.mat_lines&&a.mat_lines.length>0)?a.mat_lines.length:1);
-            const sv=areaRows?.[ai];ai+=matLineCount;if(!sv)return;
-            (a.measurements||[]).forEach(m=>segs.push({area_id:sv.id,height:m.h,length:m.l,sqft:m.sqft,source:"field",company_id:companyId}));
+            // primary row for this area always has mi===0, i.e. order_index = _si*10
+            const primaryId=orderToId[_si*10];_si++;
+            if(!primaryId)return;
+            (a.measurements||[]).forEach(m=>segs.push({area_id:primaryId,height:m.h,length:m.l,sqft:m.sqft,source:"field",company_id:companyId}));
           });
         });
         if(segs.length>0) await supabase.from("segments").insert(segs);
@@ -1815,15 +1819,19 @@ export default function ProjectEstimate() {
       if(pe)throw pe;
       const {data:floorRows}=await supabase.from("floors").insert(floors.map((name,i)=>({project_id:proj.id,name,order_index:i+1,company_id:companyId}))).select();
       const floorMap={};(floorRows||[]).forEach(f=>{floorMap[f.name]=f.id;});
-      const allAreas=floors.flatMap(floor=>(committedAreas[floor]||[]).filter(a=>a.area_type&&(a.sqft>0||a.measurements?.length>0)).flatMap((a,i)=>{
+      let _newAreaIdx=0;
+      const allAreas=floors.flatMap(floor=>(committedAreas[floor]||[]).filter(a=>a.area_type&&(a.sqft>0||a.measurements?.length>0)).flatMap((a)=>{
+        const i=_newAreaIdx++;
         const mls=(a.mat_lines&&a.mat_lines.length>0)?a.mat_lines:[{material:a.material||"",thickness_in:a.thickness_in||"",r_value:a.r_value||"",oc:a.oc||""}];
         return mls.map((ml,mi)=>{const mat=materialMap[ml.material];const {qty,unit,unit_price,line_total}=calcAreaForSave(a,ml,mi,mat,variantMap);return {project_id:proj.id,floor_id:floorMap[floor],area_type:a.area_type,material:ml.material,thickness_in:ml.thickness_in||null,r_value:ml.r_value,sqft:a.sqft,qty,unit,unit_price,line_total,order_index:i*10+mi,company_id:companyId,options:mi===0?(a.options||[]):[],paint_sqft:mi===0?Number(a.paint_sqft||0):0,deduct_sqft:mi===0?Number(a.deduct_sqft||0):0,price_override:mi===0?(a.price_override||null):null,phase:mi===0?(a.phase||null):null}; });
       }));
       if(allAreas.length>0){
         const {data:areaRows,error:ae}=await supabase.from("areas").insert(allAreas).select();
         if(ae)throw ae;
-        const segs=[];let ai=0;
-        floors.forEach(floor=>{(committedAreas[floor]||[]).filter(a=>a.area_type&&(a.sqft>0||a.measurements?.length>0)).forEach(a=>{const matLineCount=Math.max(1,(a.mat_lines&&a.mat_lines.length>0)?a.mat_lines.length:1);const sv=areaRows?.[ai];ai+=matLineCount;if(!sv)return;(a.measurements||[]).forEach(m=>segs.push({area_id:sv.id,height:m.h,length:m.l,sqft:m.sqft,source:"field",company_id:companyId}));});});
+        const orderToId2={};
+        (areaRows||[]).forEach(r=>{ orderToId2[r.order_index]=r.id; });
+        const segs=[];let _si2=0;
+        floors.forEach(floor=>{(committedAreas[floor]||[]).filter(a=>a.area_type&&(a.sqft>0||a.measurements?.length>0)).forEach(a=>{const primaryId=orderToId2[_si2*10];_si2++;if(!primaryId)return;(a.measurements||[]).forEach(m=>segs.push({area_id:primaryId,height:m.h,length:m.l,sqft:m.sqft,source:"field",company_id:companyId}));});});
         if(segs.length>0)await supabase.from("segments").insert(segs);
       }
       const allAreasList=floors.flatMap(floor=>(committedAreas[floor]||[]).filter(a=>a.area_type&&(a.sqft>0||a.measurements?.length>0)).flatMap(a=>{const mls=(a.mat_lines&&a.mat_lines.length>0)?a.mat_lines:[{material:a.material||"",thickness_in:a.thickness_in||""}];return mls.map(ml=>({...a,material:ml.material,thickness_in:ml.thickness_in}));}));
