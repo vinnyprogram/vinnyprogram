@@ -1788,7 +1788,10 @@ export default function ProjectEstimate() {
         const segs=[];let ai=0;
         floors.forEach(floor=>{
           (committedAreas[floor]||[]).filter(a=>a.area_type&&(a.sqft>0||a.measurements?.length>0)).forEach(a=>{
-            const sv=areaRows?.[ai++];if(!sv)return;
+            // Each area may produce multiple areaRows (one per mat_line in a combo).
+            // The PRIMARY row (mi===0) is always first — that's the one segments belong to.
+            const matLineCount=Math.max(1,(a.mat_lines&&a.mat_lines.length>0)?a.mat_lines.length:1);
+            const sv=areaRows?.[ai];ai+=matLineCount;if(!sv)return;
             (a.measurements||[]).forEach(m=>segs.push({area_id:sv.id,height:m.h,length:m.l,sqft:m.sqft,source:"field",company_id:companyId}));
           });
         });
@@ -1820,7 +1823,7 @@ export default function ProjectEstimate() {
         const {data:areaRows,error:ae}=await supabase.from("areas").insert(allAreas).select();
         if(ae)throw ae;
         const segs=[];let ai=0;
-        floors.forEach(floor=>{(committedAreas[floor]||[]).filter(a=>a.area_type&&(a.sqft>0||a.measurements?.length>0)).forEach(a=>{const sv=areaRows?.[ai++];if(!sv)return;(a.measurements||[]).forEach(m=>segs.push({area_id:sv.id,height:m.h,length:m.l,sqft:m.sqft,source:"field",company_id:companyId}));});});
+        floors.forEach(floor=>{(committedAreas[floor]||[]).filter(a=>a.area_type&&(a.sqft>0||a.measurements?.length>0)).forEach(a=>{const matLineCount=Math.max(1,(a.mat_lines&&a.mat_lines.length>0)?a.mat_lines.length:1);const sv=areaRows?.[ai];ai+=matLineCount;if(!sv)return;(a.measurements||[]).forEach(m=>segs.push({area_id:sv.id,height:m.h,length:m.l,sqft:m.sqft,source:"field",company_id:companyId}));});});
         if(segs.length>0)await supabase.from("segments").insert(segs);
       }
       const allAreasList=floors.flatMap(floor=>(committedAreas[floor]||[]).filter(a=>a.area_type&&(a.sqft>0||a.measurements?.length>0)).flatMap(a=>{const mls=(a.mat_lines&&a.mat_lines.length>0)?a.mat_lines:[{material:a.material||"",thickness_in:a.thickness_in||""}];return mls.map(ml=>({...a,material:ml.material,thickness_in:ml.thickness_in}));}));
@@ -2010,3 +2013,4 @@ export default function ProjectEstimate() {
     </div>
   );
 }
+
