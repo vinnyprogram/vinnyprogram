@@ -96,9 +96,15 @@ export default function EkotropeReport() {
     marginBottom:16, overflow:"hidden", boxShadow:"0 1px 4px rgba(0,0,0,.06)" };
 
   return (
-    <div style={{fontFamily:"Inter,system-ui,sans-serif",background:"#f4f5f7",minHeight:"100vh",paddingBottom:60}}>
+    <div style={{fontFamily:"Inter,system-ui,sans-serif",background:"#f4f5f7",paddingBottom:60}}>
 
-      {/* header */}
+      {/* Print-only header (hidden on screen) */}
+      <div className="print-header">
+        <div style={{fontSize:18,fontWeight:800,color:"#0f172a"}}>🟦 Ekotrope Data Entry Report</div>
+        <div style={{fontSize:12,color:"#64748b",marginTop:2}}>{customer?.name||""}{address?` · ${address}`:""}</div>
+      </div>
+
+      {/* Screen header */}
       <div style={{background:"#111827",padding:"14px 20px",
           display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}>
         <div>
@@ -282,11 +288,49 @@ export default function EkotropeReport() {
 
       <style>{`
         @media print {
-          body { background: white !important; }
+          * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+          body { background: white !important; margin: 0 !important; }
+          
+          /* Hide UI controls */
           button { display: none !important; }
-          div[style*="background:#111827"] { background: white !important; color: black !important; }
-          div[style*="background:#111827"] div { color: black !important; }
+          
+          /* Remove fixed height constraints that clip to one page */
+          html, body { height: auto !important; overflow: visible !important; }
+          #root > div { height: auto !important; min-height: 0 !important; }
+          
+          /* Hide the dark header bar — show a clean print header instead */
+          div[style*="background:#111827"],
+          div[style*="background: #111827"] {
+            display: none !important;
+          }
+          
+          /* Remove background and shadows from cards for clean print */
+          div[style*="background:#f4f5f7"],
+          div[style*="background: #f4f5f7"] {
+            background: white !important;
+            padding-top: 0 !important;
+          }
+          
+          /* Allow cards to break across pages naturally */
+          div[style*="border-radius:10px"],
+          div[style*="border-radius: 10px"] {
+            box-shadow: none !important;
+            break-inside: avoid;
+            page-break-inside: avoid;
+          }
+
+          /* Print header — shown only when printing */
+          .print-header {
+            display: block !important;
+            padding: 0 0 12px 0;
+            margin-bottom: 16px;
+            border-bottom: 2px solid #0f172a;
+            font-family: Inter, system-ui, sans-serif;
+          }
         }
+
+        /* Hide print-only header on screen */
+        .print-header { display: none; }
       `}</style>
     </div>
   );
