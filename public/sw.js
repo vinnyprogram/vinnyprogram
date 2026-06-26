@@ -33,8 +33,9 @@ self.addEventListener("fetch", e => {
   e.respondWith(
     fetch(e.request)
       .then(response => {
-        // Cache successful GET responses (app assets)
-        if(e.request.method === "GET" && response.ok) {
+        // Only cache GET requests over http/https — skip chrome-extension etc.
+        if(e.request.method === "GET" && response.ok &&
+           (e.request.url.startsWith("http://") || e.request.url.startsWith("https://"))) {
           const clone = response.clone();
           caches.open(CACHE).then(c => c.put(e.request, clone));
         }
