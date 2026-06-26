@@ -379,8 +379,13 @@ export default function HersEstimate() {
   const selectedLead = leads.find(l=>String(l.id)===String(selectedLeadId));
 
   function selectLead(lead){
+    // Only clear job address when switching to a DIFFERENT customer
+    if(String(lead.id) !== String(selectedLeadId)){
+      setAddress("");
+    }
     setSelectedLeadId(String(lead.id));
-    setAddress(""); // job address stays separate from customer's own address
+    // Refresh leads list so any edited name/phone shows immediately
+    loadLeads();
   }
 
   function loadLeads(){
@@ -398,7 +403,7 @@ export default function HersEstimate() {
     if(data){
       loadLeads();
       setSelectedLeadId(String(data.id));
-      setAddress(""); // job address entered separately
+      // Don't clear job address — user may have already typed it
     }
   }
 

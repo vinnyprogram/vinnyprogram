@@ -92,7 +92,6 @@ function ProtectedApp() {
         <Route path="settings" element={<Settings />} />
         <Route path="quote-pricing/:projectId" element={<QuotePricing />} />
         <Route path="project/drawings/:projectId" element={<EstimateDrawings />} />
-        
         <Route path="/projects" element={<Projects />} />
         <Route path="/projects/:customerId" element={<Projects />} />
         <Route path="/hers/search" element={<HersSearch />} />
@@ -100,11 +99,13 @@ function ProtectedApp() {
         <Route path="/hers/invoice/:id" element={<HersInvoice />} />
         <Route path="/hers/measurements/:invoiceId" element={<HersFieldMeasurements />} />
         <Route path="/hers/measurements/estimate/:estimateId" element={<HersFieldMeasurements />} />
-        <Route path="/hers/ekotrope/:invoiceId" element={<EkotropeReport />} />
-        <Route path="/hers/ekotrope/estimate/:estimateId" element={<EkotropeReport />} />
         <Route path="/hers/new" element={<HersEstimate />} />
         <Route path="/hers/:id" element={<HersEstimate />} />
       </Route>
+
+      {/* Print reports — outside MainLayout so they print without sidebar clipping */}
+      <Route path="/hers/ekotrope/:invoiceId" element={<EkotropeReport />} />
+      <Route path="/hers/ekotrope/estimate/:estimateId" element={<EkotropeReport />} />
     </Routes>
   );
 }
