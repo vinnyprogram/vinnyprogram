@@ -1432,7 +1432,9 @@ export default function ProjectEstimate() {
         const fl=floorRows.find(f=>f.id===a.floor_id);
         if(!fl) return;
         const combos=secondaryRows.filter(s=>s.floor_id===a.floor_id&&s.order_index>a.order_index&&s.order_index<a.order_index+10);
-        const measurements=segRows.filter(s=>s.area_id===a.id).map(s=>({h:s.height,l:s.length,q:1,sqft:s.sqft}));
+        const rawSegs=segRows.filter(s=>s.area_id===a.id).map(s=>({h:s.height,l:s.length,q:1,sqft:s.sqft}));
+        // If no segments saved (legacy bug), synthesize one so sqft/chips display
+        const measurements=rawSegs.length>0?rawSegs:(a.sqft>0?[{h:a.sqft,l:1,q:1,sqft:a.sqft}]:[]);
         const mat_lines=[{id:1,material:a.material||"",thickness_in:a.thickness_in||"",r_value:a.r_value||"",oc:a.oc||""},...combos.map((s,i)=>({id:i+2,material:s.material||"",thickness_in:s.thickness_in||"",r_value:s.r_value||"",oc:s.oc||""}))];
         const areaCard={temp_id:a.id,floor:fl.name,area_type:a.area_type,material:combos.length>0?"__combo__":(a.material||""),thickness_in:a.thickness_in||"",r_value:a.r_value||"",oc:a.oc||"",sqft:a.sqft||0,measurements,mh:"",ml:"",mq:"1",deduct_sqft:a.deduct_sqft||"",paint_sqft:a.paint_sqft||"",price_override:a.price_override||"",phase:a.phase||null,_collapsed:true,options:Array.isArray(a.options)?a.options:(typeof a.options==="string"?JSON.parse(a.options||"[]"):[]),mat_lines};
         if(newAreas[fl.name]) newAreas[fl.name].push(areaCard);
