@@ -27,7 +27,7 @@ export default function AdminCleanup() {
   const addLog = (msg, type = "info") => setLogs(p => [...p, { msg, type }]);
 
   async function loadPreview() {
-    const { data, error } = await supabase.from("leads").select("id,name,address").order("created_at");
+    const { data, error } = await supabase.from("customers").select("id,name,address").order("name");
     if (error) { alert("Error: " + error.message); return; }
     setLeads(data);
   }
@@ -63,7 +63,10 @@ export default function AdminCleanup() {
         addLog(`     project: ${ep ? "✗ "+ep.message : "✓"}`, ep ? "err" : "ok");
       }
 
-      const { error: el } = await supabase.from("leads").delete().eq("id", lead.id);
+      // delete activities tied to this customer
+      const { error: ea } = await supabase.from("activities").delete().eq("customer_id", lead.id);
+      addLog(`   activities: ${ea ? "✗ "+ea.message : "✓"}`, ea ? "err" : "ok");
+      const { error: el } = await supabase.from("customers").delete().eq("id", lead.id);
       addLog(`   lead: ${el ? "✗ "+el.message : "✓"}`, el ? "err" : "ok");
     }
 
