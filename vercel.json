@@ -1,12 +1,8 @@
 {
   "rewrites": [
-    { "source": "/((?!assets|icons|favicon|manifest|sw\\.js|icon).*)", "destination": "/index.html" }
+    { "source": "/((?!assets/).+)", "destination": "/index.html" }
   ],
   "headers": [
-    {
-      "source": "/",
-      "headers": [{ "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }]
-    },
     {
       "source": "/index.html",
       "headers": [{ "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }]
