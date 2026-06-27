@@ -1,5 +1,10 @@
 import { useState } from "react";
-import { supabase } from "../lib/supabase";
+import { createClient } from "@supabase/supabase-js";
+
+const supabase = createClient(
+  "https://ackhjqsiwbxupldwjcvj.supabase.co",
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFja2hqcXNpd2J4dXBsZHdqY3ZqIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3OTQzMDEzMCwiZXhwIjoyMDk1MDA2MTMwfQ.2eGZt9FMF8TW-Q5NfSaNxZ2434t0yhzTn-tn-JvZXmM"
+);
 
 const KEEP_RULES = [
   { name: "thiago ribeiro", addr: "24 renee" },
@@ -22,7 +27,7 @@ export default function AdminCleanup() {
   const addLog = (msg, type = "info") => setLogs(p => [...p, { msg, type }]);
 
   async function loadPreview() {
-    const { data, error } = await supabase.from("leads").select("id,name,address,phone").order("created_at");
+    const { data, error } = await supabase.from("leads").select("id,name,address").order("created_at");
     if (error) { alert("Error: " + error.message); return; }
     setLeads(data);
   }
@@ -36,13 +41,11 @@ export default function AdminCleanup() {
 
     for (const lead of toDelete) {
       addLog(`── ${lead.name} | ${lead.address}`, "info");
-
       const { data: projects } = await supabase.from("projects").select("id,name").eq("lead_id", lead.id);
       addLog(`   ${(projects||[]).length} project(s)`);
 
       for (const proj of (projects || [])) {
         addLog(`   Project: ${proj.name || proj.id}`);
-
         const { data: areaRows } = await supabase.from("areas").select("id").eq("project_id", proj.id);
         const areaIds = (areaRows || []).map(a => a.id);
 
@@ -51,8 +54,7 @@ export default function AdminCleanup() {
           addLog(`     segments: ${e1 ? "✗ "+e1.message : "✓"}`, e1 ? "err" : "ok");
         }
 
-        const tables = ["areas","floors","quotes","drawing_areas","hers_measurements","project_documents","project_photos"];
-        for (const t of tables) {
+        for (const t of ["areas","floors","quotes","drawing_areas","hers_measurements","project_documents","project_photos"]) {
           const { error: e } = await supabase.from(t).delete().eq("project_id", proj.id);
           addLog(`     ${t}: ${e ? "✗ "+e.message : "✓"}`, e ? "err" : "ok");
         }
@@ -62,7 +64,7 @@ export default function AdminCleanup() {
       }
 
       const { error: el } = await supabase.from("leads").delete().eq("id", lead.id);
-      addLog(`   lead deleted: ${el ? "✗ "+el.message : "✓"}`, el ? "err" : "ok");
+      addLog(`   lead: ${el ? "✗ "+el.message : "✓"}`, el ? "err" : "ok");
     }
 
     addLog("✅ CLEANUP COMPLETE", "ok");
@@ -108,12 +110,14 @@ export default function AdminCleanup() {
 
           <div style={{ background: "#fff", border: "2px solid #fca5a5", borderRadius: 10, padding: 16, marginBottom: 16 }}>
             <div style={{ fontWeight: 700, color: "#ef4444", marginBottom: 8 }}>🗑️ DELETING</div>
-            {toDelete.length === 0 && <div style={{ fontSize: 13, color: "#64748b" }}>Nothing to delete</div>}
-            {toDelete.map(l => (
-              <div key={l.id} style={{ padding: "6px 0", borderBottom: "1px solid #f1f5f9", fontSize: 13 }}>
-                <strong>{l.name}</strong> — <span style={{ color: "#64748b" }}>{l.address}</span>
-              </div>
-            ))}
+            {toDelete.length === 0
+              ? <div style={{ fontSize: 13, color: "#64748b" }}>Nothing to delete</div>
+              : toDelete.map(l => (
+                <div key={l.id} style={{ padding: "6px 0", borderBottom: "1px solid #f1f5f9", fontSize: 13 }}>
+                  <strong>{l.name}</strong> — <span style={{ color: "#64748b" }}>{l.address}</span>
+                </div>
+              ))
+            }
           </div>
 
           {!done && (
