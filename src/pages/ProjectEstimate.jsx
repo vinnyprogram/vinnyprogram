@@ -461,7 +461,7 @@ function useCalcResult(field) {
   // ── COLLAPSED ──
   if (isComplete && !expanded) return (
   <div
-    style={{ background:area.is_optional?"#fffbeb":"#f0fdf4", border:`1px solid ${area.is_optional?"#fde68a":"#86efac"}`, borderLeft:`3px solid ${area.is_optional?"#f59e0b":"#059669"}`, borderRadius:7, padding:"4px 8px", marginBottom:3 }}>
+    style={{ background:area.is_optional?"#fffbeb":"#f8fffe", border:`1px solid ${area.is_optional?"#fde68a":"#bbf7d0"}`, borderLeft:`3px solid ${area.is_optional?"#f59e0b":"#86efac"}`, borderRadius:7, padding:"4px 8px", marginBottom:3, opacity:0.85 }}>
       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:2, gap:6 }}>
         {/* Phase toggle — always visible, no need to open the card */}
         <button
@@ -528,10 +528,11 @@ function useCalcResult(field) {
 
   // ── EXPANDED ──
   return (
-    <div style={{ background:isComplete?"#f0fdf4":"#fafbfc",
-        border:`1px solid ${isComplete?"#86efac":C.border}`,
-        borderLeft:isComplete?"3px solid #059669":`1px solid ${C.border}`,
-        borderRadius:7, padding:"6px 8px", marginBottom:4 }}>
+    <div style={{ background:"#fff",
+        border:"2px solid #059669",
+        borderRadius:9, padding:"6px 8px", marginBottom:4,
+        boxShadow:"0 4px 16px rgba(5,150,105,0.18), 0 1px 4px rgba(0,0,0,0.08)",
+        position:"relative", zIndex:2 }}>
 
      {isComplete && (
     <div style={{ margin:"-6px -8px 8px -8px", background:"#059669", borderRadius:"7px 7px 0 0" }}>
