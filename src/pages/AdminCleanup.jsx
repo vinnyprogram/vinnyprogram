@@ -1,10 +1,5 @@
 import { useState } from "react";
-import { createClient } from "@supabase/supabase-js";
-
-const supabase = createClient(
-  "https://ackhjqsiwbxupldwjcvj.supabase.co",
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFja2hqcXNpd2J4dXBsZHdqY3ZqIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc0MjMzNjE3NywiZXhwIjoyMDU3OTEyMTc3fQ.4JEJZV6MKgFWAUJzREKJJCCBFnJSKoFlqFZCDJTHN_A"
-);
+import { supabase } from "../lib/supabase";
 
 const KEEP_RULES = [
   { name: "thiago ribeiro", addr: "24 renee" },
@@ -75,7 +70,7 @@ export default function AdminCleanup() {
     setDone(true);
   }
 
-  const toKeep   = leads ? leads.filter(shouldKeep)   : [];
+  const toKeep   = leads ? leads.filter(shouldKeep) : [];
   const toDelete = leads ? leads.filter(l => !shouldKeep(l)) : [];
 
   return (
