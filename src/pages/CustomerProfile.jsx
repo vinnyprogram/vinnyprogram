@@ -458,12 +458,35 @@ export default function CustomerProfile() {
                           <div style={{fontSize:14,fontWeight:800,color:"#059669"}}>
                             ${fmt(job.quotes[0].grand_total)}
                           </div>
-                          <span style={{fontSize:10,padding:"2px 7px",borderRadius:10,
-                            background:job.quotes[0].status==="Accepted"?"#dcfce7":"#f1f5f9",
-                            color:job.quotes[0].status==="Accepted"?"#059669":"#64748b",
-                            fontWeight:700}}>
-                            {job.quotes[0].status||"Draft"}
-                          </span>
+                          <div style={{display:"flex",alignItems:"center",gap:6,justifyContent:"flex-end",marginTop:4}}>
+                            <span style={{fontSize:10,padding:"2px 7px",borderRadius:10,
+                              background:job.quotes[0].status==="Accepted"?"#dcfce7":job.quotes[0].status==="Superseded"?"#f1f5f9":"#fef3c7",
+                              color:job.quotes[0].status==="Accepted"?"#059669":job.quotes[0].status==="Superseded"?"#94a3b8":"#d97706",
+                              fontWeight:700}}>
+                              {job.quotes[0].status||"Draft"}
+                            </span>
+                            {job.quotes[0].status!=="Accepted" && job.quotes[0].status!=="Superseded" && (
+                              <button onClick={async(e)=>{
+                                e.stopPropagation();
+                                if(!window.confirm("Mark this quote as Accepted? This will mark all other versions as Superseded.")) return;
+                                // Mark all other quotes for this customer as Superseded
+                                const allProjectIds = activeGroup.jobs.map(j=>j.id);
+                                for(const pid of allProjectIds){
+                                  if(pid!==job.id){
+                                    const otherQ = activeGroup.jobs.find(j=>j.id===pid)?.quotes[0];
+                                    if(otherQ) await supabase.from("quotes").update({status:"Superseded"}).eq("id",otherQ.id);
+                                    await supabase.from("projects").update({pipeline_status:"Superseded"}).eq("id",pid);
+                                  }
+                                }
+                                // Accept this quote
+                                await supabase.from("quotes").update({status:"Accepted"}).eq("id",job.quotes[0].id);
+                                await supabase.from("projects").update({pipeline_status:"Accepted"}).eq("id",job.id);
+                                load();
+                              }} style={{fontSize:10,padding:"2px 8px",borderRadius:10,background:"#059669",color:"#fff",border:"none",cursor:"pointer",fontWeight:700}}>
+                                ✓ Accept
+                              </button>
+                            )}
+                          </div>
                         </div>
                       )}
                     </div>

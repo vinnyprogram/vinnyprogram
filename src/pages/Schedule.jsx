@@ -74,9 +74,9 @@ export default function Schedule() {
       const scheduled = sjData || [];
       const scheduledProjectIds = new Set(scheduled.map(j=>j.project_id));
 
-      // Show all projects that have a quote and are not yet scheduled
+      // Only show projects with pipeline_status = Accepted, not yet scheduled
       const unscheduledList = (projData||[]).filter(p =>
-        p.quotes?.length > 0 && !scheduledProjectIds.has(p.id)
+        p.pipeline_status === "Accepted" && !scheduledProjectIds.has(p.id)
       );
 
       console.log("trucks:", (truckData||[]).length, "projects:", (projData||[]).length, "unscheduled:", unscheduledList.length);
