@@ -25,6 +25,37 @@ function getWeekDays(weekStart, includeSat) {
   return [0,1,2,3,4,...(includeSat?[5]:[])].map(i => addDays(weekStart,i));
 }
 
+// Get next work day (skip Sunday, skip Saturday if not included)
+function nextWorkDay(date, includeSat) {
+  let d = addDays(date, 1);
+  while (d.getDay() === 0 || (!includeSat && d.getDay() === 6)) {
+    d = addDays(d, 1);
+  }
+  return d;
+}
+
+// Build work-day date list for a job (skips weekends)
+function getJobWorkDays(startDate, durationDays, includeSat) {
+  const days = [];
+  let d = new Date(startDate + "T12:00:00");
+  // Skip if start is weekend
+  while (d.getDay() === 0 || (!includeSat && d.getDay() === 6)) {
+    d = addDays(d, 1);
+  }
+  let count = 0;
+  while (count < durationDays) {
+    days.push(fmtDate(d));
+    count++;
+    if (count < durationDays) {
+      d = addDays(d, 1);
+      while (d.getDay() === 0 || (!includeSat && d.getDay() === 6)) {
+        d = addDays(d, 1);
+      }
+    }
+  }
+  return days;
+}
+
 function getDaysFromQuote(quotes) {
   if (!quotes?.length) return 1;
   const q = quotes.find(q=>q.status==="Accepted") || quotes[0];
@@ -100,16 +131,17 @@ export default function Schedule() {
   const grid = {};
   scheduledJobs.forEach(j => {
     if (!grid[j.truck_id]) grid[j.truck_id] = {};
-    for (let d=0; d<(j.duration_days||1); d++) {
-      const dt = fmtDate(addDays(new Date(j.start_date+"T12:00:00"), d));
+    // Use work-day aware scheduling (skip weekends)
+    const workDays = getJobWorkDays(j.start_date, j.duration_days||1, includeSat);
+    workDays.forEach((dt, idx) => {
       if (!grid[j.truck_id][dt]) grid[j.truck_id][dt] = [];
-      if (d===0) grid[j.truck_id][dt].push(j);
-      else {
-        // continuation block
+      if (idx === 0) {
+        grid[j.truck_id][dt].push(j);
+      } else {
         if (!grid[j.truck_id][dt].find(x=>x.id===j.id))
           grid[j.truck_id][dt].push({...j, _continuation:true});
       }
-    }
+    });
   });
 
   // Schedule a job: click on unscheduled → pick truck+date in modal
