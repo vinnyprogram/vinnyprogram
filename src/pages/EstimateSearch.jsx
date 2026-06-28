@@ -299,12 +299,7 @@ export default function EstimateSearch() {
                       ${Number(p.quote.grand_total||0).toLocaleString("en-US",
                         {maximumFractionDigits:0})}
                     </div>
-                    <span style={{fontSize:10,padding:"2px 7px",borderRadius:10,
-                      background:p.quote.status==="Accepted"?"#dcfce7":"#f1f5f9",
-                      color:p.quote.status==="Accepted"?"#059669":"#64748b",
-                      fontWeight:700}}>
-                      {p.quote.status||"Draft"}
-                    </span>
+
                   </div>
                 )}
               </div>
