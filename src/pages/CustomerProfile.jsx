@@ -468,17 +468,25 @@ export default function CustomerProfile() {
                             {job.quotes[0].status!=="Accepted" && job.quotes[0].status!=="Superseded" && (
                               <button onClick={async(e)=>{
                                 e.stopPropagation();
-                                if(!window.confirm("Mark this quote as Accepted? This will mark all other versions as Superseded.")) return;
-                                // Mark all other quotes for this customer as Superseded
+                                if(!window.confirm(`Accept this quote for $${fmt(job.quotes[0].grand_total)}?\n\nAll other versions for this address will be marked Superseded.`)) return;
+                                // First check no other quote is already Accepted for this address
+                                const alreadyAccepted = activeGroup.jobs.find(j=>j.id!==job.id && j.quotes[0]?.status==="Accepted");
+                                if(alreadyAccepted){
+                                  alert("Another version is already Accepted. Please mark it as Superseded first.");
+                                  return;
+                                }
+                                // Mark all other versions as Superseded
                                 const allProjectIds = activeGroup.jobs.map(j=>j.id);
                                 for(const pid of allProjectIds){
                                   if(pid!==job.id){
                                     const otherQ = activeGroup.jobs.find(j=>j.id===pid)?.quotes[0];
-                                    if(otherQ) await supabase.from("quotes").update({status:"Superseded"}).eq("id",otherQ.id);
+                                    if(otherQ && otherQ.status!=="Superseded"){
+                                      await supabase.from("quotes").update({status:"Superseded"}).eq("id",otherQ.id);
+                                    }
                                     await supabase.from("projects").update({pipeline_status:"Superseded"}).eq("id",pid);
                                   }
                                 }
-                                // Accept this quote
+                                // Accept this quote and project
                                 await supabase.from("quotes").update({status:"Accepted"}).eq("id",job.quotes[0].id);
                                 await supabase.from("projects").update({pipeline_status:"Accepted"}).eq("id",job.id);
                                 load();
