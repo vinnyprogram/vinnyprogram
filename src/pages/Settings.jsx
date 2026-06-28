@@ -1851,7 +1851,7 @@ export default function Settings() {
           </div>
         )}
 
-        {/* ── SUMMARY TAB ── */
+        {/* ── SUMMARY TAB ── */}
         {tab==="summary" && (
           <div>
             <div style={{ fontSize:13, color:C.muted, marginBottom:12 }}>
