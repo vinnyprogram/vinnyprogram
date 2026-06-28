@@ -57,33 +57,39 @@ export default function Schedule() {
 
   async function load() {
     setLoading(true);
-    // Load trucks
-    const { data: truckData } = await supabase
-      .from("trucks").select("*").eq("company_id", companyId).order("name");
+    try {
+      // Load trucks
+      const { data: truckData, error: truckErr } = await supabase
+        .from("trucks").select("*").eq("company_id", companyId).order("name");
+      if (truckErr) console.error("trucks error:", truckErr.message);
 
-    // Load scheduled jobs in view range (±4 weeks)
-    const from = fmtDate(addDays(weekStart, -7));
-    const to   = fmtDate(addDays(weekStart, 21));
-    const { data: jobData } = await supabase
-      .from("scheduled_jobs")
-      .select("*, projects(id,name,address,lead_id,customers(name)), quotes(grand_total,labor_roles_json)")
-      .eq("company_id", companyId)
-      .gte("start_date", from)
-      .lte("start_date", to);
+      // Load scheduled jobs in view range
+      const from = fmtDate(addDays(weekStart, -7));
+      const to   = fmtDate(addDays(weekStart, 21));
+      const { data: jobData, error: jobErr } = await supabase
+        .from("scheduled_jobs")
+        .select("*, projects(id,name,address,lead_id,customers(name),quotes(grand_total,labor_roles_json,status))")
+        .eq("company_id", companyId)
+        .gte("start_date", from)
+        .lte("start_date", to);
+      if (jobErr) console.error("scheduled_jobs error:", jobErr.message);
 
-    // Load won projects not yet scheduled
-    const { data: wonProjects } = await supabase
-      .from("projects")
-      .select("id,name,address,lead_id,customers(name),quotes(grand_total,labor_roles_json,status)")
-      .eq("company_id", companyId)
-      .eq("pipeline_status","Won")
-      .is("scheduled_job_id", null);
+      // Load projects with accepted quotes not yet scheduled
+      const { data: wonProjects, error: wpErr } = await supabase
+        .from("projects")
+        .select("id,name,address,lead_id,customers(name),quotes(grand_total,labor_roles_json,status)")
+        .eq("company_id", companyId)
+        .is("scheduled_job_id", null);
+      if (wpErr) console.error("wonProjects error:", wpErr.message);
 
-    setTrucks(truckData || []);
-    setJobs(jobData || []);
-    setUnscheduled((wonProjects || []).filter(p =>
-      p.quotes?.some(q => q.status === "Accepted")
-    ));
+      setTrucks(truckData || []);
+      setJobs(jobData || []);
+      setUnscheduled((wonProjects || []).filter(p =>
+        p.quotes?.some(q => q.status === "Accepted")
+      ));
+    } catch(e) {
+      console.error("Schedule load error:", e);
+    }
     setLoading(false);
   }
 
@@ -287,7 +293,7 @@ export default function Schedule() {
                                   {j.projects?.customers?.name || j.projects?.name || "Job"}
                                 </div>
                                 <div style={{ fontSize:10, opacity:0.85 }}>
-                                  {j.duration_days}d · ${Number(j.quotes?.grand_total||0).toLocaleString()}
+                                  {j.duration_days}d · ${Number(j.projects?.quotes?.[0]?.grand_total||0).toLocaleString()}
                                 </div>
                               </div>
                             );
@@ -421,7 +427,7 @@ function JobDetailModal({ job, trucks, truckColor, truckIdx, onMove, onDelete, o
         <div style={{ fontWeight:700, fontSize:15 }}>{job.projects?.customers?.name || job.projects?.name}</div>
         <div style={{ fontSize:13, color:"#64748b" }}>{job.projects?.address}</div>
         <div style={{ fontSize:13, color:"#059669", marginTop:4 }}>
-          ${Number(job.quotes?.grand_total||0).toLocaleString()}
+          ${Number(job.projects?.quotes?.[0]?.grand_total||0).toLocaleString()}
         </div>
       </div>
 
