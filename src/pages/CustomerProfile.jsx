@@ -468,14 +468,8 @@ export default function CustomerProfile() {
                             {job.quotes[0].status!=="Accepted" && job.quotes[0].status!=="Superseded" && (
                               <button onClick={async(e)=>{
                                 e.stopPropagation();
-                                if(!window.confirm(`Accept this quote for $${fmt(job.quotes[0].grand_total)}?\n\nAll other versions for this address will be marked Superseded.`)) return;
-                                // First check no other quote is already Accepted for this address
-                                const alreadyAccepted = activeGroup.jobs.find(j=>j.id!==job.id && j.quotes[0]?.status==="Accepted");
-                                if(alreadyAccepted){
-                                  alert("Another version is already Accepted. Please mark it as Superseded first.");
-                                  return;
-                                }
-                                // Mark all other versions as Superseded
+                                if(!window.confirm(`Accept this quote for $${fmt(job.quotes[0].grand_total)}?\n\nThis will become the active quote. All other versions will be marked Superseded.\n\nYou can switch to a different version at any time.`)) return;
+                                // Mark all other versions as Superseded (switching accepted is allowed)
                                 const allProjectIds = activeGroup.jobs.map(j=>j.id);
                                 for(const pid of allProjectIds){
                                   if(pid!==job.id){
