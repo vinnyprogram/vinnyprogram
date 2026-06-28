@@ -144,6 +144,15 @@ export default function CustomerProfile() {
         addrMap[addr].jobs.push({ ...p, quotes: qMap[p.id]||[] });
       });
 
+      // Sync pipeline_status with quote status (fix any out-of-sync data)
+      for(const p of projs){
+        const q = qMap[p.id]?.[0];
+        if(q?.status==="Accepted" && p.pipeline_status!=="Accepted"){
+          await supabase.from("projects").update({pipeline_status:"Accepted"}).eq("id",p.id);
+          p.pipeline_status = "Accepted";
+        }
+      }
+
       setProjects(Object.values(addrMap));
 
       // set first address as active
@@ -463,11 +472,18 @@ export default function CustomerProfile() {
                       <div style={{fontSize:12,fontWeight:700,color:"#0f172a",display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
                         {ji===0 && <span style={{color:"#059669"}}>★ Latest</span>}
                         {(job.pipeline_status||"Draft")==="Proposal" ? `Proposal ${activeGroup.jobs.length - ji}` : `Estimate ${activeGroup.jobs.length - ji}`}
-                        <span style={{fontSize:10,fontWeight:700,padding:"2px 8px",borderRadius:10,
-                            background: PIPELINE_COLORS[job.pipeline_status||"Draft"]?.bg,
-                            color: PIPELINE_COLORS[job.pipeline_status||"Draft"]?.text}}>
-                          {job.pipeline_status||"Draft"}
-                        </span>
+                        {(()=>{
+                          // If quote is accepted, always show Accepted regardless of pipeline_status
+                          const qs = job.quotes?.[0]?.status;
+                          const ps = qs==="Accepted" ? "Accepted" : (job.pipeline_status||"Draft");
+                          return (
+                            <span style={{fontSize:10,fontWeight:700,padding:"2px 8px",borderRadius:10,
+                                background: PIPELINE_COLORS[ps]?.bg,
+                                color: PIPELINE_COLORS[ps]?.text}}>
+                              {ps}
+                            </span>
+                          );
+                        })()}
                       </div>
                         <div style={{fontSize:11,color:"#94a3b8",marginTop:1}}>
                           {fmtDate(job.created_at)}
