@@ -91,6 +91,9 @@ export default function MainLayout() {
             ＋ New Job
           </Link>
 
+          <Link to="/schedule" style={linkStyle("/schedule")} onClick={()=>setMenuOpen(false)}>
+            📅 Schedule
+          </Link>
           <Link to="/crm" style={linkStyle("/crm")} onClick={()=>setMenuOpen(false)}>
             CRM
           </Link>

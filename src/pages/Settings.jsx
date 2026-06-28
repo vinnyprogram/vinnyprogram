@@ -75,6 +75,8 @@ export default function Settings() {
   const [assets, setAssets] = useState([]);
   // Sales reps
   const [salesReps, setSalesReps] = useState([]);
+  const [trucks, setTrucks] = useState([]);
+  const [newTruckName, setNewTruckName] = useState("");
   // Fuel
   const [fuelRate, setFuelRate] = useState(0.67); // $/mile IRS rate
   const [shopAddress, setShopAddress] = useState(""); // for fuel auto-calc on quotes
@@ -125,6 +127,8 @@ export default function Settings() {
     ]);
 
     // load sales reps
+    const { data:truckData } = await supabase.from("trucks").select("*").eq("company_id", company.id).order("name");
+    setTrucks(truckData || []);
     const { data:repData } = await supabase.from("sales_reps")
       .select("*").eq("company_id", company.id).order("created_at");
     if(repData?.length) setSalesReps(repData);
@@ -866,6 +870,7 @@ export default function Settings() {
     { id:"assets",     label:"Assets" },
     { id:"fuel",       label:"Fuel" },
     { id:"salesreps",  label:"Sales Reps" },
+    { id:"trucks",      label:"🚛 Trucks" },
     { id:"consumables",label:"Consumables" },
     { id:"summary",    label:"Summary" },
   ];
@@ -1803,7 +1808,50 @@ export default function Settings() {
           </div>
         )}
 
-        {/* ── SUMMARY TAB ── */}
+
+        {/* ── TRUCKS TAB ── */}
+        {tab==="trucks" && (
+          <div>
+            <h2 style={{ fontSize:16, fontWeight:800, marginBottom:16 }}>Trucks</h2>
+            <p style={{ fontSize:13, color:"#64748b", marginBottom:20 }}>
+              Manage your fleet. These trucks appear in the Schedule page.
+            </p>
+            {trucks.map(truck => (
+              <div key={truck.id} style={{ display:"flex", alignItems:"center", gap:10, padding:"10px 14px", background:"#fff", border:"1px solid #e2e8f0", borderRadius:8, marginBottom:8 }}>
+                <span style={{ fontSize:14, fontWeight:600, flex:1 }}>{truck.name}</span>
+                <button onClick={async () => {
+                  await supabase.from("trucks").delete().eq("id", truck.id);
+                  setTrucks(p => p.filter(t => t.id !== truck.id));
+                }} style={{ padding:"4px 12px", background:"#fff", border:"1px solid #fca5a5", color:"#ef4444", borderRadius:6, cursor:"pointer", fontSize:12, fontWeight:700 }}>
+                  Remove
+                </button>
+              </div>
+            ))}
+            <div style={{ display:"flex", gap:10, marginTop:16 }}>
+              <input
+                value={newTruckName}
+                onChange={e => setNewTruckName(e.target.value)}
+                onKeyDown={async e => {
+                  if (e.key === "Enter" && newTruckName.trim()) {
+                    const { data } = await supabase.from("trucks").insert({ name:newTruckName.trim(), company_id:company.id }).select().single();
+                    if (data) { setTrucks(p => [...p, data]); setNewTruckName(""); }
+                  }
+                }}
+                placeholder="Truck name (e.g. Truck 1)"
+                style={{ flex:1, padding:"10px 14px", border:"1px solid #e2e8f0", borderRadius:8, fontSize:14 }}
+              />
+              <button onClick={async () => {
+                if (!newTruckName.trim()) return;
+                const { data } = await supabase.from("trucks").insert({ name:newTruckName.trim(), company_id:company.id }).select().single();
+                if (data) { setTrucks(p => [...p, data]); setNewTruckName(""); }
+              }} style={{ padding:"10px 20px", background:"#059669", color:"#fff", border:"none", borderRadius:8, fontSize:14, fontWeight:700, cursor:"pointer" }}>
+                + Add Truck
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ── SUMMARY TAB ── */
         {tab==="summary" && (
           <div>
             <div style={{ fontSize:13, color:C.muted, marginBottom:12 }}>

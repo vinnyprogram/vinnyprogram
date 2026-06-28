@@ -23,6 +23,7 @@ import HersFieldMeasurements from "./pages/HersFieldMeasurements";
 import EkotropeReport from "./pages/EkotropeReport";
 import JobStart from "./pages/JobStart";
 import Projects from "./pages/Projects";
+import Schedule from "./pages/Schedule";
 import AdminCleanup from "./pages/AdminCleanup";
 
 
@@ -95,6 +96,7 @@ function ProtectedApp() {
         <Route path="project/drawings/:projectId" element={<EstimateDrawings />} />
         <Route path="/projects" element={<Projects />} />
         <Route path="/projects/:customerId" element={<Projects />} />
+        <Route path="schedule" element={<Schedule />} />
         <Route path="admin-cleanup" element={<AdminCleanup />} />
         <Route path="/hers/search" element={<HersSearch />} />
         <Route path="/hers/invoices" element={<HersInvoiceSearch />} />
