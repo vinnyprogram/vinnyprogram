@@ -304,21 +304,34 @@ export default function Schedule() {
                           {cellJobs.map(j=>{
                             const color = jobColorMap[j.project_id]||"#059669";
                             if (j._continuation) return (
-                              <div key={j.id+dt} style={{height:24,background:color+"40",borderRadius:3,margin:2,borderLeft:`2px solid ${color}`}}/>
+                              <div key={j.id+dt} style={{minHeight:48,background:color+"25",borderRadius:3,margin:2,borderLeft:`3px solid ${color}`,padding:"4px 6px"}}>
+                                <div style={{fontSize:10,color:color,fontWeight:600,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:110,opacity:0.8}}>
+                                  {j.customer_name||""}
+                                </div>
+                                <div style={{fontSize:9,color:color,opacity:0.6,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:110}}>
+                                  cont'd
+                                </div>
+                              </div>
                             );
                             // Find project info from all loaded data
                             const allProjects = [...unscheduled];
                             const proj = allProjects.find(p=>p.id===j.project_id);
+                            const name = j.customer_name||proj?.customers?.name||"Job";
+                            const addr = j.project_address||proj?.address||"";
+                            const shortAddr = addr.split(",")[0]; // just street number + name
                             return (
                               <div key={j.id}
                                 onClick={e=>{e.stopPropagation();setModal({type:"detail",job:j,truck});}}
-                                style={{background:color,color:"#fff",borderRadius:5,padding:"3px 6px",margin:2,cursor:"pointer",fontSize:11,fontWeight:600,boxShadow:"0 1px 3px rgba(0,0,0,0.2)"}}
+                                style={{background:color,color:"#fff",borderRadius:5,padding:"4px 7px",margin:2,cursor:"pointer",fontSize:11,fontWeight:600,boxShadow:"0 1px 3px rgba(0,0,0,0.2)",minHeight:48}}
                                 onMouseEnter={e=>{e.currentTarget.style.opacity="0.85";}}
                                 onMouseLeave={e=>{e.currentTarget.style.opacity="1";}}>
-                                <div style={{whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:100}}>
-                                  {j.customer_name||proj?.customers?.name||"Job"}
+                                <div style={{whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:120,fontWeight:700}}>
+                                  {name}
                                 </div>
-                                <div style={{fontSize:10,opacity:0.85}}>{j.duration_days}d</div>
+                                <div style={{fontSize:10,opacity:0.9,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:120,marginTop:1}}>
+                                  📍 {shortAddr}
+                                </div>
+                                <div style={{fontSize:10,opacity:0.75,marginTop:1}}>{j.duration_days}d</div>
                               </div>
                             );
                           })}
