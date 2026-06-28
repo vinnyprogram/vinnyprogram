@@ -144,15 +144,6 @@ export default function CustomerProfile() {
         addrMap[addr].jobs.push({ ...p, quotes: qMap[p.id]||[] });
       });
 
-      // Sync pipeline_status with quote status (fix any out-of-sync data)
-      for(const p of projs){
-        const q = qMap[p.id]?.[0];
-        if(q?.status==="Accepted" && p.pipeline_status!=="Accepted"){
-          await supabase.from("projects").update({pipeline_status:"Accepted"}).eq("id",p.id);
-          p.pipeline_status = "Accepted";
-        }
-      }
-
       setProjects(Object.values(addrMap));
 
       // set first address as active
@@ -472,18 +463,11 @@ export default function CustomerProfile() {
                       <div style={{fontSize:12,fontWeight:700,color:"#0f172a",display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
                         {ji===0 && <span style={{color:"#059669"}}>★ Latest</span>}
                         {(job.pipeline_status||"Draft")==="Proposal" ? `Proposal ${activeGroup.jobs.length - ji}` : `Estimate ${activeGroup.jobs.length - ji}`}
-                        {(()=>{
-                          // If quote is accepted, always show Accepted regardless of pipeline_status
-                          const qs = job.quotes?.[0]?.status;
-                          const ps = qs==="Accepted" ? "Accepted" : (job.pipeline_status||"Draft");
-                          return (
-                            <span style={{fontSize:10,fontWeight:700,padding:"2px 8px",borderRadius:10,
-                                background: PIPELINE_COLORS[ps]?.bg,
-                                color: PIPELINE_COLORS[ps]?.text}}>
-                              {ps}
-                            </span>
-                          );
-                        })()}
+                        <span style={{fontSize:10,fontWeight:700,padding:"2px 8px",borderRadius:10,
+                            background: PIPELINE_COLORS[job.pipeline_status||"Draft"]?.bg,
+                            color: PIPELINE_COLORS[job.pipeline_status||"Draft"]?.text}}>
+                          {job.pipeline_status||"Draft"}
+                        </span>
                       </div>
                         <div style={{fontSize:11,color:"#94a3b8",marginTop:1}}>
                           {fmtDate(job.created_at)}
@@ -499,37 +483,24 @@ export default function CustomerProfile() {
                           <div style={{fontSize:14,fontWeight:800,color:"#059669"}}>
                             ${fmt(job.quotes[0].grand_total)}
                           </div>
-                          <div style={{display:"flex",alignItems:"center",gap:6,justifyContent:"flex-end",marginTop:4}}>
-                            <span style={{fontSize:10,padding:"2px 7px",borderRadius:10,
-                              background:job.quotes[0].status==="Accepted"?"#dcfce7":job.quotes[0].status==="Superseded"?"#f1f5f9":"#fef3c7",
-                              color:job.quotes[0].status==="Accepted"?"#059669":job.quotes[0].status==="Superseded"?"#94a3b8":"#d97706",
-                              fontWeight:700}}>
-                              {job.quotes[0].status||"Draft"}
-                            </span>
-                            {job.quotes[0].status!=="Accepted" && job.quotes[0].status!=="Superseded" && (
-                              <button onClick={async(e)=>{
-                                e.stopPropagation();
-                                if(!window.confirm(`Accept this quote for $${fmt(job.quotes[0].grand_total)}?\n\nThis will become the active quote. All other versions will be marked Superseded.\n\nYou can switch to a different version at any time.`)) return;
-                                // Mark all other versions as Superseded (switching accepted is allowed)
-                                const allProjectIds = activeGroup.jobs.map(j=>j.id);
-                                for(const pid of allProjectIds){
-                                  if(pid!==job.id){
-                                    const otherQ = activeGroup.jobs.find(j=>j.id===pid)?.quotes[0];
-                                    if(otherQ && otherQ.status!=="Superseded"){
-                                      await supabase.from("quotes").update({status:"Superseded"}).eq("id",otherQ.id);
-                                    }
-                                    await supabase.from("projects").update({pipeline_status:"Superseded"}).eq("id",pid);
-                                  }
+                          {/* ONE STATUS ONLY — pipeline_status drives everything */}
+                          {(job.pipeline_status||"Draft")!=="Accepted" && (job.pipeline_status||"Draft")!=="Superseded" && (job.pipeline_status||"Draft")!=="Job Scheduled" && (job.pipeline_status||"Draft")!=="Completed" && (
+                            <button onClick={async(e)=>{
+                              e.stopPropagation();
+                              if(!window.confirm(`Mark this quote as Accepted ($${fmt(job.quotes[0].grand_total)})?\n\nAll other versions for this address will be marked Superseded.\nYou can switch versions at any time.`)) return;
+                              // Mark all other versions Superseded via pipeline_status only
+                              for(const j2 of activeGroup.jobs){
+                                if(j2.id!==job.id && (j2.pipeline_status||"Draft")!=="Superseded"){
+                                  await supabase.from("projects").update({pipeline_status:"Superseded"}).eq("id",j2.id);
                                 }
-                                // Accept this quote and project
-                                await supabase.from("quotes").update({status:"Accepted"}).eq("id",job.quotes[0].id);
-                                await supabase.from("projects").update({pipeline_status:"Accepted"}).eq("id",job.id);
-                                load();
-                              }} style={{fontSize:10,padding:"2px 8px",borderRadius:10,background:"#059669",color:"#fff",border:"none",cursor:"pointer",fontWeight:700}}>
-                                ✓ Accept
-                              </button>
-                            )}
-                          </div>
+                              }
+                              // Accept this project — one update, one status
+                              await supabase.from("projects").update({pipeline_status:"Accepted"}).eq("id",job.id);
+                              load();
+                            }} style={{marginTop:6,fontSize:10,padding:"3px 10px",borderRadius:10,background:"#059669",color:"#fff",border:"none",cursor:"pointer",fontWeight:700,display:"block",marginLeft:"auto"}}>
+                              ✓ Accept
+                            </button>
+                          )}
                         </div>
                       )}
                     </div>
