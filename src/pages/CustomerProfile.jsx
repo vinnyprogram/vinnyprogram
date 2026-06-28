@@ -534,12 +534,13 @@ export default function CustomerProfile() {
                     </button>
                     <button onClick={()=>{
                       const status = job.pipeline_status||"Draft";
-                      if(["Sent to Office","Quote Ready","Proposal","Negotiation","Accepted","Job Scheduled","Completed"].includes(status)){
-                        if(window.confirm(`This estimate is already "${status}".\n\nClick OK to create a NEW version (recommended) with the current scope copied over, so you can edit the new one.\n\nClick Cancel to abort.`)){
+                      const alreadySent = ["Quote Ready","Proposal","Negotiation","Accepted","Job Scheduled","Completed","Sent to Office"].includes(status);
+                      if(alreadySent){
+                        if(window.confirm(`This quote has already been sent to the customer (status: "${status}").\n\nCreate a NEW version for this address?\n\nOK = Create new version\nCancel = Do nothing`)){
                           duplicateProject(job.id);
                         }
-                        // Cancel = do nothing
                       } else {
+                        // Not sent yet — edit directly, no duplication needed
                         navigate(`/project/${job.id}`);
                       }
                     }}
