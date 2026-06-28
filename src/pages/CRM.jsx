@@ -124,24 +124,11 @@ function QuoteHistory({ customerId, navigate }) {
             <div key={i} style={{
               display:"flex",justifyContent:"space-between",alignItems:"center",
               padding:"6px 8px",borderRadius:7,marginBottom:4,
-              background: q.status==="Accepted" ? "#f0fdf4" : "white",
-              border: q.status==="Accepted" ? "1px solid #86efac" : "1px solid #e2e8f0",
+              background: p.pipeline_status==="Accepted" ? "#f0fdf4" : "white",
+              border: p.pipeline_status==="Accepted" ? "1px solid #86efac" : "1px solid #e2e8f0",
             }}>
               <div>
-                <span style={{fontSize:11,fontWeight:600,color:"#374151"}}>
-                  {q.label || `Quote v${q.version||1}`}
-                </span>
-                <span style={{
-                  marginLeft:6,fontSize:10,padding:"1px 6px",borderRadius:10,
-                  background: q.status==="Accepted"?"#dcfce7":
-                               q.status==="Sent"?"#eff6ff":"#f1f5f9",
-                  color: q.status==="Accepted"?"#059669":
-                          q.status==="Sent"?"#3b82f6":"#64748b",
-                  fontWeight:700,
-                }}>
-                  {q.status==="Accepted"?"✓ Accepted":q.status||"Draft"}
-                </span>
-                <div style={{fontSize:11,fontWeight:700,color:"#059669",marginTop:1}}>
+                <div style={{fontSize:13,fontWeight:700,color:"#059669"}}>
                   ${Number(q.grand_total||0).toLocaleString("en-US",
                     {minimumFractionDigits:0,maximumFractionDigits:0})}
                 </div>
@@ -149,10 +136,10 @@ function QuoteHistory({ customerId, navigate }) {
               <button
                 onClick={()=>navigate(`/quote/${p.id}`)}
                 style={{border:"none",
-                  background: q.status==="Accepted"?"#059669":"#f97316",
+                  background: p.pipeline_status==="Accepted"?"#059669":"#f97316",
                   color:"white",padding:"5px 10px",borderRadius:6,
                   cursor:"pointer",fontSize:11,fontWeight:700,flexShrink:0}}>
-                {q.status==="Accepted"?"✓ Accepted":"View PDF"}
+                {p.pipeline_status==="Accepted"?"✓ Accepted":"View PDF"}
               </button>
             </div>
           ))}
