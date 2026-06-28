@@ -80,6 +80,7 @@ export default function Schedule() {
   const [trucks, setTrucks] = useState([]);
   const [scheduledJobs, setScheduledJobs] = useState([]);
   const [unscheduled, setUnscheduled] = useState([]);
+  const [allProjectsData, setAllProjectsData] = useState([]);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(null); // {type, job, truckId, date}
@@ -115,6 +116,7 @@ export default function Schedule() {
       setTrucks(truckData||[]);
       setScheduledJobs(scheduled);
       setUnscheduled(unscheduledList);
+      setAllProjectsData(projData||[]);
     } catch(e) {
       console.error("load error:", e);
     }
@@ -182,7 +184,7 @@ export default function Schedule() {
 
   // Get project for a scheduled job
   function getProject(job) {
-    return unscheduled.find(p=>p.id===job.project_id) ||
+    return allProjectsData.find(p=>p.id===job.project_id) ||
            { id:job.project_id, name:job.project_name||"Job", address:job.project_address||"", customers:{name:job.customer_name||""}, quotes:[] };
   }
 
@@ -306,7 +308,7 @@ export default function Schedule() {
                             if (j._continuation) return (
                               <div key={j.id+dt} style={{minHeight:48,background:color+"25",borderRadius:3,margin:2,borderLeft:`3px solid ${color}`,padding:"4px 6px"}}>
                                 <div style={{fontSize:10,color:color,fontWeight:600,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:110,opacity:0.8}}>
-                                  {j.customer_name||""}
+                                  {j.customer_name||allProjectsData.find(p=>p.id===j.project_id)?.customers?.name||""}
                                 </div>
                                 <div style={{fontSize:9,color:color,opacity:0.6,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:110}}>
                                   cont'd
@@ -314,8 +316,7 @@ export default function Schedule() {
                               </div>
                             );
                             // Find project info from all loaded data
-                            const allProjects = [...unscheduled];
-                            const proj = allProjects.find(p=>p.id===j.project_id);
+                            const proj = allProjectsData.find(p=>p.id===j.project_id);
                             const name = j.customer_name||proj?.customers?.name||"Job";
                             const addr = j.project_address||proj?.address||"";
                             const shortAddr = addr.split(",")[0]; // just street number + name
