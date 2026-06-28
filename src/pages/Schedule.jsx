@@ -317,7 +317,7 @@ export default function Schedule() {
                                   <div style={{fontSize:9,color:color,opacity:0.8,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:120,marginTop:1}}>
                                     📍 {cAddr}
                                   </div>
-                                  <div style={{fontSize:9,color:color,opacity:0.55,marginTop:1}}>cont'd</div>
+
                                 </div>
                               );
                             }
