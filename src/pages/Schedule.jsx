@@ -58,25 +58,35 @@ export default function Schedule() {
 
   async function load() {
     setLoading(true);
-    const [{ data: truckData }, { data: sjData }, { data: projData }] = await Promise.all([
-      supabase.from("trucks").select("*").eq("company_id", companyId).order("name"),
-      supabase.from("scheduled_jobs").select("*").eq("company_id", companyId),
-      supabase.from("projects")
+    try {
+      const { data: truckData, error: te } = await supabase.from("trucks").select("*").eq("company_id", companyId).order("name");
+      if (te) console.error("trucks:", te.message);
+
+      const { data: sjData, error: se } = await supabase.from("scheduled_jobs").select("*").eq("company_id", companyId);
+      if (se) console.error("scheduled_jobs:", se.message);
+
+      const { data: projData, error: pe } = await supabase
+        .from("projects")
         .select("id,name,address,customers(name),quotes(grand_total,labor_roles_json,status)")
-        .eq("company_id", companyId),
-    ]);
+        .eq("company_id", companyId);
+      if (pe) console.error("projects:", pe.message);
 
-    const scheduled = sjData || [];
-    const scheduledProjectIds = new Set(scheduled.map(j=>j.project_id));
+      const scheduled = sjData || [];
+      const scheduledProjectIds = new Set(scheduled.map(j=>j.project_id));
 
-    // Unscheduled = has accepted quote + not already in scheduled_jobs
-    const unscheduledList = (projData||[]).filter(p =>
-      p.quotes?.some(q=>q.status==="Accepted") && !scheduledProjectIds.has(p.id)
-    );
+      // Show projects with Accepted quote that are not yet scheduled
+      const unscheduledList = (projData||[]).filter(p =>
+        p.quotes?.some(q=>q.status==="Accepted") && !scheduledProjectIds.has(p.id)
+      );
 
-    setTrucks(truckData||[]);
-    setScheduledJobs(scheduled);
-    setUnscheduled(unscheduledList);
+      console.log("trucks:", (truckData||[]).length, "projects:", (projData||[]).length, "unscheduled:", unscheduledList.length);
+
+      setTrucks(truckData||[]);
+      setScheduledJobs(scheduled);
+      setUnscheduled(unscheduledList);
+    } catch(e) {
+      console.error("load error:", e);
+    }
     setLoading(false);
   }
 
