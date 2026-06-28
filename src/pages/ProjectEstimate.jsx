@@ -119,7 +119,7 @@ function calcArea(sqft, thick, mat, rValue, variantMap) {
 
 
 function CustomerSection({ leads, selectedLead, selectedLeadId, projectAddress,
-    projectName, onSelect, onClear, onSaveNew, onAddressChange, onNameChange }) {
+    projectName, onSelect, onClear, onSaveNew, onAddressChange, onNameChange, isEditing }) {
   const [query, setQuery]     = useState("");
   const [mode, setMode]       = useState(selectedLead ? "selected" : "search");
   const [saving, setSaving]   = useState(false);
@@ -215,9 +215,15 @@ async function saveNew() {
             </div>
             <button onClick={clear} style={{ border:"none", background:"none", color:C.faint, fontSize:13, cursor:"pointer", padding:"0 4px", flexShrink:0 }}>✕</button>
           </div>
-          <AddressInput style={{...TI, width:"100%"}}
-            placeholder="Job address for this project…"
-            value={projectAddress} onChange={onAddressChange} />
+          {isEditing ? (
+            <div style={{...TI, width:"100%", background:"#f1f5f9", color:"#64748b", cursor:"not-allowed", padding:"5px 8px", borderRadius:6, fontSize:12}}>
+              📍 {projectAddress}
+            </div>
+          ) : (
+            <AddressInput style={{...TI, width:"100%"}}
+              placeholder="Job address for this project…"
+              value={projectAddress} onChange={onAddressChange} />
+          )}
         </div>
       )}
 
@@ -1913,8 +1919,9 @@ export default function ProjectEstimate() {
         <div ref={areaListRef} style={{flex:1,overflowY:"auto",overflowX:"hidden",padding:"8px 12px 200px 12px",minWidth:0,boxSizing:"border-box",width:"100%"}}>
           <CustomerSection leads={leads} selectedLead={selectedLead} selectedLeadId={selectedLeadId}
             projectAddress={projectAddress} projectName={projectName}
-            onSelect={(lead)=>{setSelectedLeadId(String(lead.id));setProjectName(lead.name||"");/* keep existing address — only blank if no address yet */if(!projectAddress) setProjectAddress("");}}
-            onClear={()=>{setSelectedLeadId("");setProjectName("");setProjectAddress("");}}
+            onSelect={(lead)=>{setSelectedLeadId(String(lead.id));setProjectName(lead.name||"");/* never overwrite address when editing */}}
+            onClear={()=>{setSelectedLeadId("");setProjectName("");if(!projectId) setProjectAddress("");}}
+            isEditing={isEditing}
             onSaveNew={saveNewCustomer} onAddressChange={setProjectAddress} onNameChange={setProjectName} />
 
             <div style={CARD_ORANGE} className={currentAreas.some(a=>!isAreaComplete(a))?"area-focus-bg":""}>
