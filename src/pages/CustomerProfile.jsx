@@ -178,61 +178,86 @@ export default function CustomerProfile() {
   }
 
   async function duplicateProject(projectId) {
-  // Fetch original project + floors + areas + segments
-  const { data:proj } = await supabase.from("projects").select("*").eq("id",projectId).single();
-  if(!proj) return;
-  const { data:floors } = await supabase.from("floors").select("*").eq("project_id",projectId).order("order_index");
-  const { data:areas } = await supabase.from("areas").select("*").eq("project_id",projectId).order("order_index");
-  const areaIds = (areas||[]).map(a=>a.id);
-  let segs = [];
-  if(areaIds.length){
-    const { data:s } = await supabase.from("segments").select("*").in("area_id",areaIds);
-    segs = s||[];
+    try {
+      // Fetch original project + floors + areas + segments
+      const { data:proj } = await supabase.from("projects").select("*").eq("id",projectId).single();
+      if(!proj){ alert("Could not find original project."); return; }
+
+      const { data:floors } = await supabase.from("floors").select("*").eq("project_id",projectId).order("order_index");
+      const { data:areas } = await supabase.from("areas").select("*").eq("project_id",projectId).order("order_index");
+      const areaIds = (areas||[]).map(a=>a.id);
+      let segs = [];
+      if(areaIds.length){
+        const { data:s } = await supabase.from("segments").select("*").in("area_id",areaIds);
+        segs = s||[];
+      }
+
+      // Create new project (copy, reset pipeline status)
+      const { data:newProj, error:pe } = await supabase.from("projects").insert([{
+        lead_id: proj.lead_id, name: proj.name, address: proj.address,
+        status:"Active", source: proj.source, company_id: proj.company_id,
+        crew_notes: proj.crew_notes, pipeline_status: "Measured",
+      }]).select().single();
+      if(pe||!newProj){ alert("Error creating new version: "+(pe?.message||"")); return; }
+
+      // Copy floors
+      const floorMap = {};
+      if(floors?.length){
+        const { data:newFloors, error:fe } = await supabase.from("floors").insert(
+          floors.map(f=>({project_id:newProj.id,name:f.name,order_index:f.order_index,company_id:f.company_id}))
+        ).select();
+        if(fe||!newFloors){ alert("Error copying floors: "+(fe?.message||"")); await supabase.from("projects").delete().eq("id",newProj.id); return; }
+        floors.forEach((f,i)=>{ if(newFloors[i]) floorMap[f.id]=newFloors[i].id; });
+      }
+
+      // Copy areas — skip any with missing floor mapping
+      const areaMap = {};
+      if(areas?.length){
+        const validAreas = areas.filter(a=>!a.floor_id||floorMap[a.floor_id]);
+        if(validAreas.length){
+          const { data:newAreas, error:ae } = await supabase.from("areas").insert(
+            validAreas.map(a=>({
+              project_id:newProj.id, floor_id:floorMap[a.floor_id]||null, area_type:a.area_type,
+              material:a.material, thickness_in:a.thickness_in, r_value:a.r_value,
+              sqft:a.sqft, qty:a.qty, unit:a.unit, unit_price:a.unit_price, line_total:a.line_total,
+              order_index:a.order_index, company_id:a.company_id, options:a.options,
+            }))
+          ).select();
+          if(ae){ console.error("Area copy error:", ae.message); }
+          else { validAreas.forEach((a,i)=>{ if(newAreas[i]) areaMap[a.id]=newAreas[i].id; }); }
+        }
+      }
+
+      // Copy segments
+      if(segs.length){
+        const validSegs = segs.filter(s=>areaMap[s.area_id]);
+        if(validSegs.length){
+          await supabase.from("segments").insert(
+            validSegs.map(s=>({
+              area_id:areaMap[s.area_id], height:s.height, length:s.length,
+              sqft:s.sqft, source:s.source, company_id:s.company_id,
+            }))
+          );
+        }
+      }
+
+      // Copy quote
+      const { data:origQuote } = await supabase.from("quotes").select("*").eq("project_id",projectId).maybeSingle();
+      if(origQuote){
+        const { grand_total,material_cost,overhead_cost,labor_cost,labor_roles_json,profit_margin_pct,discount,job_miles,fuel_cost,consumables_cost,extras_cost,sales_rep_id } = origQuote;
+        await supabase.from("quotes").insert({
+          project_id:newProj.id, company_id:proj.company_id,
+          grand_total,material_cost,overhead_cost,labor_cost,labor_roles_json,
+          profit_margin_pct,discount,job_miles,fuel_cost,consumables_cost,extras_cost,
+          sales_rep_id, status:"Draft"
+        });
+      }
+
+      navigate(`/project/${newProj.id}`);
+    } catch(e) {
+      alert("Unexpected error duplicating project: "+e.message);
+    }
   }
-
-  // Create new project (copy, reset pipeline status)
- const { data:newProj, error:pe } = await supabase.from("projects").insert([{
-    lead_id: proj.lead_id, name: proj.name, address: proj.address,
-    status:"Active", source: proj.source, company_id: proj.company_id,
-    crew_notes: proj.crew_notes, pipeline_status: "Measured",
-  }]).select().single();
-  if(pe||!newProj){ alert("Error creating new version: "+(pe?.message||"")); return; }
-
-  // Copy floors
-  const floorMap = {};
-  if(floors?.length){
-    const { data:newFloors } = await supabase.from("floors").insert(
-      floors.map(f=>({project_id:newProj.id,name:f.name,order_index:f.order_index,company_id:f.company_id}))
-    ).select();
-    floors.forEach((f,i)=>{ floorMap[f.id]=newFloors[i].id; });
-  }
-
-  // Copy areas
-  const areaMap = {};
-  if(areas?.length){
-    const { data:newAreas } = await supabase.from("areas").insert(
-      areas.map(a=>({
-        project_id:newProj.id, floor_id:floorMap[a.floor_id], area_type:a.area_type,
-        material:a.material, thickness_in:a.thickness_in, r_value:a.r_value,
-        sqft:a.sqft, qty:a.qty, unit:a.unit, unit_price:a.unit_price, line_total:a.line_total,
-        order_index:a.order_index, company_id:a.company_id, options:a.options,
-      }))
-    ).select();
-    areas.forEach((a,i)=>{ areaMap[a.id]=newAreas[i].id; });
-  }
-
-  // Copy segments
-  if(segs.length){
-    await supabase.from("segments").insert(
-      segs.map(s=>({
-        area_id:areaMap[s.area_id], height:s.height, length:s.length,
-        sqft:s.sqft, source:s.source, company_id:s.company_id,
-      }))
-    );
-  }
-
-  navigate(`/project/${newProj.id}`);
-}
 
   async function updateActualHours(projectId, roles) {
     const laborCost = roles.reduce((s,r)=>
