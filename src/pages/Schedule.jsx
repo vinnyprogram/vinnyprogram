@@ -305,16 +305,22 @@ export default function Schedule() {
                           onMouseLeave={e=>{e.currentTarget.style.background=isToday?"#f0fdf4":"#fff";}}>
                           {cellJobs.map(j=>{
                             const color = jobColorMap[j.project_id]||"#059669";
-                            if (j._continuation) return (
-                              <div key={j.id+dt} style={{minHeight:48,background:color+"25",borderRadius:3,margin:2,borderLeft:`3px solid ${color}`,padding:"4px 6px"}}>
-                                <div style={{fontSize:10,color:color,fontWeight:600,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:110,opacity:0.8}}>
-                                  {j.customer_name||allProjectsData.find(p=>p.id===j.project_id)?.customers?.name||""}
+                            if (j._continuation) {
+                              const cProj = allProjectsData.find(p=>p.id===j.project_id);
+                              const cName = j.customer_name||cProj?.customers?.name||"";
+                              const cAddr = (j.project_address||cProj?.address||"").split(",")[0];
+                              return (
+                                <div key={j.id+dt} style={{minHeight:48,background:color+"25",borderRadius:3,margin:2,borderLeft:`3px solid ${color}`,padding:"4px 6px"}}>
+                                  <div style={{fontSize:10,color:color,fontWeight:700,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:120}}>
+                                    {cName}
+                                  </div>
+                                  <div style={{fontSize:9,color:color,opacity:0.8,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:120,marginTop:1}}>
+                                    📍 {cAddr}
+                                  </div>
+                                  <div style={{fontSize:9,color:color,opacity:0.55,marginTop:1}}>cont'd</div>
                                 </div>
-                                <div style={{fontSize:9,color:color,opacity:0.6,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:110}}>
-                                  cont'd
-                                </div>
-                              </div>
-                            );
+                              );
+                            }
                             // Find project info from all loaded data
                             const proj = allProjectsData.find(p=>p.id===j.project_id);
                             const name = j.customer_name||proj?.customers?.name||"Job";
