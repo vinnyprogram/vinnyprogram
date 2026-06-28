@@ -261,8 +261,8 @@ async function saveNew() {
             <div style={{ display:"flex", gap:4, marginTop:2 }}>
               <input style={{...TI, flex:1}} placeholder="Customer"
                 value={projectName} onChange={e=>onNameChange(e.target.value)} />
-              <AddressInput style={{...TI, flex:2}}
-                placeholder="Job address" value={projectAddress} onChange={onAddressChange} />
+              {!isEditing && <AddressInput style={{...TI, flex:2}}
+                placeholder="Job address" value={projectAddress} onChange={onAddressChange} />}
             </div>
           )}
         </div>
@@ -1422,6 +1422,10 @@ export default function ProjectEstimate() {
       if(!proj){setLoadingProject(false);return;}
       setProjectName(proj.name||""); setProjectAddress(proj.address||"");
       if(proj.lead_id) setSelectedLeadId(String(proj.lead_id));
+      // Load crew notes / job info
+      if(proj.crew_notes){
+        try{ setCrewNotes(typeof proj.crew_notes==="string"?JSON.parse(proj.crew_notes):proj.crew_notes); }catch(e){}
+      }
       const {data:floorRows}=await supabase.from("floors").select("*").eq("project_id",projectId).order("order_index");
       if(!floorRows?.length){setLoadingProject(false);return;}
       const floorNames=floorRows.map(f=>f.name).filter(f=>f!=="Floor");
@@ -1922,7 +1926,7 @@ export default function ProjectEstimate() {
             onSelect={(lead)=>{setSelectedLeadId(String(lead.id));setProjectName(lead.name||"");/* never overwrite address when editing */}}
             onClear={()=>{setSelectedLeadId("");setProjectName("");if(!projectId) setProjectAddress("");}}
             isEditing={isEditing}
-            onSaveNew={saveNewCustomer} onAddressChange={setProjectAddress} onNameChange={setProjectName} />
+            onSaveNew={saveNewCustomer} onAddressChange={isEditing ? ()=>{} : setProjectAddress} onNameChange={setProjectName} />
 
             <div style={CARD_ORANGE} className={currentAreas.some(a=>!isAreaComplete(a))?"area-focus-bg":""}>
             <div style={{display:"flex",gap:6,marginBottom:6}}>
