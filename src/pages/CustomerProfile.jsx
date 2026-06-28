@@ -463,11 +463,30 @@ export default function CustomerProfile() {
                       <div style={{fontSize:12,fontWeight:700,color:"#0f172a",display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
                         {ji===0 && <span style={{color:"#059669"}}>★ Latest</span>}
                         {(job.pipeline_status||"Draft")==="Proposal" ? `Proposal ${activeGroup.jobs.length - ji}` : `Estimate ${activeGroup.jobs.length - ji}`}
-                        <span style={{fontSize:10,fontWeight:700,padding:"2px 8px",borderRadius:10,
+                        <select
+                          value={job.pipeline_status||"Draft"}
+                          onChange={async(e)=>{
+                            e.stopPropagation();
+                            const newStatus = e.target.value;
+                            // If marking Accepted, mark other versions Superseded
+                            if(newStatus==="Accepted"){
+                              for(const j2 of activeGroup.jobs){
+                                if(j2.id!==job.id && (j2.pipeline_status||"Draft")!=="Superseded"){
+                                  await supabase.from("projects").update({pipeline_status:"Superseded"}).eq("id",j2.id);
+                                }
+                              }
+                            }
+                            await supabase.from("projects").update({pipeline_status:newStatus}).eq("id",job.id);
+                            load();
+                          }}
+                          style={{fontSize:11,fontWeight:700,padding:"2px 6px",borderRadius:10,
+                            border:"none",cursor:"pointer",outline:"none",
                             background: PIPELINE_COLORS[job.pipeline_status||"Draft"]?.bg,
                             color: PIPELINE_COLORS[job.pipeline_status||"Draft"]?.text}}>
-                          {job.pipeline_status||"Draft"}
-                        </span>
+                          {Object.keys(PIPELINE_COLORS).map(s=>(
+                            <option key={s} value={s}>{s}</option>
+                          ))}
+                        </select>
                       </div>
                         <div style={{fontSize:11,color:"#94a3b8",marginTop:1}}>
                           {fmtDate(job.created_at)}
@@ -483,24 +502,7 @@ export default function CustomerProfile() {
                           <div style={{fontSize:14,fontWeight:800,color:"#059669"}}>
                             ${fmt(job.quotes[0].grand_total)}
                           </div>
-                          {/* ONE STATUS ONLY — pipeline_status drives everything */}
-                          {(job.pipeline_status||"Draft")!=="Accepted" && (job.pipeline_status||"Draft")!=="Superseded" && (job.pipeline_status||"Draft")!=="Job Scheduled" && (job.pipeline_status||"Draft")!=="Completed" && (
-                            <button onClick={async(e)=>{
-                              e.stopPropagation();
-                              if(!window.confirm(`Mark this quote as Accepted ($${fmt(job.quotes[0].grand_total)})?\n\nAll other versions for this address will be marked Superseded.\nYou can switch versions at any time.`)) return;
-                              // Mark all other versions Superseded via pipeline_status only
-                              for(const j2 of activeGroup.jobs){
-                                if(j2.id!==job.id && (j2.pipeline_status||"Draft")!=="Superseded"){
-                                  await supabase.from("projects").update({pipeline_status:"Superseded"}).eq("id",j2.id);
-                                }
-                              }
-                              // Accept this project — one update, one status
-                              await supabase.from("projects").update({pipeline_status:"Accepted"}).eq("id",job.id);
-                              load();
-                            }} style={{marginTop:6,fontSize:10,padding:"3px 10px",borderRadius:10,background:"#059669",color:"#fff",border:"none",cursor:"pointer",fontWeight:700,display:"block",marginLeft:"auto"}}>
-                              ✓ Accept
-                            </button>
-                          )}
+
                         </div>
                       )}
                     </div>
