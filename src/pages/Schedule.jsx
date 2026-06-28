@@ -67,16 +67,16 @@ export default function Schedule() {
 
       const { data: projData, error: pe } = await supabase
         .from("projects")
-        .select("id,name,address,customers(name),quotes(grand_total,labor_roles_json,status)")
+        .select("id,name,address,pipeline_status,customers(name),quotes(grand_total,labor_roles_json,status)")
         .eq("company_id", companyId);
       if (pe) console.error("projects:", pe.message);
 
       const scheduled = sjData || [];
       const scheduledProjectIds = new Set(scheduled.map(j=>j.project_id));
 
-      // Show projects with Accepted quote that are not yet scheduled
+      // Show all projects that have a quote and are not yet scheduled
       const unscheduledList = (projData||[]).filter(p =>
-        p.quotes?.some(q=>q.status==="Accepted") && !scheduledProjectIds.has(p.id)
+        p.quotes?.length > 0 && !scheduledProjectIds.has(p.id)
       );
 
       console.log("trucks:", (truckData||[]).length, "projects:", (projData||[]).length, "unscheduled:", unscheduledList.length);
@@ -190,7 +190,7 @@ export default function Schedule() {
         <div style={{width:220,minWidth:220,background:"#1e293b",display:"flex",flexDirection:"column",borderRight:"1px solid #334155"}}>
           <div style={{padding:"10px 12px",borderBottom:"1px solid #334155"}}>
             <div style={{fontSize:11,fontWeight:700,color:"#64748b",textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>
-              Accepted Jobs ({filteredUnscheduled.length})
+              Jobs to Schedule ({filteredUnscheduled.length})
             </div>
             <input
               value={search} onChange={e=>setSearch(e.target.value)}
