@@ -1424,7 +1424,10 @@ export default function ProjectEstimate() {
       if(proj.lead_id) setSelectedLeadId(String(proj.lead_id));
       // Load crew notes / job info
       if(proj.crew_notes){
-        try{ setCrewNotes(typeof proj.crew_notes==="string"?JSON.parse(proj.crew_notes):proj.crew_notes); }catch(e){}
+        try{
+          const cn = typeof proj.crew_notes==="string" ? JSON.parse(proj.crew_notes) : proj.crew_notes;
+          if(cn && typeof cn==="object") setCrewNotes(prev=>({...prev,...cn}));
+        }catch(e){ console.error("crew_notes parse error",e); }
       }
       const {data:floorRows}=await supabase.from("floors").select("*").eq("project_id",projectId).order("order_index");
       if(!floorRows?.length){setLoadingProject(false);return;}
