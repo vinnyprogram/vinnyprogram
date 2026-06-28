@@ -139,7 +139,7 @@ function QuoteHistory({ customerId, navigate }) {
                   background: p.pipeline_status==="Accepted"?"#059669":"#f97316",
                   color:"white",padding:"5px 10px",borderRadius:6,
                   cursor:"pointer",fontSize:11,fontWeight:700,flexShrink:0}}>
-                {p.pipeline_status==="Accepted"?"✓ Accepted":"View PDF"}
+                {"View PDF"}
               </button>
             </div>
           ))}
