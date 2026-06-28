@@ -1,303 +1,290 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
 
 const DAY_NAMES = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
-const WORK_DAYS = [1,2,3,4,5,6]; // Mon–Sat (Sun=0 excluded by default)
+
+// 12 distinct job colors
+const JOB_COLORS = [
+  "#059669","#3b82f6","#f97316","#8b5cf6","#ef4444","#06b6d4",
+  "#d97706","#0284c7","#e11d48","#7c3aed","#65a30d","#db2777"
+];
 
 function startOfWeek(date) {
   const d = new Date(date);
-  const day = d.getDay();
-  const diff = day === 0 ? -6 : 1 - day;
+  const diff = d.getDay() === 0 ? -6 : 1 - d.getDay();
   d.setDate(d.getDate() + diff);
   d.setHours(0,0,0,0);
   return d;
 }
+function addDays(date, n) { const d = new Date(date); d.setDate(d.getDate()+n); return d; }
+function fmtDate(d) { return new Date(d).toISOString().slice(0,10); }
+function fmtDisplay(d) { return new Date(d).toLocaleDateString("en-US",{month:"short",day:"numeric"}); }
 
-function addDays(date, n) {
-  const d = new Date(date);
-  d.setDate(d.getDate() + n);
-  return d;
-}
-
-function fmtDate(d) {
-  return d.toISOString().slice(0,10);
-}
-
-function fmtDisplay(d) {
-  return d.toLocaleDateString("en-US",{month:"short",day:"numeric"});
-}
-
-// Get work days in a week (Mon–Fri always, Sat optional)
 function getWeekDays(weekStart, includeSat) {
-  return [0,1,2,3,4,...(includeSat?[5]:[])].map(i => addDays(weekStart, i));
+  return [0,1,2,3,4,...(includeSat?[5]:[])].map(i => addDays(weekStart,i));
 }
 
-// Color palette for trucks
-const TRUCK_COLORS = [
-  "#059669","#3b82f6","#f97316","#8b5cf6","#ef4444","#06b6d4",
-  "#d97706","#10b981","#e11d48","#7c3aed","#0284c7","#65a30d"
-];
+function getDaysFromQuote(quotes) {
+  if (!quotes?.length) return 1;
+  const q = quotes.find(q=>q.status==="Accepted") || quotes[0];
+  if (!q?.labor_roles_json) return 1;
+  try {
+    const roles = JSON.parse(q.labor_roles_json);
+    return Math.max(1, Math.max(...roles.map(r=>Number(r.days||1))));
+  } catch { return 1; }
+}
+
+function getTotal(quotes) {
+  const q = quotes?.find(q=>q.status==="Accepted") || quotes?.[0];
+  return Number(q?.grand_total||0);
+}
 
 export default function Schedule() {
   const { company } = useAuth();
   const companyId = company?.id;
 
-  const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date()));
+  const [weekStart, setWeekStart] = useState(()=>startOfWeek(new Date()));
   const [includeSat, setIncludeSat] = useState(false);
   const [trucks, setTrucks] = useState([]);
-  const [jobs, setJobs] = useState([]); // scheduled_jobs rows
-  const [unscheduled, setUnscheduled] = useState([]); // won projects not yet scheduled
+  const [scheduledJobs, setScheduledJobs] = useState([]);
+  const [unscheduled, setUnscheduled] = useState([]);
+  const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
+  const [modal, setModal] = useState(null); // {type, job, truckId, date}
+  const [dragItem, setDragItem] = useState(null); // {jobId}
 
-  // Modal state
-  const [modal, setModal] = useState(null); // {type:"assign"|"edit"|"detail", job?, date?, truck?}
-
-  useEffect(() => { if (companyId) load(); }, [companyId, weekStart]);
+  useEffect(() => { if (companyId) load(); }, [companyId]);
 
   async function load() {
     setLoading(true);
-    try {
-      // Load trucks
-      const { data: truckData, error: truckErr } = await supabase
-        .from("trucks").select("*").eq("company_id", companyId).order("name");
-      if (truckErr) console.error("trucks error:", truckErr.message);
+    const [{ data: truckData }, { data: sjData }, { data: projData }] = await Promise.all([
+      supabase.from("trucks").select("*").eq("company_id", companyId).order("name"),
+      supabase.from("scheduled_jobs").select("*").eq("company_id", companyId),
+      supabase.from("projects")
+        .select("id,name,address,customers(name),quotes(grand_total,labor_roles_json,status)")
+        .eq("company_id", companyId),
+    ]);
 
-      // Load scheduled jobs in view range
-      const from = fmtDate(addDays(weekStart, -7));
-      const to   = fmtDate(addDays(weekStart, 21));
-      const { data: jobData, error: jobErr } = await supabase
-        .from("scheduled_jobs")
-        .select("*, projects(id,name,address,lead_id,customers(name),quotes(grand_total,labor_roles_json,status))")
-        .eq("company_id", companyId)
-        .gte("start_date", from)
-        .lte("start_date", to);
-      if (jobErr) console.error("scheduled_jobs error:", jobErr.message);
+    const scheduled = sjData || [];
+    const scheduledProjectIds = new Set(scheduled.map(j=>j.project_id));
 
-      // Load projects with accepted quotes not yet scheduled
-      const { data: wonProjects, error: wpErr } = await supabase
-        .from("projects")
-        .select("id,name,address,lead_id,customers(name),quotes(grand_total,labor_roles_json,status)")
-        .eq("company_id", companyId)
-        .is("scheduled_job_id", null);
-      if (wpErr) console.error("wonProjects error:", wpErr.message);
+    // Unscheduled = has accepted quote + not already in scheduled_jobs
+    const unscheduledList = (projData||[]).filter(p =>
+      p.quotes?.some(q=>q.status==="Accepted") && !scheduledProjectIds.has(p.id)
+    );
 
-      setTrucks(truckData || []);
-      setJobs(jobData || []);
-      setUnscheduled((wonProjects || []).filter(p =>
-        p.quotes?.some(q => q.status === "Accepted")
-      ));
-    } catch(e) {
-      console.error("Schedule load error:", e);
-    }
+    setTrucks(truckData||[]);
+    setScheduledJobs(scheduled);
+    setUnscheduled(unscheduledList);
     setLoading(false);
   }
 
-  // Parse days from labor_roles_json
-  function getDays(quote) {
-    if (!quote?.labor_roles_json) return 1;
-    try {
-      const roles = JSON.parse(quote.labor_roles_json);
-      return Math.max(1, Math.max(...roles.map(r => Number(r.days||1))));
-    } catch { return 1; }
-  }
+  // Assign a color per project (stable by index in scheduledJobs)
+  const jobColorMap = {};
+  scheduledJobs.forEach((j,i) => { jobColorMap[j.project_id] = JOB_COLORS[i % JOB_COLORS.length]; });
 
   const weekDays = getWeekDays(weekStart, includeSat);
 
-  // Build a map: truck_id → date → [jobs]
-  const jobMap = {};
-  jobs.forEach(j => {
-    if (!jobMap[j.truck_id]) jobMap[j.truck_id] = {};
-    const days = j.duration_days || 1;
-    for (let d = 0; d < days; d++) {
-      const dt = fmtDate(addDays(new Date(j.start_date), d));
-      if (!jobMap[j.truck_id][dt]) jobMap[j.truck_id][dt] = [];
-      if (d === 0) jobMap[j.truck_id][dt].push(j);
+  // Build grid: truckId → date → [scheduledJob]
+  const grid = {};
+  scheduledJobs.forEach(j => {
+    if (!grid[j.truck_id]) grid[j.truck_id] = {};
+    for (let d=0; d<(j.duration_days||1); d++) {
+      const dt = fmtDate(addDays(new Date(j.start_date+"T12:00:00"), d));
+      if (!grid[j.truck_id][dt]) grid[j.truck_id][dt] = [];
+      if (d===0) grid[j.truck_id][dt].push(j);
+      else {
+        // continuation block
+        if (!grid[j.truck_id][dt].find(x=>x.id===j.id))
+          grid[j.truck_id][dt].push({...j, _continuation:true});
+      }
     }
   });
 
-  async function scheduleJob(project, truckId, date, durationDays) {
-    const { data: sj, error } = await supabase.from("scheduled_jobs").insert({
+  // Schedule a job: click on unscheduled → pick truck+date in modal
+  async function scheduleJob(project, truckId, startDate) {
+    const days = getDaysFromQuote(project.quotes);
+    const { data, error } = await supabase.from("scheduled_jobs").insert({
       company_id: companyId,
       project_id: project.id,
       truck_id: truckId,
-      start_date: fmtDate(date),
-      duration_days: durationDays,
+      start_date: fmtDate(startDate),
+      duration_days: days,
       status: "Scheduled",
+      customer_name: project.customers?.name || project.name || "",
+      project_address: project.address || "",
     }).select().single();
-    if (error) { alert("Error: " + error.message); return; }
-    // Mark project as scheduled
-    await supabase.from("projects").update({ scheduled_job_id: sj.id }).eq("id", project.id);
+    if (error) { alert("Error: "+error.message); return; }
     setModal(null);
     load();
   }
 
-  async function moveJob(jobId, newTruckId, newDate) {
-    await supabase.from("scheduled_jobs").update({
-      truck_id: newTruckId,
-      start_date: fmtDate(newDate),
-    }).eq("id", jobId);
-    load();
-  }
-
-  async function deleteScheduledJob(jobId, projectId) {
+  // Unschedule: remove from scheduled_jobs → back to list
+  async function unscheduleJob(jobId) {
     await supabase.from("scheduled_jobs").delete().eq("id", jobId);
-    await supabase.from("projects").update({ scheduled_job_id: null }).eq("id", projectId);
     setModal(null);
     load();
   }
 
-  const truckColor = (i) => TRUCK_COLORS[i % TRUCK_COLORS.length];
+  // Edit scheduled job (truck, date, days)
+  async function updateJob(jobId, truckId, startDate, days) {
+    await supabase.from("scheduled_jobs").update({
+      truck_id: truckId,
+      start_date: fmtDate(startDate),
+      duration_days: days,
+    }).eq("id", jobId);
+    setModal(null);
+    load();
+  }
+
+  // Get project for a scheduled job
+  function getProject(job) {
+    return unscheduled.find(p=>p.id===job.project_id) ||
+           { id:job.project_id, name:job.project_name||"Job", address:job.project_address||"", customers:{name:job.customer_name||""}, quotes:[] };
+  }
+
+  const filteredUnscheduled = unscheduled.filter(p => {
+    const q = search.toLowerCase();
+    return !q ||
+      (p.customers?.name||"").toLowerCase().includes(q) ||
+      (p.address||"").toLowerCase().includes(q) ||
+      (p.name||"").toLowerCase().includes(q);
+  });
 
   return (
-    <div style={{ fontFamily:"system-ui,sans-serif", background:"#f8fafc", minHeight:"100vh", padding:0 }}>
+    <div style={{fontFamily:"system-ui,sans-serif",background:"#f1f5f9",minHeight:"100vh",display:"flex",flexDirection:"column"}}>
 
-      {/* Header */}
-      <div style={{ background:"#fff", borderBottom:"1px solid #e2e8f0", padding:"12px 16px", display:"flex", alignItems:"center", gap:12, flexWrap:"wrap" }}>
-        <h1 style={{ fontSize:18, fontWeight:800, margin:0, color:"#0f172a" }}>📅 Schedule</h1>
-        <div style={{ display:"flex", alignItems:"center", gap:8, marginLeft:"auto", flexWrap:"wrap" }}>
-          <button onClick={() => setWeekStart(w => addDays(w,-7))}
-            style={{ padding:"6px 12px", border:"1px solid #e2e8f0", borderRadius:6, background:"#fff", cursor:"pointer", fontWeight:700 }}>‹</button>
-          <span style={{ fontSize:14, fontWeight:600, color:"#334155", minWidth:180, textAlign:"center" }}>
-            {fmtDisplay(weekStart)} – {fmtDisplay(addDays(weekStart, includeSat?5:4))}
+      {/* Top bar */}
+      <div style={{background:"#0f172a",padding:"10px 16px",display:"flex",alignItems:"center",gap:12,flexWrap:"wrap",flexShrink:0}}>
+        <h1 style={{fontSize:16,fontWeight:800,color:"#fff",margin:0}}>📅 Schedule</h1>
+        <div style={{display:"flex",alignItems:"center",gap:8,marginLeft:"auto",flexWrap:"wrap"}}>
+          <button onClick={()=>setWeekStart(w=>addDays(w,-7))}
+            style={{padding:"5px 12px",border:"1px solid #334155",borderRadius:6,background:"#1e293b",color:"#fff",cursor:"pointer",fontWeight:700}}>‹</button>
+          <span style={{fontSize:13,fontWeight:600,color:"#e2e8f0",minWidth:160,textAlign:"center"}}>
+            {fmtDisplay(weekStart)} – {fmtDisplay(addDays(weekStart,includeSat?5:4))}
           </span>
-          <button onClick={() => setWeekStart(w => addDays(w,7))}
-            style={{ padding:"6px 12px", border:"1px solid #e2e8f0", borderRadius:6, background:"#fff", cursor:"pointer", fontWeight:700 }}>›</button>
-          <button onClick={() => setWeekStart(startOfWeek(new Date()))}
-            style={{ padding:"6px 12px", border:"1px solid #e2e8f0", borderRadius:6, background:"#f1f5f9", cursor:"pointer", fontSize:13 }}>Today</button>
-          <label style={{ display:"flex", alignItems:"center", gap:6, fontSize:13, color:"#64748b", cursor:"pointer" }}>
-            <input type="checkbox" checked={includeSat} onChange={e=>setIncludeSat(e.target.checked)} />
-            Saturday
+          <button onClick={()=>setWeekStart(w=>addDays(w,7))}
+            style={{padding:"5px 12px",border:"1px solid #334155",borderRadius:6,background:"#1e293b",color:"#fff",cursor:"pointer",fontWeight:700}}>›</button>
+          <button onClick={()=>setWeekStart(startOfWeek(new Date()))}
+            style={{padding:"5px 12px",border:"1px solid #334155",borderRadius:6,background:"#1e293b",color:"#94a3b8",cursor:"pointer",fontSize:12}}>Today</button>
+          <label style={{display:"flex",alignItems:"center",gap:5,fontSize:12,color:"#94a3b8",cursor:"pointer"}}>
+            <input type="checkbox" checked={includeSat} onChange={e=>setIncludeSat(e.target.checked)}/>Sat
           </label>
         </div>
       </div>
 
-      <div style={{ display:"flex", gap:0 }}>
+      <div style={{display:"flex",flex:1,overflow:"hidden"}}>
 
-        {/* Unscheduled sidebar */}
-        <div style={{ width:200, minWidth:200, background:"#1e293b", padding:12, minHeight:"calc(100vh - 57px)", overflowY:"auto" }}>
-          <div style={{ fontSize:12, fontWeight:700, color:"#94a3b8", marginBottom:8, textTransform:"uppercase", letterSpacing:1 }}>
-            Unscheduled ({unscheduled.length})
+        {/* LEFT SIDEBAR — unscheduled jobs */}
+        <div style={{width:220,minWidth:220,background:"#1e293b",display:"flex",flexDirection:"column",borderRight:"1px solid #334155"}}>
+          <div style={{padding:"10px 12px",borderBottom:"1px solid #334155"}}>
+            <div style={{fontSize:11,fontWeight:700,color:"#64748b",textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>
+              Accepted Jobs ({filteredUnscheduled.length})
+            </div>
+            <input
+              value={search} onChange={e=>setSearch(e.target.value)}
+              placeholder="Search..."
+              style={{width:"100%",padding:"6px 10px",borderRadius:6,border:"1px solid #334155",background:"#0f172a",color:"#e2e8f0",fontSize:12,boxSizing:"border-box"}}
+            />
           </div>
-          {unscheduled.length === 0 && (
-            <div style={{ fontSize:12, color:"#475569", textAlign:"center", marginTop:24 }}>All jobs scheduled ✓</div>
-          )}
-          {unscheduled.map(p => {
-            const quote = p.quotes?.find(q => q.status === "Accepted") || p.quotes?.[0];
-            const days = getDays(quote);
-            return (
-              <div key={p.id}
-                onClick={() => setModal({ type:"assign", project:p, days })}
-                style={{ background:"#334155", borderRadius:8, padding:"8px 10px", marginBottom:8, cursor:"pointer", border:"1px solid #475569" }}
-                onMouseEnter={e=>e.currentTarget.style.background="#3f4f63"}
-                onMouseLeave={e=>e.currentTarget.style.background="#334155"}>
-                <div style={{ fontSize:12, fontWeight:700, color:"#f1f5f9", marginBottom:2 }}>
-                  {p.customers?.name || p.name}
-                </div>
-                <div style={{ fontSize:11, color:"#94a3b8", marginBottom:4 }}>{p.address}</div>
-                <div style={{ display:"flex", justifyContent:"space-between" }}>
-                  <span style={{ fontSize:11, background:"#059669", color:"#fff", borderRadius:4, padding:"1px 6px" }}>
-                    {days}d
-                  </span>
-                  <span style={{ fontSize:11, color:"#10b981" }}>
-                    ${Number(quote?.grand_total||0).toLocaleString()}
-                  </span>
-                </div>
+          <div style={{flex:1,overflowY:"auto",padding:8}}>
+            {loading && <div style={{color:"#475569",fontSize:12,textAlign:"center",padding:16}}>Loading...</div>}
+            {!loading && filteredUnscheduled.length===0 && (
+              <div style={{color:"#475569",fontSize:12,textAlign:"center",padding:16}}>
+                {search ? "No matches" : "All jobs scheduled ✓"}
               </div>
-            );
-          })}
+            )}
+            {filteredUnscheduled.map((p,i) => {
+              const days = getDaysFromQuote(p.quotes);
+              const total = getTotal(p.quotes);
+              const color = JOB_COLORS[scheduledJobs.length+i % JOB_COLORS.length];
+              return (
+                <div key={p.id}
+                  onClick={()=>setModal({type:"assign",project:p})}
+                  style={{background:"#334155",borderRadius:8,padding:"8px 10px",marginBottom:6,cursor:"pointer",borderLeft:`3px solid ${color}`,transition:"background 0.15s"}}
+                  onMouseEnter={e=>e.currentTarget.style.background="#3f5068"}
+                  onMouseLeave={e=>e.currentTarget.style.background="#334155"}>
+                  <div style={{fontSize:12,fontWeight:700,color:"#f1f5f9",marginBottom:2,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
+                    {p.customers?.name||p.name}
+                  </div>
+                  <div style={{fontSize:11,color:"#94a3b8",marginBottom:5,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{p.address}</div>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                    <span style={{fontSize:11,background:"#1e293b",color:"#94a3b8",borderRadius:4,padding:"1px 6px"}}>{days}d</span>
+                    <span style={{fontSize:11,color:"#10b981",fontWeight:700}}>${total.toLocaleString()}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
 
-        {/* Calendar grid */}
-        <div style={{ flex:1, overflowX:"auto" }}>
-          {loading ? (
-            <div style={{ padding:40, textAlign:"center", color:"#94a3b8" }}>Loading...</div>
-          ) : trucks.length === 0 ? (
-            <div style={{ padding:40, textAlign:"center", color:"#94a3b8" }}>
-              No trucks configured. <a href="/settings" style={{ color:"#059669" }}>Add trucks in Settings →</a>
+        {/* CALENDAR GRID */}
+        <div style={{flex:1,overflowX:"auto",overflowY:"auto"}}>
+          {trucks.length===0 && !loading ? (
+            <div style={{padding:40,textAlign:"center",color:"#94a3b8"}}>
+              No trucks configured. <a href="/settings" style={{color:"#059669"}}>Add trucks in Settings →</a>
             </div>
           ) : (
-            <table style={{ width:"100%", borderCollapse:"collapse", minWidth:600 }}>
-              <thead>
+            <table style={{width:"100%",borderCollapse:"collapse",minWidth:500}}>
+              <thead style={{position:"sticky",top:0,zIndex:10}}>
                 <tr>
-                  <th style={{ width:100, padding:"10px 12px", background:"#fff", borderBottom:"2px solid #e2e8f0", borderRight:"1px solid #e2e8f0", fontSize:12, color:"#64748b", textAlign:"left", position:"sticky", left:0, zIndex:3 }}>
-                    Truck
+                  <th style={{width:90,padding:"8px 10px",background:"#fff",borderBottom:"2px solid #e2e8f0",borderRight:"1px solid #e2e8f0",fontSize:11,color:"#64748b",textAlign:"left",position:"sticky",left:0,zIndex:11}}>
+                    TRUCK
                   </th>
-                  {weekDays.map((d, i) => {
-                    const isToday = fmtDate(d) === fmtDate(new Date());
-                    const isSat = d.getDay() === 6;
+                  {weekDays.map((d,i)=>{
+                    const isToday = fmtDate(d)===fmtDate(new Date());
                     return (
-                      <th key={i} style={{
-                        padding:"8px 10px", background: isToday?"#f0fdf4":"#fff",
-                        borderBottom:"2px solid #e2e8f0", borderRight:"1px solid #f1f5f9",
-                        fontSize:12, color: isToday?"#059669":isSat?"#94a3b8":"#374151",
-                        fontWeight: isToday?800:600, textAlign:"center", minWidth:120
-                      }}>
+                      <th key={i} style={{padding:"6px 8px",background:isToday?"#f0fdf4":"#fff",borderBottom:"2px solid #e2e8f0",borderRight:"1px solid #f1f5f9",fontSize:11,color:isToday?"#059669":"#374151",fontWeight:isToday?800:600,textAlign:"center",minWidth:110}}>
                         <div>{DAY_NAMES[d.getDay()]}</div>
-                        <div style={{ fontSize:13, fontWeight:isToday?800:500 }}>{fmtDisplay(d)}</div>
+                        <div style={{fontSize:12}}>{fmtDisplay(d)}</div>
                       </th>
                     );
                   })}
                 </tr>
               </thead>
               <tbody>
-                {trucks.map((truck, ti) => (
+                {trucks.map(truck=>(
                   <tr key={truck.id}>
-                    <td style={{
-                      padding:"10px 12px", background:"#fff", borderBottom:"1px solid #f1f5f9",
-                      borderRight:"1px solid #e2e8f0", position:"sticky", left:0, zIndex:2
-                    }}>
-                      <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                        <div style={{ width:10, height:10, borderRadius:"50%", background:truckColor(ti), flexShrink:0 }}/>
-                        <span style={{ fontSize:13, fontWeight:700, color:"#1e293b" }}>{truck.name}</span>
-                      </div>
+                    <td style={{padding:"8px 10px",background:"#fff",borderBottom:"1px solid #f1f5f9",borderRight:"1px solid #e2e8f0",position:"sticky",left:0,zIndex:2,fontSize:12,fontWeight:700,color:"#1e293b",whiteSpace:"nowrap"}}>
+                      {truck.name}
                     </td>
-                    {weekDays.map((d, di) => {
+                    {weekDays.map((d,di)=>{
                       const dt = fmtDate(d);
-                      const dayJobs = (jobMap[truck.id]?.[dt] || []);
-                      const isToday = dt === fmtDate(new Date());
-                      const isSat = d.getDay() === 6;
+                      const cellJobs = grid[truck.id]?.[dt] || [];
+                      const isToday = dt===fmtDate(new Date());
                       return (
                         <td key={di}
-                          onClick={() => {
-                            // Click empty cell to assign from unscheduled
-                            if (dayJobs.length === 0 && unscheduled.length > 0) {
-                              setModal({ type:"pick", truckId:truck.id, date:d });
-                            }
-                          }}
-                          style={{
-                            padding:4, verticalAlign:"top", minHeight:80, height:80,
-                            background: isToday?"#f0fdf4":isSat?"#f8fafc":"#fff",
-                            borderBottom:"1px solid #f1f5f9", borderRight:"1px solid #f1f5f9",
-                            cursor: dayJobs.length===0 && unscheduled.length>0 ? "pointer":"default",
-                          }}
-                          onMouseEnter={e=>{ if(dayJobs.length===0) e.currentTarget.style.background=isToday?"#dcfce7":"#f0fdf4"; }}
-                          onMouseLeave={e=>{ e.currentTarget.style.background=isToday?"#f0fdf4":isSat?"#f8fafc":"#fff"; }}
-                        >
-                          {dayJobs.map(j => {
-                            const isStart = fmtDate(new Date(j.start_date)) === dt;
-                            if (!isStart) return (
-                              <div key={j.id} style={{ height:28, background:truckColor(ti)+"33", borderRadius:4, margin:2 }}/>
+                          onClick={()=>{ if(cellJobs.length===0) setModal({type:"assign",project:null,truckId:truck.id,date:d}); }}
+                          style={{padding:3,verticalAlign:"top",minHeight:70,background:isToday?"#f0fdf4":"#fff",borderBottom:"1px solid #f1f5f9",borderRight:"1px solid #f1f5f9",cursor:cellJobs.length===0?"pointer":"default"}}
+                          onMouseEnter={e=>{if(cellJobs.length===0)e.currentTarget.style.background=isToday?"#dcfce7":"#f0fdf4";}}
+                          onMouseLeave={e=>{e.currentTarget.style.background=isToday?"#f0fdf4":"#fff";}}>
+                          {cellJobs.map(j=>{
+                            const color = jobColorMap[j.project_id]||"#059669";
+                            if (j._continuation) return (
+                              <div key={j.id+dt} style={{height:24,background:color+"40",borderRadius:3,margin:2,borderLeft:`2px solid ${color}`}}/>
                             );
+                            // Find project info from all loaded data
+                            const allProjects = [...unscheduled];
+                            const proj = allProjects.find(p=>p.id===j.project_id);
                             return (
                               <div key={j.id}
-                                onClick={e => { e.stopPropagation(); setModal({type:"detail", job:j, truckIdx:ti}); }}
-                                style={{
-                                  background:truckColor(ti), color:"#fff", borderRadius:6,
-                                  padding:"4px 7px", margin:2, cursor:"pointer", fontSize:11, fontWeight:600,
-                                  boxShadow:"0 1px 4px rgba(0,0,0,0.15)"
-                                }}
-                                onMouseEnter={e=>{ e.currentTarget.style.opacity="0.85"; e.stopPropagation(); }}
-                                onMouseLeave={e=>{ e.currentTarget.style.opacity="1"; }}>
-                                <div style={{ whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>
-                                  {j.projects?.customers?.name || j.projects?.name || "Job"}
+                                onClick={e=>{e.stopPropagation();setModal({type:"detail",job:j,truck});}}
+                                style={{background:color,color:"#fff",borderRadius:5,padding:"3px 6px",margin:2,cursor:"pointer",fontSize:11,fontWeight:600,boxShadow:"0 1px 3px rgba(0,0,0,0.2)"}}
+                                onMouseEnter={e=>{e.currentTarget.style.opacity="0.85";}}
+                                onMouseLeave={e=>{e.currentTarget.style.opacity="1";}}>
+                                <div style={{whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:100}}>
+                                  {j.customer_name||proj?.customers?.name||"Job"}
                                 </div>
-                                <div style={{ fontSize:10, opacity:0.85 }}>
-                                  {j.duration_days}d · ${Number(j.projects?.quotes?.[0]?.grand_total||0).toLocaleString()}
-                                </div>
+                                <div style={{fontSize:10,opacity:0.85}}>{j.duration_days}d</div>
                               </div>
                             );
                           })}
+                          {cellJobs.length===0 && (
+                            <div style={{height:60,display:"flex",alignItems:"center",justifyContent:"center",opacity:0}}>
+                              <span style={{fontSize:18,color:"#059669"}}>+</span>
+                            </div>
+                          )}
                         </td>
                       );
                     })}
@@ -309,165 +296,178 @@ export default function Schedule() {
         </div>
       </div>
 
-      {/* MODAL: Assign from unscheduled panel to specific truck/date */}
-      {modal?.type === "pick" && (
-        <Modal title={`Schedule for ${fmtDisplay(modal.date)}`} onClose={() => setModal(null)}>
-          <p style={{ fontSize:13, color:"#64748b", marginBottom:12 }}>Pick a job to assign to this day:</p>
-          {unscheduled.map(p => {
-            const quote = p.quotes?.find(q=>q.status==="Accepted")||p.quotes?.[0];
-            const days = getDays(quote);
-            return (
-              <div key={p.id} onClick={() => scheduleJob(p, modal.truckId, modal.date, days)}
-                style={{ padding:"10px 12px", border:"1px solid #e2e8f0", borderRadius:8, marginBottom:8, cursor:"pointer", background:"#f8fafc" }}
-                onMouseEnter={e=>e.currentTarget.style.background="#f0fdf4"}
-                onMouseLeave={e=>e.currentTarget.style.background="#f8fafc"}>
-                <div style={{ fontWeight:700, fontSize:14 }}>{p.customers?.name || p.name}</div>
-                <div style={{ fontSize:12, color:"#64748b" }}>{p.address}</div>
-                <div style={{ fontSize:12, color:"#059669", marginTop:4 }}>{days} day(s) · ${Number(quote?.grand_total||0).toLocaleString()}</div>
-              </div>
-            );
-          })}
-        </Modal>
-      )}
-
-      {/* MODAL: Assign job from sidebar — pick truck + date */}
-      {modal?.type === "assign" && (
+      {/* MODAL: Assign job to truck+date */}
+      {modal?.type==="assign" && (
         <AssignModal
           project={modal.project}
-          days={modal.days}
+          presetTruckId={modal.truckId}
+          presetDate={modal.date}
           trucks={trucks}
-          weekDays={weekDays}
-          truckColor={truckColor}
-          jobMap={jobMap}
-          onAssign={(truckId, date) => scheduleJob(modal.project, truckId, date, modal.days)}
-          onClose={() => setModal(null)}
+          unscheduled={modal.project ? null : filteredUnscheduled}
+          onAssign={scheduleJob}
+          onClose={()=>setModal(null)}
         />
       )}
 
-      {/* MODAL: Job detail / edit / delete */}
-      {modal?.type === "detail" && (
-        <JobDetailModal
+      {/* MODAL: Job detail — edit, move, unschedule */}
+      {modal?.type==="detail" && (
+        <DetailModal
           job={modal.job}
+          truck={modal.truck}
           trucks={trucks}
-          truckColor={truckColor}
-          truckIdx={modal.truckIdx}
-          onMove={(newTruckId, newDate) => { moveJob(modal.job.id, newTruckId, newDate); setModal(null); }}
-          onDelete={() => deleteScheduledJob(modal.job.id, modal.job.project_id)}
-          onClose={() => setModal(null)}
+          color={jobColorMap[modal.job.project_id]||"#059669"}
+          onUpdate={updateJob}
+          onUnschedule={()=>unscheduleJob(modal.job.id)}
+          onClose={()=>setModal(null)}
         />
       )}
     </div>
   );
 }
 
-function Modal({ title, onClose, children }) {
+// ── ASSIGN MODAL ──────────────────────────────────────────────────
+function AssignModal({ project, presetTruckId, presetDate, trucks, unscheduled, onAssign, onClose }) {
+  const [selectedProject, setSelectedProject] = useState(project||null);
+  const [truckId, setTruckId] = useState(presetTruckId||"");
+  const [date, setDate] = useState(presetDate ? fmtDate(presetDate) : "");
+  const [search, setSearch] = useState("");
+
+  const days = selectedProject ? getDaysFromQuote(selectedProject.quotes) : 1;
+  const total = selectedProject ? getTotal(selectedProject.quotes) : 0;
+
   return (
-    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.5)", zIndex:1000, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}
       onClick={onClose}>
-      <div style={{ background:"#fff", borderRadius:12, padding:24, maxWidth:480, width:"100%", maxHeight:"80vh", overflowY:"auto" }}
+      <div style={{background:"#fff",borderRadius:12,padding:24,maxWidth:460,width:"100%",maxHeight:"85vh",overflowY:"auto"}}
         onClick={e=>e.stopPropagation()}>
-        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
-          <h2 style={{ margin:0, fontSize:16, fontWeight:800 }}>{title}</h2>
-          <button onClick={onClose} style={{ border:"none", background:"none", fontSize:20, cursor:"pointer", color:"#94a3b8" }}>✕</button>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+          <h2 style={{margin:0,fontSize:16,fontWeight:800}}>Schedule Job</h2>
+          <button onClick={onClose} style={{border:"none",background:"none",fontSize:20,cursor:"pointer",color:"#94a3b8"}}>✕</button>
         </div>
-        {children}
+
+        {/* If no project pre-selected, show picker */}
+        {!selectedProject && unscheduled && (
+          <div style={{marginBottom:16}}>
+            <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search job..."
+              style={{width:"100%",padding:"8px 12px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:13,marginBottom:8,boxSizing:"border-box"}}/>
+            <div style={{maxHeight:200,overflowY:"auto",border:"1px solid #e2e8f0",borderRadius:8}}>
+              {unscheduled.filter(p=>{
+                const q=search.toLowerCase();
+                return !q||(p.customers?.name||"").toLowerCase().includes(q)||(p.address||"").toLowerCase().includes(q);
+              }).map(p=>(
+                <div key={p.id} onClick={()=>setSelectedProject(p)}
+                  style={{padding:"10px 12px",borderBottom:"1px solid #f1f5f9",cursor:"pointer",fontSize:13}}
+                  onMouseEnter={e=>e.currentTarget.style.background="#f0fdf4"}
+                  onMouseLeave={e=>e.currentTarget.style.background="#fff"}>
+                  <strong>{p.customers?.name||p.name}</strong>
+                  <div style={{fontSize:11,color:"#64748b"}}>{p.address}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {selectedProject && (
+          <div style={{background:"#f0fdf4",border:"1px solid #86efac",borderRadius:8,padding:"10px 12px",marginBottom:16}}>
+            <div style={{fontWeight:700,fontSize:14}}>{selectedProject.customers?.name||selectedProject.name}</div>
+            <div style={{fontSize:12,color:"#64748b"}}>{selectedProject.address}</div>
+            <div style={{fontSize:12,color:"#059669",marginTop:4}}>{days} day(s) · ${total.toLocaleString()}</div>
+            {!project && <button onClick={()=>setSelectedProject(null)} style={{marginTop:6,fontSize:11,color:"#ef4444",background:"none",border:"none",cursor:"pointer",padding:0}}>✕ Change</button>}
+          </div>
+        )}
+
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:20}}>
+          <div>
+            <label style={{fontSize:12,fontWeight:600,display:"block",marginBottom:5}}>Truck</label>
+            <select value={truckId} onChange={e=>setTruckId(e.target.value)}
+              style={{width:"100%",padding:"8px 10px",borderRadius:8,border:"1px solid #e2e8f0",fontSize:13}}>
+              <option value="">Select...</option>
+              {trucks.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={{fontSize:12,fontWeight:600,display:"block",marginBottom:5}}>Start Date</label>
+            <input type="date" value={date} onChange={e=>setDate(e.target.value)}
+              style={{width:"100%",padding:"8px 10px",borderRadius:8,border:"1px solid #e2e8f0",fontSize:13}}/>
+          </div>
+        </div>
+
+        <button
+          onClick={()=>{ if(selectedProject&&truckId&&date) onAssign(selectedProject,truckId,new Date(date+"T12:00:00")); }}
+          disabled={!selectedProject||!truckId||!date}
+          style={{width:"100%",padding:"12px",background:selectedProject&&truckId&&date?"#059669":"#94a3b8",color:"#fff",border:"none",borderRadius:8,fontSize:14,fontWeight:700,cursor:selectedProject&&truckId&&date?"pointer":"not-allowed"}}>
+          ✓ Add to Schedule
+        </button>
       </div>
     </div>
   );
 }
 
-function AssignModal({ project, days, trucks, weekDays, truckColor, jobMap, onAssign, onClose }) {
-  const [selectedTruck, setSelectedTruck] = useState("");
-  const [selectedDate, setSelectedDate] = useState("");
-  const quote = project.quotes?.find(q=>q.status==="Accepted")||project.quotes?.[0];
-
-  return (
-    <Modal title="Schedule Job" onClose={onClose}>
-      <div style={{ marginBottom:12 }}>
-        <div style={{ fontWeight:700, fontSize:15 }}>{project.customers?.name || project.name}</div>
-        <div style={{ fontSize:13, color:"#64748b" }}>{project.address}</div>
-        <div style={{ fontSize:13, color:"#059669", marginTop:4 }}>
-          {days} day(s) · ${Number(quote?.grand_total||0).toLocaleString()}
-        </div>
-      </div>
-
-      <div style={{ marginBottom:14 }}>
-        <label style={{ fontSize:13, fontWeight:600, display:"block", marginBottom:6 }}>Truck</label>
-        <select value={selectedTruck} onChange={e=>setSelectedTruck(e.target.value)}
-          style={{ width:"100%", padding:"8px 10px", borderRadius:8, border:"1px solid #e2e8f0", fontSize:14 }}>
-          <option value="">Select truck...</option>
-          {trucks.map((t,i) => <option key={t.id} value={t.id}>{t.name}</option>)}
-        </select>
-      </div>
-
-      <div style={{ marginBottom:20 }}>
-        <label style={{ fontSize:13, fontWeight:600, display:"block", marginBottom:6 }}>Start Date</label>
-        <input type="date" value={selectedDate} onChange={e=>setSelectedDate(e.target.value)}
-          style={{ width:"100%", padding:"8px 10px", borderRadius:8, border:"1px solid #e2e8f0", fontSize:14 }} />
-      </div>
-
-      <button onClick={() => { if(selectedTruck && selectedDate) onAssign(selectedTruck, new Date(selectedDate+"T12:00:00")); }}
-        disabled={!selectedTruck || !selectedDate}
-        style={{ width:"100%", padding:"12px", background: selectedTruck&&selectedDate?"#059669":"#94a3b8", color:"#fff", border:"none", borderRadius:8, fontSize:14, fontWeight:700, cursor:selectedTruck&&selectedDate?"pointer":"not-allowed" }}>
-        ✓ Schedule Job
-      </button>
-    </Modal>
-  );
-}
-
-function JobDetailModal({ job, trucks, truckColor, truckIdx, onMove, onDelete, onClose }) {
-  const [editTruck, setEditTruck] = useState(job.truck_id);
-  const [editDate, setEditDate] = useState(job.start_date?.slice(0,10));
-  const [editDays, setEditDays] = useState(job.duration_days || 1);
+// ── DETAIL MODAL ──────────────────────────────────────────────────
+function DetailModal({ job, truck, trucks, color, onUpdate, onUnschedule, onClose }) {
+  const [truckId, setTruckId] = useState(job.truck_id);
+  const [date, setDate] = useState(job.start_date?.slice(0,10)||"");
+  const [days, setDays] = useState(job.duration_days||1);
   const [confirmDel, setConfirmDel] = useState(false);
 
   return (
-    <Modal title="Job Details" onClose={onClose}>
-      <div style={{ marginBottom:14 }}>
-        <div style={{ fontWeight:700, fontSize:15 }}>{job.projects?.customers?.name || job.projects?.name}</div>
-        <div style={{ fontSize:13, color:"#64748b" }}>{job.projects?.address}</div>
-        <div style={{ fontSize:13, color:"#059669", marginTop:4 }}>
-          ${Number(job.projects?.quotes?.[0]?.grand_total||0).toLocaleString()}
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}
+      onClick={onClose}>
+      <div style={{background:"#fff",borderRadius:12,padding:24,maxWidth:420,width:"100%"}}
+        onClick={e=>e.stopPropagation()}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+          <h2 style={{margin:0,fontSize:16,fontWeight:800}}>Edit Scheduled Job</h2>
+          <button onClick={onClose} style={{border:"none",background:"none",fontSize:20,cursor:"pointer",color:"#94a3b8"}}>✕</button>
         </div>
-      </div>
 
-      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:14 }}>
-        <div>
-          <label style={{ fontSize:12, fontWeight:600, display:"block", marginBottom:4 }}>Truck</label>
-          <select value={editTruck} onChange={e=>setEditTruck(e.target.value)}
-            style={{ width:"100%", padding:"7px 10px", borderRadius:8, border:"1px solid #e2e8f0", fontSize:13 }}>
-            {trucks.map((t,i) => <option key={t.id} value={t.id}>{t.name}</option>)}
-          </select>
+        <div style={{background:color+"18",borderLeft:`3px solid ${color}`,borderRadius:8,padding:"10px 12px",marginBottom:16}}>
+          <div style={{fontWeight:700,fontSize:14}}>{job.customer_name||"Job"}</div>
+          <div style={{fontSize:12,color:"#64748b"}}>{job.project_address||""}</div>
         </div>
-        <div>
-          <label style={{ fontSize:12, fontWeight:600, display:"block", marginBottom:4 }}>Start Date</label>
-          <input type="date" value={editDate} onChange={e=>setEditDate(e.target.value)}
-            style={{ width:"100%", padding:"7px 10px", borderRadius:8, border:"1px solid #e2e8f0", fontSize:13 }} />
+
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
+          <div>
+            <label style={{fontSize:12,fontWeight:600,display:"block",marginBottom:5}}>Truck</label>
+            <select value={truckId} onChange={e=>setTruckId(e.target.value)}
+              style={{width:"100%",padding:"8px 10px",borderRadius:8,border:"1px solid #e2e8f0",fontSize:13}}>
+              {trucks.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={{fontSize:12,fontWeight:600,display:"block",marginBottom:5}}>Start Date</label>
+            <input type="date" value={date} onChange={e=>setDate(e.target.value)}
+              style={{width:"100%",padding:"8px 10px",borderRadius:8,border:"1px solid #e2e8f0",fontSize:13}}/>
+          </div>
         </div>
-      </div>
 
-      <div style={{ marginBottom:20 }}>
-        <label style={{ fontSize:12, fontWeight:600, display:"block", marginBottom:4 }}>Duration (days)</label>
-        <input type="number" min={1} value={editDays} onChange={e=>setEditDays(Number(e.target.value))}
-          style={{ width:80, padding:"7px 10px", borderRadius:8, border:"1px solid #e2e8f0", fontSize:13 }} />
-      </div>
+        <div style={{marginBottom:20}}>
+          <label style={{fontSize:12,fontWeight:600,display:"block",marginBottom:5}}>Duration (days)</label>
+          <input type="number" min={1} value={days} onChange={e=>setDays(Number(e.target.value))}
+            style={{width:80,padding:"8px 10px",borderRadius:8,border:"1px solid #e2e8f0",fontSize:13}}/>
+        </div>
 
-      <div style={{ display:"flex", gap:10 }}>
-        <button onClick={() => onMove(editTruck, new Date(editDate+"T12:00:00"))}
-          style={{ flex:1, padding:"10px", background:"#059669", color:"#fff", border:"none", borderRadius:8, fontSize:13, fontWeight:700, cursor:"pointer" }}>
-          ✓ Save Changes
+        <div style={{display:"flex",gap:10,marginBottom:10}}>
+          <button onClick={()=>onUpdate(job.id,truckId,date,days)}
+            style={{flex:1,padding:"11px",background:"#059669",color:"#fff",border:"none",borderRadius:8,fontSize:13,fontWeight:700,cursor:"pointer"}}>
+            ✓ Save Changes
+          </button>
+          {!confirmDel
+            ? <button onClick={()=>setConfirmDel(true)}
+                style={{padding:"11px 16px",background:"#fff",color:"#ef4444",border:"1px solid #fca5a5",borderRadius:8,fontSize:13,fontWeight:700,cursor:"pointer"}}>
+                🗑
+              </button>
+            : <button onClick={onUnschedule}
+                style={{padding:"11px 16px",background:"#ef4444",color:"#fff",border:"none",borderRadius:8,fontSize:13,fontWeight:700,cursor:"pointer"}}>
+                Confirm
+              </button>
+          }
+        </div>
+
+        <button onClick={onUnschedule}
+          style={{width:"100%",padding:"10px",background:"#fff",color:"#64748b",border:"1px solid #e2e8f0",borderRadius:8,fontSize:12,fontWeight:600,cursor:"pointer"}}>
+          ↩ Remove from Schedule (return to list)
         </button>
-        {!confirmDel
-          ? <button onClick={()=>setConfirmDel(true)}
-              style={{ padding:"10px 14px", background:"#fff", color:"#ef4444", border:"1px solid #fca5a5", borderRadius:8, fontSize:13, fontWeight:700, cursor:"pointer" }}>
-              🗑
-            </button>
-          : <button onClick={onDelete}
-              style={{ padding:"10px 14px", background:"#ef4444", color:"#fff", border:"none", borderRadius:8, fontSize:13, fontWeight:700, cursor:"pointer" }}>
-              Confirm Delete
-            </button>
-        }
       </div>
-    </Modal>
+    </div>
   );
 }
