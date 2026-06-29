@@ -125,6 +125,7 @@ export default function QuotePricing() {
     if(q?.job_miles)       setJobMiles(String(q.job_miles));
     if(q?.sales_rep_id)    setSelectedRep(q.sales_rep_id);
     if(q?.discount_amount) setDiscount(String(q.discount_amount));
+    if(q?.option_amounts_json){ try{ setOptionAmounts(JSON.parse(q.option_amounts_json)); }catch{} }
 
     // load customer
     if(proj?.lead_id){
@@ -475,6 +476,7 @@ export default function QuotePricing() {
         job_miles: Number(jobMiles||0),
         discount_amount: Number(discount||0),
         labor_roles_json: JSON.stringify(laborRoles),
+        option_amounts_json: JSON.stringify(optionAmounts),
         sales_rep_id: selectedRep||null,
         grand_total: Math.round(finP*100)/100,
         final_price: Math.round(finP*100)/100,
