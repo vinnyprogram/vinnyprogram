@@ -29,6 +29,8 @@ export default function QuotePricing() {
 
   // live-calculated costs (not stale from saved quote)
   const [liveMaterialCost, setLiveMaterialCost] = useState(null);
+  const [optionAmounts, setOptionAmounts] = useState({}); // {optKey: amount}
+  const [areaOptions, setAreaOptions] = useState([]);
   const [liveOverheadCost, setLiveOverheadCost] = useState(null);
 
   // per-job material brand selections
@@ -278,6 +280,17 @@ export default function QuotePricing() {
     let matTotal = 0;
     const lines = [];
     const seenOverride = new Set();
+    // Build options list from areas
+    const areaOptions = (areas||[]).flatMap(a=>{
+      const opts = Array.isArray(a.options)?a.options:(typeof a.options==="string"?JSON.parse(a.options||"[]"):[]);
+      return opts.filter(o=>o.label||o.material).map((o,oi)=>({
+        key:`${a.id}-${oi}`,
+        label:o.label||`Option ${oi+1}`,
+        note:o.note||"",
+        areaType:a.area_type,
+      }));
+    });
+    setAreaOptions(areaOptions);
     (areas||[]).filter(a=>a.area_type&&a.sqft>0).forEach(a=>{
       const floorName = floorNameMap[a.floor_id]||"";
       if(a.price_override&&Number(a.price_override)>0&&seenOverride.has(a.id)) return;
@@ -556,6 +569,29 @@ export default function QuotePricing() {
             <span style={{color:C.green}}>${fmt(materialCost)}</span>
           </div>
         </div>
+
+        {/* ── OPTIONS ── */}
+        {areaOptions.length>0&&(
+          <div style={CARD}>
+            <div style={SEC}><span>⚡ Options</span><span style={{fontSize:9,color:C.faint}}>Set extra amount per option</span></div>
+            {areaOptions.map((opt,i)=>(
+              <div key={opt.key} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 0",borderBottom:i<areaOptions.length-1?`1px solid ${C.border}`:"none"}}>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:12,fontWeight:700,color:C.ink}}>{opt.label}</div>
+                  {opt.note&&<div style={{fontSize:10,color:C.faint}}>{opt.note}</div>}
+                  <div style={{fontSize:10,color:C.faint}}>{opt.areaType}</div>
+                </div>
+                <div style={{display:"flex",alignItems:"center",gap:4}}>
+                  <span style={{fontSize:12,color:C.faint}}>$</span>
+                  <input type="number" min="0" placeholder="0"
+                    value={optionAmounts[opt.key]||""}
+                    onChange={e=>setOptionAmounts(p=>({...p,[opt.key]:e.target.value}))}
+                    style={{width:80,padding:"4px 6px",border:`1px solid ${C.border}`,borderRadius:6,fontSize:12,textAlign:"right"}}/>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* ── 2. OVERHEAD & BUSINESS COSTS ── */}
         <div style={CARD}>

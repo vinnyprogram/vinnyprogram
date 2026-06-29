@@ -790,20 +790,13 @@ function useCalcResult(field) {
                   <button onClick={()=>onChange("options",areaOptions.filter((_,j)=>j!==oi))} style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:12,padding:0}}>✕</button>
                 </div>
               </div>
-              {/* Option label and type */}
-              <div style={{display:"flex",gap:4,marginBottom:4}}>
-                <input placeholder="Option label (e.g. Spray roofline instead)"
-                  value={opt.label||""} onChange={e=>updateOpt("label",e.target.value)}
-                  style={{...XS,flex:3,fontSize:11}}/>
-                <select value={opt.type||"addon"} onChange={e=>updateOpt("type",e.target.value)}
-                  style={{...XS,flex:1,fontSize:11,background:opt.type==="swap"?"#fef2f2":"#f0fdf4",color:opt.type==="swap"?"#dc2626":"#059669",fontWeight:700}}>
-                  <option value="addon">+ Add-on</option>
-                  <option value="swap">⇄ Swap</option>
-                </select>
-              </div>
-              <input placeholder="Description for customer (optional)"
-                value={opt.description||""} onChange={e=>updateOpt("description",e.target.value)}
-                style={{...XS,width:"100%",fontSize:11,marginBottom:4}}/>
+              {/* Option label and crew note */}
+              <input placeholder="Option label (e.g. Spray roofline instead of exterior wall)"
+                value={opt.label||""} onChange={e=>updateOpt("label",e.target.value)}
+                style={{...XS,width:"100%",fontSize:11,marginBottom:4,fontWeight:600}}/>
+              <input placeholder="📝 Crew note (optional — e.g. use 2lb foam, access from attic)"
+                value={opt.note||""} onChange={e=>updateOpt("note",e.target.value)}
+                style={{...XS,width:"100%",fontSize:11,marginBottom:4,color:"#64748b"}}/>
               {!isOptCombo?(
                 <div style={{display:"flex",gap:4,marginBottom:4}}>
                   <select style={{...XS,flex:3}} value={opt.material||""} onChange={e=>{
@@ -840,25 +833,12 @@ function useCalcResult(field) {
                   <button onClick={()=>{const lines=[...optLines,{id:Date.now(),material:"",thickness_in:matLines[0].thickness_in||"",r_value:matLines[0].r_value||"",oc:""}];const opts=[...areaOptions];opts[oi]={...opts[oi],mat_lines:lines};onChange("options",opts);}} style={{width:"100%",padding:"5px",borderRadius:5,border:"1px dashed #fde68a",background:"none",color:"#92400e",cursor:"pointer",fontSize:10,fontWeight:600,height:"auto"}}>+ Add material to combo</button>
                 </div>
               )}
-              {/* Extra amount adjustment */}
-              <div style={{display:"flex",gap:4,alignItems:"center",marginTop:4,paddingTop:4,borderTop:"1px dashed #fed7aa"}}>
-                <span style={{fontSize:10,color:"#92400e",fontWeight:700,whiteSpace:"nowrap"}}>
-                  {opt.type==="swap"?"💱 Price difference:":"💰 Extra amount:"}
-                </span>
-                <div style={{display:"flex",alignItems:"center",gap:2,flex:1}}>
-                  <span style={{fontSize:12,color:opt.type==="swap"?"#dc2626":"#059669",fontWeight:700}}>
-                    {opt.type==="swap"?"-":"+"}$
-                  </span>
-                  <input type="number" min="0" placeholder="0"
-                    value={opt.extra_amount||""} onChange={e=>updateOpt("extra_amount",e.target.value)}
-                    style={{...XS,width:80,textAlign:"right",fontSize:12}}/>
-                </div>
-              </div>
+
             </div>
           );
         })}
         {areaOptions.length<3&&(
-          <button onClick={()=>{const opts=[...areaOptions];opts.push({material:"",thickness_in:matLines[0].thickness_in||"",r_value:matLines[0].r_value||"",mat_lines:[],label:"",type:"addon",description:"",extra_amount:""});onChange("options",opts);}}
+          <button onClick={()=>{const opts=[...areaOptions];opts.push({material:"",thickness_in:matLines[0].thickness_in||"",r_value:matLines[0].r_value||"",mat_lines:[],label:"",note:"",extra_amount:""});onChange("options",opts);}}
             style={{width:"100%",padding:"5px",borderRadius:6,border:"1px dashed #fed7aa",background:"#fff7ed",color:"#92400e",cursor:"pointer",fontSize:11,fontWeight:600,marginBottom:4,height:"auto"}}>
             + Add Option
           </button>
