@@ -164,7 +164,6 @@ export default function CRM() {
   const [loading, setLoading] = useState(false);
   const [activities, setActivities] = useState([]);
   const [activityInput, setActivityInput] = useState("");
-  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const [search, setSearch] = useState("");
   const [showAddForm, setShowAddForm] = useState(false);
   const [form, setForm] = useState({
@@ -260,22 +259,6 @@ export default function CRM() {
     setLoading(false);
     if(error){ console.error(error); return; }
     setSelectedCustomer(null);
-  }
-
-  async function deleteCustomer(id) {
-    // Check for existing projects before deleting
-    const { data: projCheck } = await supabase.from("projects").select("id,address").eq("lead_id", id).limit(5);
-    if (projCheck?.length > 0) {
-      const addrs = projCheck.map(p=>p.address||"(no address)").join("\n• ");
-      const proceed = window.confirm(
-        `⚠️ This customer has ${projCheck.length} estimate(s):\n• ${addrs}\n\nDeleting the customer will NOT delete their estimates (they stay in the system).\n\nAre you sure you want to delete this customer?`
-      );
-      if (!proceed) return;
-    }
-    setCustomers(p=>p.filter(c=>c.id!==id));
-    setConfirmDeleteId(null);
-    if(selectedCustomer?.id===id) setSelectedCustomer(null);
-    await supabase.from("customers").delete().eq("id",id);
   }
 
   async function onDragEnd(result) {
@@ -492,7 +475,7 @@ export default function CRM() {
                               </button>
                               <button
                                 onClick={e=>{ e.stopPropagation();
-                                  setConfirmDeleteId(customer.id); }}
+                                  void(0); }}
                                 style={{border:"none",background:"none",cursor:"pointer",
                                   fontSize:16,color:"#ccc",padding:"2px 4px",borderRadius:6}}
                                 onMouseEnter={e=>e.currentTarget.style.color="#ef4444"}
