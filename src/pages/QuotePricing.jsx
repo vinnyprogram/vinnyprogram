@@ -598,12 +598,13 @@ export default function QuotePricing() {
               const extraAmt=Number(optionAmounts[opt.id]||0);
               const totalOpt=matCostOpt+extraAmt;
               const floorName=opt._floorName||"";
+              const optMls=(opt.mat_lines&&opt.mat_lines.length>0)?opt.mat_lines:[{material:opt.material||"",thickness_in:opt.thickness_in||"",r_value:opt.r_value||""}];
               return (
                 <div key={opt.id} style={{padding:"8px 0",borderBottom:i<areaOptions.length-1?`1px dashed ${C.border}`:"none"}}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6}}>
                     <div style={{flex:1}}>
                       <div style={{fontSize:12,fontWeight:700,color:C.ink}}>{floorName} — {opt.area_type}</div>
-                      <div style={{fontSize:10,color:C.muted}}>{mls.map(ml=>[ml.thickness_in,ml.material,ml.r_value].filter(Boolean).join(" ")).join(" + ")} · {fmt(opt.sqft)} ft²</div>
+                      <div style={{fontSize:10,color:C.muted}}>{optMls.map(ml=>[ml.thickness_in,ml.material,ml.r_value].filter(Boolean).join(" ")).join(" + ")} · {fmt(opt.sqft)} ft²</div>
                     {opt.optional_note&&<div style={{fontSize:10,color:"#92400e",fontStyle:"italic",marginTop:2}}>📝 {opt.optional_note}</div>}
                     </div>
                     <span style={{fontWeight:700,color:"#f59e0b",fontSize:12}}>${fmt(matCostOpt)}</span>
