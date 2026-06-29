@@ -790,6 +790,20 @@ function useCalcResult(field) {
                   <button onClick={()=>onChange("options",areaOptions.filter((_,j)=>j!==oi))} style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:12,padding:0}}>✕</button>
                 </div>
               </div>
+              {/* Option label and type */}
+              <div style={{display:"flex",gap:4,marginBottom:4}}>
+                <input placeholder="Option label (e.g. Spray roofline instead)"
+                  value={opt.label||""} onChange={e=>updateOpt("label",e.target.value)}
+                  style={{...XS,flex:3,fontSize:11}}/>
+                <select value={opt.type||"addon"} onChange={e=>updateOpt("type",e.target.value)}
+                  style={{...XS,flex:1,fontSize:11,background:opt.type==="swap"?"#fef2f2":"#f0fdf4",color:opt.type==="swap"?"#dc2626":"#059669",fontWeight:700}}>
+                  <option value="addon">+ Add-on</option>
+                  <option value="swap">⇄ Swap</option>
+                </select>
+              </div>
+              <input placeholder="Description for customer (optional)"
+                value={opt.description||""} onChange={e=>updateOpt("description",e.target.value)}
+                style={{...XS,width:"100%",fontSize:11,marginBottom:4}}/>
               {!isOptCombo?(
                 <div style={{display:"flex",gap:4,marginBottom:4}}>
                   <select style={{...XS,flex:3}} value={opt.material||""} onChange={e=>{
@@ -826,11 +840,25 @@ function useCalcResult(field) {
                   <button onClick={()=>{const lines=[...optLines,{id:Date.now(),material:"",thickness_in:matLines[0].thickness_in||"",r_value:matLines[0].r_value||"",oc:""}];const opts=[...areaOptions];opts[oi]={...opts[oi],mat_lines:lines};onChange("options",opts);}} style={{width:"100%",padding:"5px",borderRadius:5,border:"1px dashed #fde68a",background:"none",color:"#92400e",cursor:"pointer",fontSize:10,fontWeight:600,height:"auto"}}>+ Add material to combo</button>
                 </div>
               )}
+              {/* Extra amount adjustment */}
+              <div style={{display:"flex",gap:4,alignItems:"center",marginTop:4,paddingTop:4,borderTop:"1px dashed #fed7aa"}}>
+                <span style={{fontSize:10,color:"#92400e",fontWeight:700,whiteSpace:"nowrap"}}>
+                  {opt.type==="swap"?"💱 Price difference:":"💰 Extra amount:"}
+                </span>
+                <div style={{display:"flex",alignItems:"center",gap:2,flex:1}}>
+                  <span style={{fontSize:12,color:opt.type==="swap"?"#dc2626":"#059669",fontWeight:700}}>
+                    {opt.type==="swap"?"-":"+"}$
+                  </span>
+                  <input type="number" min="0" placeholder="0"
+                    value={opt.extra_amount||""} onChange={e=>updateOpt("extra_amount",e.target.value)}
+                    style={{...XS,width:80,textAlign:"right",fontSize:12}}/>
+                </div>
+              </div>
             </div>
           );
         })}
         {areaOptions.length<3&&(
-          <button onClick={()=>{const opts=[...areaOptions];opts.push({material:"",thickness_in:matLines[0].thickness_in||"",r_value:matLines[0].r_value||"",mat_lines:[]});onChange("options",opts);}}
+          <button onClick={()=>{const opts=[...areaOptions];opts.push({material:"",thickness_in:matLines[0].thickness_in||"",r_value:matLines[0].r_value||"",mat_lines:[],label:"",type:"addon",description:"",extra_amount:""});onChange("options",opts);}}
             style={{width:"100%",padding:"5px",borderRadius:6,border:"1px dashed #fed7aa",background:"#fff7ed",color:"#92400e",cursor:"pointer",fontSize:11,fontWeight:600,marginBottom:4,height:"auto"}}>
             + Add Option
           </button>
@@ -1058,19 +1086,25 @@ function EstimatePanel({ floors, areas, materialMap, variantMap, crewNotes, proj
         </>);
       })()}
       {(()=>{
+        // Collect all options from all areas
+        const allOptionsWithArea = floors.flatMap(floor=>
+          (areas[floor]||[]).filter(a=>a.area_type&&a.sqft).flatMap(a=>
+            (a.options||[]).filter(o=>o.material||o.label).map(o=>({...o, area, areaType:a.area_type, floor, areaSqft:a.sqft, areaMat:a.mat_lines||[{material:a.material,thickness_in:a.thickness_in,r_value:a.r_value}]}))
+          )
+        );
         const optionalAreas=floors.flatMap(floor=>(areas[floor]||[]).filter(a=>a.area_type&&a.sqft&&a.material!=="__custom_mat__"&&a.is_optional).map(a=>({...a,floor})));
-        if(!optionalAreas.length) return null;
+        if(!optionalAreas.length && !allOptionsWithArea.length) return null;
         return (
           <div style={{marginTop:4,marginBottom:8,paddingTop:8,borderTop:`1px dashed ${C.border}`}}>
             <div style={{fontSize:10,fontWeight:800,color:"#f59e0b",textTransform:"uppercase",letterSpacing:0.4,marginBottom:6}}>
-              ⭐ Optional Add-ons
+              ⭐ Options
             </div>
             {optionalAreas.map((a,i)=>{
               const cost=getAreaTotalCost(a,materialMap,variantMap);
               const mls=(a.mat_lines&&a.mat_lines.length>0)?a.mat_lines:[{material:a.material||"",thickness_in:a.thickness_in||"",r_value:a.r_value||""}];
               const matLabel=mls.map(ml=>[ml.thickness_in,ml.material,ml.r_value].filter(Boolean).join(" ")).join(" + ");
               return (
-                <div key={i} style={{paddingBottom:5,marginBottom:5,borderBottom:i<optionalAreas.length-1?`1px solid ${C.chip}`:"none"}}>
+                <div key={i} style={{paddingBottom:5,marginBottom:5,borderBottom:`1px solid ${C.chip}`}}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
                     <div style={{flex:1,paddingRight:4,lineHeight:1.5}}>
                       <div style={{fontWeight:700,fontSize:12,color:C.ink}}>{a.floor.replace(" Floor","")} — {a.area_type}</div>
@@ -1078,6 +1112,29 @@ function EstimatePanel({ floors, areas, materialMap, variantMap, crewNotes, proj
                     </div>
                     {cost>0&&<span style={{fontWeight:700,color:"#f59e0b",fontSize:12,flexShrink:0,paddingTop:2}}>+${fmt(cost)}</span>}
                   </div>
+                  {/* Show area options */}
+                  {(a.options||[]).filter(o=>o.material||o.label).map((o,oi)=>{
+                    const optMls=(o.mat_lines||[]).length>0?o.mat_lines:[{material:o.material||"",thickness_in:o.thickness_in||"",r_value:o.r_value||""}];
+                    const optMatLabel=optMls.map(ml=>[ml.thickness_in,ml.material,ml.r_value].filter(Boolean).join(" ")).join(" + ");
+                    const isSwap=o.type==="swap";
+                    const extraAmt=Number(o.extra_amount||0);
+                    return (
+                      <div key={oi} style={{marginTop:4,paddingTop:4,paddingLeft:8,borderLeft:"2px solid #fed7aa"}}>
+                        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+                          <div style={{flex:1,paddingRight:4}}>
+                            <div style={{fontSize:11,fontWeight:700,color:isSwap?"#dc2626":"#059669"}}>
+                              {isSwap?"⇄":"+"} Option {oi+1}{o.label?`: ${o.label}`:""}
+                            </div>
+                            {optMatLabel&&<div style={{fontSize:10,color:C.muted}}>{optMatLabel}</div>}
+                            {o.description&&<div style={{fontSize:10,color:C.muted,fontStyle:"italic"}}>{o.description}</div>}
+                          </div>
+                          {extraAmt>0&&<span style={{fontWeight:700,fontSize:11,color:isSwap?"#dc2626":"#059669",flexShrink:0}}>
+                            {isSwap?"-":"+"}${fmt(extraAmt)}
+                          </span>}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               );
             })}
