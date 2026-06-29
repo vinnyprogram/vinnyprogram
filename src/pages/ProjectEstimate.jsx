@@ -1507,7 +1507,7 @@ export default function ProjectEstimate() {
       const l=leads.find(l=>String(l.id)===String(leadId));
       if(l){
         setSelectedLeadId(String(l.id)); setProjectName(l.name||"");
-        if(!resumeMode&&!addressParam&&!draftRestored) setProjectAddress(l.address||"");
+        // Never copy customer address to job address — job site is different
       }
     }
   },[leadId,leads]);
