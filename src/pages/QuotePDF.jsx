@@ -139,51 +139,60 @@ export default function QuotePDF() {
     setOptions(p=>p.filter((_,j)=>j!==i));
   }
 
-  // group areas by floor then by area_type+material
+  // group areas by area_type+material across ALL floors (like estimate panel)
   function groupedScope() {
-    const byFloor = {};
-    floors.forEach(f=>{ byFloor[f.name] = []; });
-    areas.forEach(a=>{
+    const typeMap = {};
+    // Only primary rows, exclude optional areas
+    areas.filter(a=>a.area_type&&a.sqft>0&&!a.is_optional&&((a.order_index%10===0)||(a.order_index===0))).forEach(a=>{
       const fl = floors.find(f=>f.id===a.floor_id);
-      if(fl) byFloor[fl.name] = [...(byFloor[fl.name]||[]), a];
+      const flName = fl?.name||"";
+      const key = `${a.area_type}|${a.material}|${a.r_value||""}`;
+      if(!typeMap[key]) typeMap[key]={
+        area_type:a.area_type, material:a.material, r_value:a.r_value||"",
+        thickness_in:a.thickness_in||"", areas:[], floorNames:[],
+        totalSqft:0, totalCost:0, totalPaintSqft:0, phase:a.phase||null,
+      };
+      typeMap[key].areas.push(a);
+      if(!typeMap[key].floorNames.includes(flName)) typeMap[key].floorNames.push(flName);
+      typeMap[key].totalSqft += a.sqft||0;
+      typeMap[key].totalCost += a.line_total||0;
+      typeMap[key].totalPaintSqft += Number(a.paint_sqft||0);
+      if(a.phase) typeMap[key].phase = a.phase;
     });
+    return Object.values(typeMap);
+  }
 
-    // group by area_type within floor, carry phase through
-    const result = [];
-    Object.entries(byFloor).forEach(([floorName, farr])=>{
-      if(!farr.length) return;
-      const typeMap = {};
-      farr.forEach(a=>{
-        if(!typeMap[a.area_type]) typeMap[a.area_type]={
-          area_type:a.area_type, material:a.material, floor:floorName,
-          areas:[], totalSqft:0, totalCost:0, totalPaintSqft:0,
-          phase: a.phase||null,
-        };
-        typeMap[a.area_type].areas.push(a);
-        typeMap[a.area_type].totalSqft += a.sqft||0;
-        typeMap[a.area_type].totalCost += a.line_total||0;
-        typeMap[a.area_type].totalPaintSqft += Number(a.paint_sqft||0);
-        // If any area in the type has a phase, mark the group with it
-        if(a.phase) typeMap[a.area_type].phase = a.phase;
-      });
-      Object.values(typeMap).forEach(g=>result.push(g));
+  // group optional areas the same way
+  function groupedOptions() {
+    const typeMap = {};
+    areas.filter(a=>a.area_type&&a.sqft>0&&a.is_optional&&((a.order_index%10===0)||(a.order_index===0))).forEach(a=>{
+      const fl = floors.find(f=>f.id===a.floor_id);
+      const flName = fl?.name||"";
+      const key = `${a.area_type}|${a.material}|${a.r_value||""}`;
+      if(!typeMap[key]) typeMap[key]={
+        area_type:a.area_type, material:a.material, r_value:a.r_value||"",
+        thickness_in:a.thickness_in||"", areas:[], floorNames:[],
+        totalSqft:0, totalCost:0, optional_note:a.optional_note||"",
+      };
+      typeMap[key].areas.push(a);
+      if(!typeMap[key].floorNames.includes(flName)) typeMap[key].floorNames.push(flName);
+      typeMap[key].totalSqft += a.sqft||0;
+      typeMap[key].totalCost += a.line_total||0;
+      if(a.optional_note) typeMap[key].optional_note = a.optional_note;
     });
-    return result;
+    return Object.values(typeMap);
   }
 
   // build description for each group
   function buildDescription(group) {
-    const floorNames = [...new Set(group.areas.map(a=>{
+    const floorNames = group.floorNames || [...new Set(group.areas.map(a=>{
       const fl = floors.find(f=>f.id===a.floor_id);
       return fl?.name||"";
     }))];
-    const mat = group.areas[0];
-    const thick = mat?.thickness_in||"";
-    const rval  = mat?.r_value||"";
-    const desc  = `${thick ? thick+' ' : ''}${mat?.material||''}${rval ? ' ('+rval+')' : ''}`;
-    const floorList = floorNames.map(f=>
-      `- ${f} ${group.area_type}`
-    ).join('\n');
+    const thick = group.thickness_in||group.areas[0]?.thickness_in||"";
+    const rval  = group.r_value||group.areas[0]?.r_value||"";
+    const desc  = `${thick ? thick+' ' : ''}${group.material||''}${rval ? ' ('+rval+')' : ''}`;
+    const floorList = floorNames.map(f=>`- ${f} ${group.area_type}`).join('\n');
     const paintLine = group.totalPaintSqft>0
       ? `\n🎨 Intumescent paint: ${group.totalPaintSqft} ft²`
       : "";
@@ -205,6 +214,7 @@ export default function QuotePDF() {
 
   const quoteNum = quote?.id ? String(quote.id).padStart(4,"0") : String(projectId).padStart(4,"0");
   const scope = groupedScope();
+  const optScope = groupedOptions();
   // Use the authoritative grand_total saved when the costing sheet was
   // generated — it includes live material pricing, labor, overhead,
   // consumables, fuel, commission, and discount. Summing stale area
@@ -403,24 +413,24 @@ export default function QuotePDF() {
                 return rows;
               })()}
 
-              {/* optional items */}
-              {options.map((o,i)=>(
-                <tr key={"opt"+i} style={{borderBottom:"1px solid #e2e8f0",
-                    background:"#fafbfc"}}>
-                  <td style={{padding:"12px",fontSize:12,fontWeight:600,
-                      color:"#64748b",verticalAlign:"top"}}>
-                    <div style={{fontSize:10,color:"#94a3b8",
-                        fontWeight:400,marginBottom:2}}>Not included</div>
-                    {o.label}
+              {/* optional areas as options */}
+              {optScope.length>0&&(
+                <tr style={{background:"#fffbeb"}}>
+                  <td colSpan={2} style={{padding:"8px 12px",fontSize:11,fontWeight:800,color:"#92400e",textTransform:"uppercase",letterSpacing:0.5}}>
+                    ⭐ Options (Customer Choice)
                   </td>
-                  <td style={{padding:"12px",fontSize:12,color:"#374151",
-                      lineHeight:1.7,verticalAlign:"top"}}>
-                    {o.description}
-                    {o.price && (
-                      <div style={{marginTop:4,fontWeight:700,color:"#374151"}}>
-                        EXTRA ${o.price}
-                      </div>
-                    )}
+                </tr>
+              )}
+              {optScope.map((g,i)=>(
+                <tr key={"opt"+i} style={{borderBottom:"1px solid #fde68a",background:"#fffbeb"}}>
+                  <td style={{padding:"12px",fontSize:12,fontWeight:700,color:"#92400e",verticalAlign:"top"}}>
+                    <div style={{fontSize:10,fontWeight:400,color:"#b45309",marginBottom:2}}>Optional</div>
+                    {g.floorNames.join(", ")} — {g.area_type}
+                  </td>
+                  <td style={{padding:"12px",fontSize:12,color:"#374151",lineHeight:1.7,verticalAlign:"top"}}>
+                    <div>{g.thickness_in?g.thickness_in+" ":""}{g.material}{g.r_value?" ("+g.r_value+")":""} · {g.totalSqft} ft²</div>
+                    {g.optional_note&&<div style={{marginTop:4,fontSize:11,color:"#92400e",fontStyle:"italic"}}>📝 {g.optional_note}</div>}
+                    {g.totalCost>0&&<div style={{marginTop:4,fontWeight:700,color:"#059669"}}>+ ${g.totalCost.toFixed(2)}</div>}
                   </td>
                 </tr>
               ))}
