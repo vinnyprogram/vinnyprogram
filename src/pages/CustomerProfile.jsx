@@ -17,6 +17,7 @@ const PIPELINE_COLORS = {
   "Accepted":       { bg:"#dcfce7", text:"#059669" },
   "Job Scheduled":  { bg:"#ccfbf1", text:"#0d9488" },
   "Completed":      { bg:"#f0fdf4", text:"#15803d" },
+  "Superseded":     { bg:"#f1f5f9", text:"#94a3b8" },
 };
 function fmtDate(d) {
   return new Date(d||Date.now()).toLocaleDateString("en-US",
@@ -503,14 +504,7 @@ export default function CustomerProfile() {
                           onChange={async(e)=>{
                             e.stopPropagation();
                             const newStatus = e.target.value;
-                            // If marking Accepted, mark other versions Superseded
-                            if(newStatus==="Accepted"){
-                              for(const j2 of activeGroup.jobs){
-                                if(j2.id!==job.id && (j2.pipeline_status||"Draft")!=="Superseded"){
-                                  await supabase.from("projects").update({pipeline_status:"Superseded"}).eq("id",j2.id);
-                                }
-                              }
-                            }
+                            // Just update this version's status — user manages others manually
                             await supabase.from("projects").update({pipeline_status:newStatus}).eq("id",job.id);
                             load();
                           }}
