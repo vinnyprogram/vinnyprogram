@@ -845,6 +845,19 @@ function useCalcResult(field) {
         )}
       </div>
 
+      {/* Optional note — only shown when area is marked optional */}
+      {area.is_optional && (
+        <div style={{padding:"0 10px 8px"}}>
+          <input
+            value={area.optional_note||""}
+            onChange={e=>onChange("optional_note",e.target.value)}
+            placeholder="📝 Note for this option (e.g. instead of spray roofline, do below)"
+            style={{width:"100%",padding:"5px 8px",borderRadius:6,border:"1px solid #fde68a",
+              background:"#fffbeb",color:"#92400e",fontSize:11,boxSizing:"border-box"}}
+          />
+        </div>
+      )}
+
       {/* measurements */}
       <div style={{ borderTop:`1px solid ${C.border}`, paddingTop:4, marginTop:2, position:"relative" }}>
   {calcOpen && (
@@ -1491,7 +1504,7 @@ export default function ProjectEstimate() {
         // If no segments saved (legacy bug), synthesize one so sqft/chips display
         const measurements=rawSegs.length>0?rawSegs:(a.sqft>0?[{h:a.sqft,l:1,q:1,sqft:a.sqft}]:[]);
         const mat_lines=[{id:1,material:a.material||"",thickness_in:a.thickness_in||"",r_value:a.r_value||"",oc:a.oc||""},...combos.map((s,i)=>({id:i+2,material:s.material||"",thickness_in:s.thickness_in||"",r_value:s.r_value||"",oc:s.oc||""}))];
-        const areaCard={temp_id:a.id,floor:fl.name,area_type:a.area_type,material:combos.length>0?"__combo__":(a.material||""),thickness_in:a.thickness_in||"",r_value:a.r_value||"",oc:a.oc||"",sqft:a.sqft||0,measurements,mh:"",ml:"",mq:"1",deduct_sqft:a.deduct_sqft||"",paint_sqft:a.paint_sqft||"",price_override:a.price_override||"",phase:a.phase||null,_collapsed:true,options:Array.isArray(a.options)?a.options:(typeof a.options==="string"?JSON.parse(a.options||"[]"):[]),mat_lines,is_optional:a.is_optional||false};
+        const areaCard={temp_id:a.id,floor:fl.name,area_type:a.area_type,material:combos.length>0?"__combo__":(a.material||""),thickness_in:a.thickness_in||"",r_value:a.r_value||"",oc:a.oc||"",sqft:a.sqft||0,measurements,mh:"",ml:"",mq:"1",deduct_sqft:a.deduct_sqft||"",paint_sqft:a.paint_sqft||"",price_override:a.price_override||"",phase:a.phase||null,_collapsed:true,options:Array.isArray(a.options)?a.options:(typeof a.options==="string"?JSON.parse(a.options||"[]"):[]),mat_lines,is_optional:a.is_optional||false,optional_note:a.optional_note||""};
         if(newAreas[fl.name]) newAreas[fl.name].push(areaCard);
       });
       setAreas(newAreas);
@@ -1839,7 +1852,7 @@ export default function ProjectEstimate() {
         return mls.map((ml,mi)=>{
           const mat=materialMap[ml.material];
           const {qty,unit,unit_price,line_total}=calcAreaForSave(a,ml,mi,mat,variantMap);
-          return {project_id:targetProjectId,floor_id:floorMap[floor],area_type:a.area_type,material:ml.material,thickness_in:ml.thickness_in||null,r_value:ml.r_value,sqft:a.sqft,qty,unit,unit_price,line_total,order_index:i*10+mi,company_id:companyId,options:mi===0?(a.options||[]):[],paint_sqft:mi===0?Number(a.paint_sqft||0):0,deduct_sqft:mi===0?Number(a.deduct_sqft||0):0,price_override:mi===0?(a.price_override||null):null,phase:mi===0?(a.phase||null):null,is_optional:mi===0?(a.is_optional||false):false};
+          return {project_id:targetProjectId,floor_id:floorMap[floor],area_type:a.area_type,material:ml.material,thickness_in:ml.thickness_in||null,r_value:ml.r_value,sqft:a.sqft,qty,unit,unit_price,line_total,order_index:i*10+mi,company_id:companyId,options:mi===0?(a.options||[]):[],paint_sqft:mi===0?Number(a.paint_sqft||0):0,deduct_sqft:mi===0?Number(a.deduct_sqft||0):0,price_override:mi===0?(a.price_override||null):null,phase:mi===0?(a.phase||null):null,is_optional:mi===0?(a.is_optional||false):false,optional_note:mi===0?(a.optional_note||""):""};
         });
       }));
       if(allAreas.length>0){
@@ -1880,7 +1893,7 @@ export default function ProjectEstimate() {
       const allAreas=floors.flatMap(floor=>(committedAreas[floor]||[]).filter(a=>a.area_type&&(a.sqft>0||a.measurements?.length>0)).flatMap((a)=>{
         const i=_newAreaIdx++;
         const mls=(a.mat_lines&&a.mat_lines.length>0)?a.mat_lines:[{material:a.material||"",thickness_in:a.thickness_in||"",r_value:a.r_value||"",oc:a.oc||""}];
-        return mls.map((ml,mi)=>{const mat=materialMap[ml.material];const {qty,unit,unit_price,line_total}=calcAreaForSave(a,ml,mi,mat,variantMap);return {project_id:proj.id,floor_id:floorMap[floor],area_type:a.area_type,material:ml.material,thickness_in:ml.thickness_in||null,r_value:ml.r_value,sqft:a.sqft,qty,unit,unit_price,line_total,order_index:i*10+mi,company_id:companyId,options:mi===0?(a.options||[]):[],paint_sqft:mi===0?Number(a.paint_sqft||0):0,deduct_sqft:mi===0?Number(a.deduct_sqft||0):0,price_override:mi===0?(a.price_override||null):null,phase:mi===0?(a.phase||null):null,is_optional:mi===0?(a.is_optional||false):false}; });
+        return mls.map((ml,mi)=>{const mat=materialMap[ml.material];const {qty,unit,unit_price,line_total}=calcAreaForSave(a,ml,mi,mat,variantMap);return {project_id:proj.id,floor_id:floorMap[floor],area_type:a.area_type,material:ml.material,thickness_in:ml.thickness_in||null,r_value:ml.r_value,sqft:a.sqft,qty,unit,unit_price,line_total,order_index:i*10+mi,company_id:companyId,options:mi===0?(a.options||[]):[],paint_sqft:mi===0?Number(a.paint_sqft||0):0,deduct_sqft:mi===0?Number(a.deduct_sqft||0):0,price_override:mi===0?(a.price_override||null):null,phase:mi===0?(a.phase||null):null,is_optional:mi===0?(a.is_optional||false):false,optional_note:mi===0?(a.optional_note||""):""}; });
       }));
       if(allAreas.length>0){
         const {data:areaRows,error:ae}=await supabase.from("areas").insert(allAreas).select();
