@@ -296,10 +296,15 @@ export default function QuotePricing() {
     let matTotal = 0;
     const lines = [];
     const seenOverride = new Set();
-    // Build options from is_optional areas (same as estimate panel)
-    const optionalAreas = (areas||[]).filter(a=>a.is_optional&&a.area_type&&a.sqft>0);
-    setAreaOptions(optionalAreas);
-    (areas||[]).filter(a=>a.area_type&&a.sqft>0).forEach(a=>{
+    // Build options from is_optional areas - group by sqft/area_type to sum combo lines
+    const optAreaMap={};
+    (areas||[]).filter(a=>a.is_optional&&a.area_type&&a.sqft>0).forEach(a=>{
+      const key=`${a.floor_id}-${a.area_type}-${a.sqft}`;
+      if(!optAreaMap[key]) optAreaMap[key]={...a,_floorName:floorNameMap[a.floor_id]||"",_matCost:0};
+      optAreaMap[key]._matCost+=Number(a.line_total||0);
+    });
+    setAreaOptions(Object.values(optAreaMap).map(a=>({...a,_matCost:Math.round(a._matCost*100)/100})));
+    (areas||[]).filter(a=>a.area_type&&a.sqft>0&&!a.is_optional).forEach(a=>{
       const floorName = floorNameMap[a.floor_id]||"";
       if(a.price_override&&Number(a.price_override)>0&&seenOverride.has(a.id)) return;
       if(a.price_override&&Number(a.price_override)>0) seenOverride.add(a.id);
@@ -583,16 +588,10 @@ export default function QuotePricing() {
           <div style={CARD}>
             <div style={SEC}><span>⭐ Options</span><span style={{fontSize:9,color:C.faint}}>Material cost + extra amount per option</span></div>
             {areaOptions.map((opt,i)=>{
-              // Calculate material cost for this optional area
-              const mls=(opt.mat_lines&&opt.mat_lines.length>0)?opt.mat_lines:[{material:opt.material||"",thickness_in:opt.thickness_in||"",r_value:opt.r_value||""}];
-              const matCostOpt=mls.reduce((s,ml)=>{
-                const {line_total}=calcArea(opt.sqft,ml.thickness_in,matCostMap[ml.material],ml.r_value,variantMap);
-                return s+line_total;
-              },0);
+              const matCostOpt=opt._matCost||0;
               const extraAmt=Number(optionAmounts[opt.id]||0);
               const totalOpt=matCostOpt+extraAmt;
-              const floorRow=(floorRowsData||[]).find(f=>f.id===opt.floor_id);
-              const floorName=floorRow?.name||"";
+              const floorName=opt._floorName||"";
               return (
                 <div key={opt.id} style={{padding:"8px 0",borderBottom:i<areaOptions.length-1?`1px dashed ${C.border}`:"none"}}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6}}>
@@ -617,9 +616,7 @@ export default function QuotePricing() {
             <div style={{...TOTAL_ROW,marginTop:8,paddingTop:8,borderTop:`1px solid ${C.border}`}}>
               <span>Total Options (if all selected)</span>
               <span style={{color:"#f59e0b"}}>+${fmt(areaOptions.reduce((s,opt)=>{
-                const mls=(opt.mat_lines&&opt.mat_lines.length>0)?opt.mat_lines:[{material:opt.material||"",thickness_in:opt.thickness_in||"",r_value:opt.r_value||""}];
-                const mc=mls.reduce((ss,ml)=>{const {line_total}=calcArea(opt.sqft,ml.thickness_in,matCostMap[ml.material],ml.r_value,variantMap);return ss+line_total;},0);
-                return s+mc+Number(optionAmounts[opt.id]||0);
+                return s+(opt._matCost||0)+Number(optionAmounts[opt.id]||0);
               },0))}</span>
             </div>
           </div>
