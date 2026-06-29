@@ -340,7 +340,24 @@ export default function QuotePricing() {
         matType,
       });
     });
-    setAreaCostLines(lines);
+    // Group lines by area_type + material + r_value + thickness (same as estimate panel)
+    const grouped = [];
+    const groupMap = {};
+    lines.forEach(l => {
+      const key = `${l.area_type}|${l.material}|${l.r_value}|${l.lineData?.thickness_label||""}`;
+      if (groupMap[key] !== undefined) {
+        grouped[groupMap[key]].floors.push(l.floor);
+        grouped[groupMap[key]].sqft += l.sqft;
+        grouped[groupMap[key]].lineTotal += l.lineTotal;
+        grouped[groupMap[key]].qty = (grouped[groupMap[key]].qty||0) + (l.qty||0);
+      } else {
+        groupMap[key] = grouped.length;
+        grouped.push({...l, floors:[l.floor]});
+      }
+    });
+    // Format combined floor label
+    grouped.forEach(g => { g.floor = g.floors.join(", "); });
+    setAreaCostLines(grouped);
     setLiveMaterialCost(Math.round(matTotal*100)/100);
 
     // ── Live overhead per job ─────────────────────────────────────────────
