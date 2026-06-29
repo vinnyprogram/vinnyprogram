@@ -1080,11 +1080,7 @@ function EstimatePanel({ floors, areas, materialMap, variantMap, crewNotes, proj
       })()}
       {(()=>{
         // Collect all options from all areas
-        const allOptionsWithArea = floors.flatMap(floor=>
-          (areas[floor]||[]).filter(a=>a.area_type&&a.sqft).flatMap(a=>
-            (a.options||[]).filter(o=>o.material||o.label).map(o=>({...o, area, areaType:a.area_type, floor, areaSqft:a.sqft, areaMat:a.mat_lines||[{material:a.material,thickness_in:a.thickness_in,r_value:a.r_value}]}))
-          )
-        );
+        const allOptionsWithArea = [];// unused - options shown via is_optional areas
         const optionalAreas=floors.flatMap(floor=>(areas[floor]||[]).filter(a=>a.area_type&&a.sqft&&a.material!=="__custom_mat__"&&a.is_optional).map(a=>({...a,floor})));
         if(!optionalAreas.length && !allOptionsWithArea.length) return null;
         return (
@@ -1309,7 +1305,7 @@ export default function ProjectEstimate() {
       const draft=loadDraft(key);
       if(draft){
         if(draft.crewNotes) setCrewNotes(draft.crewNotes);
-        if(draft.floors?.length) setFloors(draft.floors.filter(f=>f!=="Floor"));
+        if(draft.floors?.length) setFloors([...new Set(draft.floors.filter(f=>f!=="Floor"))]);
         if(draft.areas){
           const merged={};
           const allFloors=[...new Set([...DEFAULT_FLOORS,...(draft.floors||[])])];
@@ -1486,7 +1482,7 @@ export default function ProjectEstimate() {
       }
       const {data:floorRows}=await supabase.from("floors").select("*").eq("project_id",projectId).order("order_index");
       if(!floorRows?.length){setLoadingProject(false);return;}
-      const floorNames=floorRows.map(f=>f.name).filter(f=>f!=="Floor");
+      const floorNames=[...new Set(floorRows.map(f=>f.name).filter(f=>f!=="Floor"))];
       setFloors(floorNames); setActiveFloor(floorNames[0]);
       const {data:areaRows}=await supabase.from("areas").select("*").eq("project_id",projectId).order("order_index");
       const areaIds=(areaRows||[]).map(a=>a.id);
@@ -1520,7 +1516,7 @@ export default function ProjectEstimate() {
           const draft=loadDraft(dKey);
           if(draft && draft.editingProjectId===projectId){
             if(draft.crewNotes) setCrewNotes(draft.crewNotes);
-            if(draft.floors?.length) setFloors(draft.floors.filter(f=>f!=="Floor"));
+            if(draft.floors?.length) setFloors([...new Set(draft.floors.filter(f=>f!=="Floor"))]);
             if(draft.areas) setAreas(draft.areas);
             if(draft.projectName) setProjectName(draft.projectName);
             if(draft.projectAddress) setProjectAddress(draft.projectAddress);
@@ -1541,7 +1537,7 @@ export default function ProjectEstimate() {
         const areaCount=Object.values(draft.areas||{}).flat().filter(a=>a.area_type).length;
         if(areaCount>0&&window.confirm(`You have a draft from ${age} min ago with ${areaCount} area(s). Resume it?`)){
           if(draft.crewNotes) setCrewNotes(draft.crewNotes);
-          if(draft.floors) setFloors(draft.floors.filter(f=>f!=="Floor"));
+          if(draft.floors) setFloors([...new Set(draft.floors.filter(f=>f!=="Floor"))]);
           if(draft.areas) setAreas(draft.areas);
           if(draft.projectName) setProjectName(draft.projectName);
           if(draft.projectAddress) setProjectAddress(draft.projectAddress);
