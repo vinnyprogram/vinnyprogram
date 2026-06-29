@@ -43,6 +43,7 @@ export default function QuotePricing() {
   const [areaOptions, setAreaOptions] = useState([]);
   const [matCostMap, setMatCostMap] = useState({});
   const [variantMap, setVariantMap] = useState({});
+  const [floorRows, setFloorRows] = useState([]);
   const [liveOverheadCost, setLiveOverheadCost] = useState(null);
 
   // per-job material brand selections
@@ -184,6 +185,7 @@ export default function QuotePricing() {
 
     // build floor name lookup
     const floorNameMap = {};
+    setFloorRows(floorRows||[]);
     (floorRows||[]).forEach(f=>{ floorNameMap[f.id]=f.name||f.label||""; });
 
     // crew — store the full Settings list for the picker, then either
