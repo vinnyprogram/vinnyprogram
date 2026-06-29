@@ -507,11 +507,20 @@ export default function CustomerProfile() {
                             const ORDER = ["Draft","Measured","Sent to Office","Quote Ready","Proposal","Negotiation","Accepted","Job Scheduled","Completed","Superseded"];
                             const currentIdx = ORDER.indexOf(job.pipeline_status||"Draft");
                             const newIdx = ORDER.indexOf(newStatus);
-                            // Warn if going backwards (except Superseded which is always allowed)
+                            // Warn if going backwards
                             if(newIdx < currentIdx && newStatus !== "Superseded"){
-                              if(!window.confirm(`⚠️ You are changing the status from "${job.pipeline_status}" BACK to "${newStatus}".\n\nThis may affect data integrity. Are you sure?`)) return;
+                              if(!window.confirm(`⚠️ You are changing the status from "${job.pipeline_status}" BACK to "${newStatus}". Are you sure?`)) return;
                             }
-                            // Only update THIS version — never touch other versions
+                            // If setting Accepted, auto-supersede all other versions for this address
+                            if(newStatus === "Accepted"){
+                              const others = activeGroup.jobs.filter(j2=>j2.id!==job.id && j2.pipeline_status!=="Superseded");
+                              if(others.length > 0){
+                                if(!window.confirm(`Setting this estimate to Accepted.\n\nThe other ${others.length} version(s) will automatically be marked Superseded.\n\nProceed?`)) return;
+                                for(const j2 of others){
+                                  await supabase.from("projects").update({pipeline_status:"Superseded"}).eq("id",j2.id);
+                                }
+                              }
+                            }
                             await supabase.from("projects").update({pipeline_status:newStatus}).eq("id",job.id);
                             load();
                           }}
