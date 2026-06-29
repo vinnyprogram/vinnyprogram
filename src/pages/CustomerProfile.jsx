@@ -504,7 +504,14 @@ export default function CustomerProfile() {
                           onChange={async(e)=>{
                             e.stopPropagation();
                             const newStatus = e.target.value;
-                            // Just update this version's status — user manages others manually
+                            const ORDER = ["Draft","Measured","Sent to Office","Quote Ready","Proposal","Negotiation","Accepted","Job Scheduled","Completed","Superseded"];
+                            const currentIdx = ORDER.indexOf(job.pipeline_status||"Draft");
+                            const newIdx = ORDER.indexOf(newStatus);
+                            // Warn if going backwards (except Superseded which is always allowed)
+                            if(newIdx < currentIdx && newStatus !== "Superseded"){
+                              if(!window.confirm(`⚠️ You are changing the status from "${job.pipeline_status}" BACK to "${newStatus}".\n\nThis may affect data integrity. Are you sure?`)) return;
+                            }
+                            // Only update THIS version — never touch other versions
                             await supabase.from("projects").update({pipeline_status:newStatus}).eq("id",job.id);
                             load();
                           }}
