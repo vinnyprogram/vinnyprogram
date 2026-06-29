@@ -33,6 +33,9 @@ export default function JobStart() {
   const [creating, setCreating] = useState(false);
   const [newName, setNewName]   = useState("");
   const [newPhone, setNewPhone] = useState("");
+  const [newEmail, setNewEmail] = useState("");
+  const [newCompany, setNewCompany] = useState("");
+  const [newAddress, setNewAddress] = useState("");
   const [loadingLinks, setLoadingLinks] = useState(false);
 
   const [insulationJobs, setInsulationJobs] = useState([]);
@@ -117,15 +120,28 @@ export default function JobStart() {
 
   async function createCustomer(){
     if(!newName.trim()) return;
+    // Duplicate check
+    const phone = newPhone.replace(/\D/g,"");
+    const phoneMatch = phone.length>=7 && leads.find(l=>(l.phone||"").replace(/\D/g,"").includes(phone));
+    const nameMatch = leads.find(l=>(l.name||"").toLowerCase().trim()===newName.toLowerCase().trim());
+    if(phoneMatch){
+      alert(`"${phoneMatch.name}" already exists with this phone. Selecting them instead.`);
+      setCreating(false); setNewName(""); setNewPhone(""); setNewEmail(""); setNewCompany(""); setNewAddress("");
+      pick(phoneMatch); return;
+    }
+    if(nameMatch){
+      if(!window.confirm(`A customer named "${nameMatch.name}" already exists.\nAre you sure this is a different person?`)) return;
+    }
     const { data, error } = await supabase.from("customers").insert([{
-      name:newName.trim(), phone:newPhone.trim(), status:"New", estimate_amount:0,
-      company_id: company?.id || null,
+      name:newName.trim(), phone:newPhone.trim(), email:newEmail.trim(),
+      company_name:newCompany.trim(), address:newAddress.trim(),
+      status:"New", estimate_amount:0, company_id: company?.id || null,
     }]).select().single();
     if(error){ alert("Could not create customer: "+(error.message)); return; }
     const freshLeads = [...leads, data];
     setLeads(freshLeads);
     setCreating(false);
-    setNewName(""); setNewPhone("");
+    setNewName(""); setNewPhone(""); setNewEmail(""); setNewCompany(""); setNewAddress("");
     pick(data);
   }
 
@@ -181,10 +197,41 @@ export default function JobStart() {
             </div>
           ) : creating ? (
             <div style={{display:"flex",flexDirection:"column",gap:8}}>
+              {/* Smart paste box */}
+              <textarea
+                placeholder="📋 Paste customer info here (name, phone, email, address) and we'll fill the fields automatically..."
+                rows={2}
+                style={{...I, fontSize:12, color:"#64748b", resize:"none"}}
+                onPaste={e=>{
+                  const text = e.clipboardData.getData("text");
+                  if(!text) return;
+                  e.preventDefault();
+                  const lines = text.split(/[\n,|]+/).map(s=>s.trim()).filter(Boolean);
+                  const extracted = {};
+                  for(const l of lines){
+                    if(!extracted.email && l.match(/[\w.+-]+@[\w-]+\.[a-z]{2,}/i)) { extracted.email=l; continue; }
+                    if(!extracted.phone && l.match(/[\d]{7,}/)) { extracted.phone=l.replace(/[^\d+\-().\s]/g,"").trim(); continue; }
+                    if(!extracted.address && l.match(/\d+\s+\w/)) { extracted.address=l; continue; }
+                    if(!extracted.name) { extracted.name=l; continue; }
+                    if(!extracted.company) { extracted.company=l; }
+                  }
+                  if(extracted.name) setNewName(extracted.name);
+                  if(extracted.phone) setNewPhone(extracted.phone);
+                  if(extracted.email) setNewEmail(extracted.email);
+                  if(extracted.company) setNewCompany(extracted.company);
+                  if(extracted.address) setNewAddress(extracted.address);
+                }}
+              />
               <input value={newName} onChange={e=>setNewName(e.target.value)}
-                placeholder="Customer name*" style={I} autoFocus />
+                placeholder="Full name *" style={I} autoFocus />
               <input value={newPhone} onChange={e=>setNewPhone(e.target.value)}
-                placeholder="Phone (optional)" style={I} />
+                placeholder="Phone" style={I} />
+              <input value={newEmail} onChange={e=>setNewEmail(e.target.value)}
+                placeholder="Email" style={I} />
+              <input value={newCompany} onChange={e=>setNewCompany(e.target.value)}
+                placeholder="Company name" style={I} />
+              <input value={newAddress} onChange={e=>setNewAddress(e.target.value)}
+                placeholder="Address" style={I} />
               <div style={{display:"flex",gap:8}}>
                 <button onClick={createCustomer} disabled={!newName.trim()}
                   style={{flex:1,height:38,borderRadius:8,border:"none",
@@ -192,7 +239,7 @@ export default function JobStart() {
                     cursor:newName.trim()?"pointer":"default",fontWeight:700,fontSize:13}}>
                   Create Customer
                 </button>
-                <button onClick={()=>{setCreating(false);setNewName("");setNewPhone("");}}
+                <button onClick={()=>{setCreating(false);setNewName("");setNewPhone("");setNewEmail("");setNewCompany("");setNewAddress("");}}
                   style={{height:38,padding:"0 16px",borderRadius:8,border:`1px solid ${C.border}`,
                     background:"white",cursor:"pointer",fontSize:13,color:C.muted}}>
                   Cancel
