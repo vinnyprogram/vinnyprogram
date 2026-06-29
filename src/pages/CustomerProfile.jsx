@@ -511,17 +511,27 @@ export default function CustomerProfile() {
                             if(newIdx < currentIdx && newStatus !== "Superseded"){
                               if(!window.confirm(`⚠️ You are changing the status from "${job.pipeline_status}" BACK to "${newStatus}". Are you sure?`)) return;
                             }
-                            // If setting Accepted, auto-supersede all other versions for this address
+                            // If setting Accepted: restore other versions to their prior status
                             if(newStatus === "Accepted"){
-                              const others = activeGroup.jobs.filter(j2=>j2.id!==job.id && j2.pipeline_status!=="Superseded");
+                              const others = activeGroup.jobs.filter(j2=>j2.id!==job.id && j2.pipeline_status==="Accepted");
                               if(others.length > 0){
-                                if(!window.confirm(`Setting this estimate to Accepted.\n\nThe other ${others.length} version(s) will automatically be marked Superseded.\n\nProceed?`)) return;
                                 for(const j2 of others){
-                                  await supabase.from("projects").update({pipeline_status:"Superseded"}).eq("id",j2.id);
+                                  // Restore to prior_status if saved, otherwise fall back to "Proposal"
+                                  const restoreStatus = j2.prior_status || "Proposal";
+                                  await supabase.from("projects").update({
+                                    pipeline_status: restoreStatus,
+                                    prior_status: null
+                                  }).eq("id",j2.id);
                                 }
                               }
+                              // Save current status as prior_status before accepting
+                              await supabase.from("projects").update({
+                                pipeline_status: "Accepted",
+                                prior_status: job.pipeline_status||"Draft"
+                              }).eq("id",job.id);
+                            } else {
+                              await supabase.from("projects").update({pipeline_status:newStatus}).eq("id",job.id);
                             }
-                            await supabase.from("projects").update({pipeline_status:newStatus}).eq("id",job.id);
                             load();
                           }}
                           style={{fontSize:11,fontWeight:700,padding:"2px 6px",borderRadius:10,
