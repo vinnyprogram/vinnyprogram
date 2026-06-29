@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { useSearchParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
 
@@ -74,6 +75,7 @@ function getTotal(quotes) {
 export default function Schedule() {
   const { company } = useAuth();
   const companyId = company?.id;
+  const [searchParams] = useSearchParams();
 
   const [weekStart, setWeekStart] = useState(()=>startOfWeek(new Date()));
   const [includeSat, setIncludeSat] = useState(false);
@@ -87,6 +89,14 @@ export default function Schedule() {
   const [dragItem, setDragItem] = useState(null); // {jobId}
 
   useEffect(() => { if (companyId) load(); }, [companyId]);
+
+  // Auto-open assign modal if coming from customer profile
+  useEffect(() => {
+    const projectId = searchParams.get("project");
+    if (!projectId || !allProjectsData.length) return;
+    const proj = allProjectsData.find(p => p.id === projectId);
+    if (proj) setModal({ type:"assign", project:proj });
+  }, [searchParams, allProjectsData]);
 
   async function load() {
     setLoading(true);

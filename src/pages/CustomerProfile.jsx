@@ -545,6 +545,14 @@ export default function CustomerProfile() {
                         cursor:"pointer",fontSize:12,fontWeight:700}}>
                       💰 Cost
                     </button>
+                    {job.pipeline_status==="Accepted" && (
+                      <button onClick={()=>navigate(`/schedule?project=${job.id}&name=${encodeURIComponent(job.customers?.name||job.name||"")}&address=${encodeURIComponent(job.address||"")}`)}
+                        style={{flex:1,minWidth:70,border:"none",
+                          background:"#059669",color:"white",padding:"8px 0",
+                          borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:700}}>
+                        📅 Schedule
+                      </button>
+                    )}
                     <label style={{flex:1,minWidth:70,border:"1px solid #e2e8f0",
                         background:"white",color:"#7c3aed",padding:"8px 0",
                         borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:700,
