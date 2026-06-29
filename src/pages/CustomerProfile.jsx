@@ -98,6 +98,8 @@ export default function CustomerProfile() {
 
   const [customer, setCustomer]   = useState(null);
   const [projects, setProjects]   = useState([]);
+  const [editingCustomer, setEditingCustomer] = useState(false);
+  const [customerForm, setCustomerForm] = useState({});
   const [photos, setPhotos]       = useState([]);
   const [loading, setLoading]     = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -379,21 +381,54 @@ export default function CustomerProfile() {
           ← CRM
         </button>
         <div style={{flex:1,display:"flex",flexDirection:"column",gap:2}}>
-          <div style={{color:"white",fontWeight:800,fontSize:16}}>{customer.name}</div>
-          {customer.phone && (
-            <a href={`tel:${customer.phone.replace(/\D/g,"")}`}
-              style={{color:"#60a5fa",fontWeight:700,fontSize:13,textDecoration:"none"}}>
-              📞 {customer.phone}
-            </a>
-          )}
-          {customer.company_name && (
-            <span style={{color:"white",fontWeight:700,fontSize:13}}>{customer.company_name}</span>
-          )}
-          {customer.email && (
-            <a href={`mailto:${customer.email}`}
-              style={{color:"#94a3b8",fontSize:12,textDecoration:"none"}}>
-              ✉️ {customer.email}
-            </a>
+          {editingCustomer ? (
+            <div style={{display:"flex",flexDirection:"column",gap:6}}>
+              {[["name","Full Name *"],["phone","Phone"],["email","Email"],["company_name","Company"],["address","Address"]].map(([f,ph])=>(
+                <input key={f} placeholder={ph} value={customerForm[f]||""} onChange={e=>setCustomerForm(p=>({...p,[f]:e.target.value}))}
+                  style={{padding:"5px 8px",borderRadius:6,border:"1px solid #334155",background:"#1e293b",color:"#fff",fontSize:12,width:"100%"}}/>
+              ))}
+              <div style={{display:"flex",gap:6,marginTop:2}}>
+                <button onClick={async()=>{
+                  if(!customerForm.name?.trim()){alert("Name is required");return;}
+                  await supabase.from("customers").update({
+                    name:customerForm.name, phone:customerForm.phone||"",
+                    email:customerForm.email||"", company_name:customerForm.company_name||"",
+                    address:customerForm.address||""
+                  }).eq("id",customerId);
+                  setEditingCustomer(false);
+                  load();
+                }} style={{flex:1,padding:"6px",background:"#059669",color:"#fff",border:"none",borderRadius:6,fontSize:12,fontWeight:700,cursor:"pointer"}}>
+                  ✓ Save
+                </button>
+                <button onClick={()=>setEditingCustomer(false)}
+                  style={{padding:"6px 12px",background:"none",color:"#94a3b8",border:"1px solid #334155",borderRadius:6,fontSize:12,cursor:"pointer"}}>
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : (
+            <>
+              <div style={{color:"white",fontWeight:800,fontSize:16}}>{customer.name}</div>
+              {customer.phone && (
+                <a href={`tel:${customer.phone.replace(/\D/g,"")}`}
+                  style={{color:"#60a5fa",fontWeight:700,fontSize:13,textDecoration:"none"}}>
+                  📞 {customer.phone}
+                </a>
+              )}
+              {customer.company_name && (
+                <span style={{color:"white",fontWeight:700,fontSize:13}}>{customer.company_name}</span>
+              )}
+              {customer.email && (
+                <a href={`mailto:${customer.email}`}
+                  style={{color:"#94a3b8",fontSize:12,textDecoration:"none"}}>
+                  ✉️ {customer.email}
+                </a>
+              )}
+              <button onClick={()=>{setCustomerForm({name:customer.name,phone:customer.phone||"",email:customer.email||"",company_name:customer.company_name||"",address:customer.address||""});setEditingCustomer(true);}}
+                style={{marginTop:4,fontSize:11,color:"#94a3b8",background:"none",border:"1px solid #334155",borderRadius:6,padding:"2px 10px",cursor:"pointer",alignSelf:"flex-start"}}>
+                ✏️ Edit info
+              </button>
+            </>
           )}
         </div>
         <button onClick={()=>navigate(`/project/new?leadId=${customerId}`)}
