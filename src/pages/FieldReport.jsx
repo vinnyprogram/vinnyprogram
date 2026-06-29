@@ -320,11 +320,21 @@ export default function FieldReport() {
               // group by floor + area_type + sqft
               // same floor+type+sqft = same area (combo = multiple rows with same sqft)
               const groupMap = {};
+              const optGroupMap = {};
               areas.forEach(a=>{
                 const fl = floors.find(f=>f.id===a.floor_id);
                 const floorIdx = floors.findIndex(f=>f.id===a.floor_id);
                 // key = floor + area_type + sqft (combos share same sqft)
                 const key = (a.floor_id||"")+"||||"+(a.area_type||"")+"||||"+(a.sqft||0);
+                // Separate optional areas
+                if(a.is_optional){
+                  if(!optGroupMap[key]) optGroupMap[key]={area_type:a.area_type,floor:fl,floorOrder:floorIdx,sqft:a.sqft||0,materials:[],optional_note:a.optional_note||""};
+                  const og=optGroupMap[key];
+                  const exists=og.materials.find(m=>m.material===a.material&&m.r_value===a.r_value);
+                  if(!exists) og.materials.push({material:a.material||"",thickness_in:a.thickness_in||"",r_value:a.r_value||""});
+                  if(a.optional_note) og.optional_note=a.optional_note;
+                  return;
+                }
                 if(!groupMap[key]) groupMap[key]={
                   area_type: a.area_type,
                   floor: fl,
@@ -422,45 +432,51 @@ export default function FieldReport() {
             })()}
           </div>
 
-          {/* area options from estimate */}
-          {areas.some(a=>(a.options||[]).length>0) && (
-            <div style={{marginBottom:16}}>
-              <div style={{fontSize:9,fontWeight:800,color:"#92400e",
-                  textTransform:"uppercase",letterSpacing:0.5,marginBottom:8,
-                  background:"#fff7ed",padding:"6px 12px",borderRadius:6,
-                  border:"1px solid #fed7aa"}}>
-                ⚡ Alternative Options
-              </div>
-              {areas.filter(a=>(a.options||[]).length>0).map((a,ai)=>{
-                const fl = floors.find(f=>f.id===a.floor_id);
-                return (a.options||[]).map((opt,oi)=>(
-                  <div key={`${ai}-${oi}`} style={{
-                    padding:"8px 12px",
-                    background:oi%2===0?"#fffbeb":"white",
-                    border:"1px solid #fde68a",
-                    borderTop:ai===0&&oi===0?"1px solid #fde68a":"none",
-                    borderRadius:ai===0&&oi===0?"6px 6px 0 0":
-                      ai===areas.filter(a=>(a.options||[]).length>0).length-1&&
-                      oi===(a.options||[]).length-1?"0 0 6px 6px":"0",
-                  }}>
-                    <div style={{display:"flex",justifyContent:"space-between",
-                        flexWrap:"wrap",gap:4}}>
-                      <span style={{fontSize:12,fontWeight:700,color:"#92400e"}}>
-                        Option {oi+1}: {fl?.name} {a.area_type}
-                      </span>
-                      <span style={{fontSize:11,color:"#374151"}}>
-                        {(()=>{
-                          const optLines=(opt.mat_lines||[]).length>0?opt.mat_lines:[{material:opt.material||"",thickness_in:opt.thickness_in||a.thickness_in||"",r_value:opt.r_value||a.r_value||"",oc:opt.oc||""}];
-                          return optLines.map(ol=>[ol.thickness_in,ol.material,ol.r_value,ol.oc].filter(Boolean).join(" ")).join(" + ");
-                        })()}
-                        {" · "}{fmt(a.sqft)} ft²
-                      </span>
+          {/* ⭐ Optional areas as options */}
+          {Object.keys(optGroupMap).length>0 && (()=>{
+            // Merge optional groups across floors same as main areas
+            const optMerged = {};
+            Object.values(optGroupMap).forEach(g=>{
+              const matKey = g.materials.map(m=>m.material+m.thickness_in+m.r_value).sort().join("+");
+              const key = g.area_type+"||||"+matKey;
+              if(!optMerged[key]) optMerged[key]={...g,floors:[g.floor],sqft:g.sqft};
+              else {
+                if(!optMerged[key].floors.find(f=>f?.id===g.floor?.id)) optMerged[key].floors.push(g.floor);
+                optMerged[key].sqft+=g.sqft;
+                if(g.optional_note) optMerged[key].optional_note=g.optional_note;
+              }
+            });
+            const optGroups = Object.values(optMerged);
+            return (
+              <div style={{marginBottom:16}}>
+                <div style={{fontSize:9,fontWeight:800,color:"#92400e",textTransform:"uppercase",
+                    letterSpacing:0.5,marginBottom:8,background:"#fff7ed",
+                    padding:"6px 12px",borderRadius:6,border:"1px solid #fed7aa"}}>
+                  ⭐ Options (Customer Choice)
+                </div>
+                {optGroups.map((g,i)=>{
+                  const floorLabel = g.floors
+                    .sort((a,b)=>floors.findIndex(f=>f.id===a?.id)-floors.findIndex(f=>f.id===b?.id))
+                    .map(f=>f?.name?.replace(" Floor","")).filter(Boolean).join(", ");
+                  const matLabel = g.materials.map(m=>[m.thickness_in,m.material,m.r_value].filter(Boolean).join(" ")).join(" + ");
+                  return (
+                    <div key={i} style={{padding:"8px 12px",background:i%2===0?"#fffbeb":"white",
+                        border:"1px solid #fde68a",borderTop:i===0?"1px solid #fde68a":"none",
+                        borderRadius:i===0?"6px 6px 0 0":i===optGroups.length-1?"0 0 6px 6px":"0"}}>
+                      <div style={{display:"flex",justifyContent:"space-between",flexWrap:"wrap",gap:4}}>
+                        <div>
+                          <span style={{fontSize:12,fontWeight:700,color:"#92400e"}}>{floorLabel} — {g.area_type}</span>
+                          <span style={{fontSize:11,color:"#374151",marginLeft:6}}>{matLabel}</span>
+                          {g.optional_note&&<div style={{fontSize:10,color:"#b45309",fontStyle:"italic",marginTop:2}}>📝 {g.optional_note}</div>}
+                        </div>
+                        <span style={{fontSize:12,fontWeight:700,color:"#92400e"}}>{fmt(g.sqft)} ft²</span>
+                      </div>
                     </div>
-                  </div>
-                ));
-              })}
-            </div>
-          )}
+                  );
+                })}
+              </div>
+            );
+          })()}
 
           {/* optional items */}
           {options.length>0 && (
