@@ -1151,6 +1151,7 @@ export default function ProjectEstimate() {
   const fromDrawing=searchParams.get("from_drawing")==="1";
   const addressParam=searchParams.get("address")||"";
   const isEditing=!!projectId;
+  const [isLocked, setIsLocked] = useState(false); // true when pipeline_status is sent
 
   const [floors,setFloors]=useState(["Attic","3rd","2nd","1st","Basement"]);
   const [activeFloor,setActiveFloor]=useState("Attic");
@@ -1422,6 +1423,9 @@ export default function ProjectEstimate() {
       if(!proj){setLoadingProject(false);return;}
       setProjectName(proj.name||""); setProjectAddress(proj.address||"");
       if(proj.lead_id) setSelectedLeadId(String(proj.lead_id));
+      // Lock estimate if quote already sent
+      const sentStatuses = ["Quote Ready","Proposal","Negotiation","Accepted","Job Scheduled","Completed","Sent to Office"];
+      if(sentStatuses.includes(proj.pipeline_status)) setIsLocked(true);
       // Load crew notes / job info
       if(proj.crew_notes){
         try{
@@ -1914,11 +1918,17 @@ export default function ProjectEstimate() {
           {savedProjectId&&(<><button onClick={()=>navigate(`/project/drawings/${savedProjectId}`)} style={{background:"#7c3aed",color:"white",border:"none",borderRadius:12,padding:"3px 10px",fontSize:11,fontWeight:700,cursor:"pointer"}}>📐 Drawings</button><button onClick={()=>navigate(`/field-report/${savedProjectId}`)} style={{background:"#3b82f6",color:"white",border:"none",borderRadius:12,padding:"3px 10px",fontSize:11,fontWeight:700,cursor:"pointer"}}>📋 Office Report</button><button onClick={()=>navigate(`/quote/${savedProjectId}`)} style={{background:"white",color:"#059669",border:"none",borderRadius:12,padding:"3px 10px",fontSize:11,fontWeight:700,cursor:"pointer"}}>📄 Quote</button></>)}
         </div>
       )}
+      {isLocked && (
+        <div style={{background:"#fef3c7",borderBottom:"2px solid #f59e0b",padding:"8px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:12}}>
+          <span style={{fontSize:13,fontWeight:700,color:"#92400e"}}>🔒 This estimate has been sent to the customer — it is read-only.</span>
+          <button onClick={()=>navigate(-1)} style={{fontSize:12,fontWeight:700,padding:"4px 14px",borderRadius:6,border:"1px solid #f59e0b",background:"#fff",color:"#92400e",cursor:"pointer"}}>← Go Back</button>
+        </div>
+      )}
       <div style={{position:"sticky",top:0,zIndex:100,background:C.white,borderBottom:`1px solid ${C.border}`,padding:"8px 12px",display:"flex",justifyContent:"space-between",alignItems:"center",flexShrink:0}}>
-        <span style={{fontWeight:700,fontSize:14,flex:1,overflow:"hidden",whiteSpace:"nowrap",textOverflow:"ellipsis"}}>{isEditing?"✏️ Edit Estimate":(projectName||"New Project")}</span>
+        <span style={{fontWeight:700,fontSize:14,flex:1,overflow:"hidden",whiteSpace:"nowrap",textOverflow:"ellipsis"}}>{isEditing?(isLocked?"🔒 View Estimate":"✏️ Edit Estimate"):(projectName||"New Project")}</span>
         <div style={{display:"flex",gap:6}}>
           {savedProjectId&&(<><button onClick={()=>navigate(`/project/drawings/${savedProjectId}`)} style={{...BtnD,background:"#7c3aed",height:32,fontSize:12,padding:"0 10px",borderRadius:8}}>📐 Drawings</button><button onClick={()=>navigate(`/field-report/${savedProjectId}`)} style={{...BtnD,background:"#3b82f6",height:32,fontSize:12,padding:"0 10px",borderRadius:8}}>📋 Office</button><button onClick={()=>navigate(`/quote-pricing/${savedProjectId}`)} style={{...BtnD,background:"#f97316",height:32,fontSize:12,padding:"0 10px",borderRadius:8}}>📄 Quote</button></>)}
-          <button onClick={saveProject} disabled={saving} style={{...BtnD,fontSize:13,height:32,padding:"0 14px",background:saving?"#64748b":C.ink,borderRadius:8,opacity:!selectedLeadId?0.4:1}}>{saving?"…":"Save"}</button>
+          {!isLocked && <button onClick={saveProject} disabled={saving} style={{...BtnD,fontSize:13,height:32,padding:"0 14px",background:saving?"#64748b":C.ink,borderRadius:8,opacity:!selectedLeadId?0.4:1}}>{saving?"…":"Save"}</button>}
         </div>
       </div>
 
