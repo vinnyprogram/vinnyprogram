@@ -31,6 +31,8 @@ export default function JobStart() {
   const [selected, setSelected] = useState(null);
   const [address, setAddress]   = useState("");
   const [creating, setCreating] = useState(false);
+  const [editingSelected, setEditingSelected] = useState(false);
+  const [editForm, setEditForm] = useState({});
   const [newName, setNewName]   = useState("");
   const [newPhone, setNewPhone] = useState("");
   const [newEmail, setNewEmail] = useState("");
@@ -105,6 +107,8 @@ export default function JobStart() {
 
   function pick(lead){
     setSelected(lead);
+    setEditForm({name:lead.name||'',phone:lead.phone||'',email:lead.email||'',company_name:lead.company_name||'',address:lead.address||''});
+    setEditingSelected(false);
     setQuery("");
     setResults([]);
     setAddress(""); // keep blank — job address is different from customer's home address
@@ -184,16 +188,62 @@ export default function JobStart() {
           </div>
 
           {selected ? (
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-              <div>
-                <div style={{fontWeight:700,fontSize:15,color:C.ink}}>{selected.name}</div>
-                {selected.phone && <div style={{fontSize:12,color:C.muted}}>{selected.phone}</div>}
+            <div>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+                <div>
+                  <div style={{fontWeight:700,fontSize:15,color:C.ink}}>{selected.name}</div>
+                  {selected.phone && <div style={{fontSize:12,color:C.muted}}>{selected.phone}</div>}
+                  {selected.email && <div style={{fontSize:12,color:C.muted}}>{selected.email}</div>}
+                  {selected.company_name && <div style={{fontSize:12,color:C.muted}}>{selected.company_name}</div>}
+                  {selected.address && <div style={{fontSize:12,color:C.muted}}>{selected.address}</div>}
+                </div>
+                <div style={{display:"flex",gap:6,flexShrink:0}}>
+                  <button onClick={()=>setEditingSelected(true)}
+                    style={{border:`1px solid ${C.border}`,background:"#f8fafc",padding:"5px 12px",
+                      borderRadius:6,cursor:"pointer",fontSize:12,color:C.ink}}>
+                    ✏️ Edit
+                  </button>
+                  <button onClick={clear}
+                    style={{border:`1px solid ${C.border}`,background:"#f8fafc",padding:"5px 12px",
+                      borderRadius:6,cursor:"pointer",fontSize:12,color:C.muted}}>
+                    Change
+                  </button>
+                </div>
               </div>
-              <button onClick={clear}
-                style={{border:`1px solid ${C.border}`,background:"#f8fafc",padding:"5px 12px",
-                  borderRadius:6,cursor:"pointer",fontSize:12,color:C.muted}}>
-                Change
-              </button>
+              {editingSelected && (
+                <div style={{marginTop:12,display:"flex",flexDirection:"column",gap:7,borderTop:`1px solid ${C.border}`,paddingTop:12}}>
+                  {[["name","Full Name *","editName","setEditName"],["phone","Phone","editPhone","setEditPhone"],
+                    ["email","Email","editEmail","setEditEmail"],["company_name","Company","editCompany","setEditCompany"],
+                    ["address","Address","editAddress","setEditAddress"]].map(([f,ph])=>(
+                    <input key={f} placeholder={ph}
+                      value={editForm[f]||""}
+                      onChange={e=>setEditForm(p=>({...p,[f]:e.target.value}))}
+                      style={{...I,fontSize:13}}/>
+                  ))}
+                  <div style={{display:"flex",gap:8}}>
+                    <button onClick={async()=>{
+                      if(!editForm.name?.trim()){alert("Name required");return;}
+                      const {data,error} = await supabase.from("customers").update({
+                        name:editForm.name.trim(), phone:editForm.phone||"",
+                        email:editForm.email||"", company_name:editForm.company_name||"",
+                        address:editForm.address||""
+                      }).eq("id",selected.id).select().single();
+                      if(error){alert("Error: "+error.message);return;}
+                      setSelected(data);
+                      setLeads(p=>p.map(l=>l.id===data.id?data:l));
+                      setEditingSelected(false);
+                    }} style={{flex:1,height:36,borderRadius:8,border:"none",background:C.ink,
+                      color:"#fff",cursor:"pointer",fontWeight:700,fontSize:13}}>
+                      ✓ Save
+                    </button>
+                    <button onClick={()=>setEditingSelected(false)}
+                      style={{height:36,padding:"0 14px",borderRadius:8,border:`1px solid ${C.border}`,
+                        background:"white",cursor:"pointer",fontSize:13,color:C.muted}}>
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           ) : creating ? (
             <div style={{display:"flex",flexDirection:"column",gap:8}}>
