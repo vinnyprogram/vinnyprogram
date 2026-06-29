@@ -296,15 +296,21 @@ export default function QuotePricing() {
     let matTotal = 0;
     const lines = [];
     const seenOverride = new Set();
-    // Build options from is_optional areas - group by sqft/area_type to sum combo lines
+    // Build options from is_optional primary areas only (order_index % 10 === 0)
+    // and sum all mat_lines (combo rows) for the same primary area
     const optAreaMap={};
     (areas||[]).filter(a=>a.is_optional&&a.area_type&&a.sqft>0).forEach(a=>{
+      // primary row key = floor_id + area_type + sqft (unique per area)
+      const isPrimary = (a.order_index%10===0)||(a.order_index===0);
       const key=`${a.floor_id}-${a.area_type}-${a.sqft}`;
-      if(!optAreaMap[key]) optAreaMap[key]={...a,_floorName:floorNameMap[a.floor_id]||"",_matCost:0};
-      optAreaMap[key]._matCost+=Number(a.line_total||0);
+      if(isPrimary){
+        if(!optAreaMap[key]) optAreaMap[key]={...a,_floorName:floorNameMap[a.floor_id]||"",_matCost:0};
+      }
+      if(optAreaMap[key]) optAreaMap[key]._matCost+=Number(a.line_total||0);
     });
     setAreaOptions(Object.values(optAreaMap).map(a=>({...a,_matCost:Math.round(a._matCost*100)/100})));
-    (areas||[]).filter(a=>a.area_type&&a.sqft>0&&!a.is_optional).forEach(a=>{
+    // Only process primary rows (order_index % 10 === 0) to avoid duplicating combo mat_lines
+    (areas||[]).filter(a=>a.area_type&&a.sqft>0&&!a.is_optional&&((a.order_index%10===0)||(a.order_index===0))).forEach(a=>{
       const floorName = floorNameMap[a.floor_id]||"";
       if(a.price_override&&Number(a.price_override)>0&&seenOverride.has(a.id)) return;
       if(a.price_override&&Number(a.price_override)>0) seenOverride.add(a.id);
