@@ -1834,9 +1834,10 @@ export default function ProjectEstimate() {
       await supabase.from("areas").delete().eq("project_id", targetProjectId);
       await supabase.from("floors").delete().eq("project_id", targetProjectId);
 
-      // re-insert floors
+      // re-insert floors — dedup first to prevent duplicate floor names
+      const uniqueFloors = [...new Set(floors)];
       const {data:floorRows} = await supabase.from("floors").insert(
-        floors.map((name,i)=>({project_id:targetProjectId,name,order_index:i+1,company_id:companyId}))
+        uniqueFloors.map((name,i)=>({project_id:targetProjectId,name,order_index:i+1,company_id:companyId}))
       ).select();
       const floorMap={};
       (floorRows||[]).forEach(f=>{floorMap[f.name]=f.id;});
@@ -1858,7 +1859,7 @@ export default function ProjectEstimate() {
         const orderToId={};
         (areaRows||[]).forEach(r=>{ orderToId[r.order_index]=r.id; });
         const segs=[];let _si=0;
-        floors.forEach(floor=>{
+        uniqueFloors.forEach(floor=>{
           (committedAreas[floor]||[]).filter(a=>a.area_type&&(a.sqft>0||a.measurements?.length>0)).forEach(a=>{
             // primary row for this area always has mi===0, i.e. order_index = _si*10
             const primaryId=orderToId[_si*10];_si++;
