@@ -29,8 +29,20 @@ export default function QuotePricing() {
 
   // live-calculated costs (not stale from saved quote)
   const [liveMaterialCost, setLiveMaterialCost] = useState(null);
+  // Calculate area cost from material map
+  function calcArea(sqft, thickness, mat, rval, vmap) {
+    if(!mat||!sqft) return {line_total:0,qty:0,unit:"sqft"};
+    const vKey=`${mat.material_name||""}|${rval||""}`.toLowerCase();
+    const variant=vmap?.[vKey];
+    const pricePerUnit=variant?Number(variant.price_per_unit||0):Number(mat.price_per_sqft||0);
+    if(!pricePerUnit) return {line_total:0,qty:sqft,unit:"sqft"};
+    return {line_total:Math.round(sqft*pricePerUnit*100)/100,qty:sqft,unit:"sqft"};
+  }
+
   const [optionAmounts, setOptionAmounts] = useState({}); // {optKey: amount}
   const [areaOptions, setAreaOptions] = useState([]);
+  const [matCostMap, setMatCostMap] = useState({});
+  const [variantMap, setVariantMap] = useState({});
   const [liveOverheadCost, setLiveOverheadCost] = useState(null);
 
   // per-job material brand selections
@@ -210,12 +222,14 @@ export default function QuotePricing() {
     const THICK_MAP = {"2x4":3.5,"2x6":5.5,"2x8":7.25,"2x10":9.25,"2x12":11.25,"I-joist":11.875};
     const matCostMap = {};
     (matCosts||[]).forEach(m=>{ matCostMap[m.material_name]=m; });
+    setMatCostMap(matCostMap);
     // Build type/product maps — material_types takes priority over material_costs
     const typesByName = {};
     (types||[]).forEach(t=>{ typesByName[t.name]=t; });
 
     const variantMap = {};
     (variants||[]).forEach(v=>{ variantMap[`${v.material_name}|${v.r_value||""}`.toLowerCase()]=v; });
+    setVariantMap(variantMap);
     function parseR(rValue){ const m=String(rValue||"").match(/(\d+(\.\d+)?)/); return m?parseFloat(m[1]):0; }
 
     // ── Compute pricing for one area given a specific product (or fallback) ──
@@ -280,17 +294,9 @@ export default function QuotePricing() {
     let matTotal = 0;
     const lines = [];
     const seenOverride = new Set();
-    // Build options list from areas
-    const areaOptions = (areas||[]).flatMap(a=>{
-      const opts = Array.isArray(a.options)?a.options:(typeof a.options==="string"?JSON.parse(a.options||"[]"):[]);
-      return opts.filter(o=>o.label||o.material).map((o,oi)=>({
-        key:`${a.id}-${oi}`,
-        label:o.label||`Option ${oi+1}`,
-        note:o.note||"",
-        areaType:a.area_type,
-      }));
-    });
-    setAreaOptions(areaOptions);
+    // Build options from is_optional areas (same as estimate panel)
+    const optionalAreas = (areas||[]).filter(a=>a.is_optional&&a.area_type&&a.sqft>0);
+    setAreaOptions(optionalAreas);
     (areas||[]).filter(a=>a.area_type&&a.sqft>0).forEach(a=>{
       const floorName = floorNameMap[a.floor_id]||"";
       if(a.price_override&&Number(a.price_override)>0&&seenOverride.has(a.id)) return;
@@ -573,23 +579,47 @@ export default function QuotePricing() {
         {/* ── OPTIONS ── */}
         {areaOptions.length>0&&(
           <div style={CARD}>
-            <div style={SEC}><span>⚡ Options</span><span style={{fontSize:9,color:C.faint}}>Set extra amount per option</span></div>
-            {areaOptions.map((opt,i)=>(
-              <div key={opt.key} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 0",borderBottom:i<areaOptions.length-1?`1px solid ${C.border}`:"none"}}>
-                <div style={{flex:1}}>
-                  <div style={{fontSize:12,fontWeight:700,color:C.ink}}>{opt.label}</div>
-                  {opt.note&&<div style={{fontSize:10,color:C.faint}}>{opt.note}</div>}
-                  <div style={{fontSize:10,color:C.faint}}>{opt.areaType}</div>
+            <div style={SEC}><span>⭐ Options</span><span style={{fontSize:9,color:C.faint}}>Material cost + extra amount per option</span></div>
+            {areaOptions.map((opt,i)=>{
+              // Calculate material cost for this optional area
+              const mls=(opt.mat_lines&&opt.mat_lines.length>0)?opt.mat_lines:[{material:opt.material||"",thickness_in:opt.thickness_in||"",r_value:opt.r_value||""}];
+              const matCostOpt=mls.reduce((s,ml)=>{
+                const {line_total}=calcArea(opt.sqft,ml.thickness_in,matCostMap[ml.material],ml.r_value,variantMap);
+                return s+line_total;
+              },0);
+              const extraAmt=Number(optionAmounts[opt.id]||0);
+              const totalOpt=matCostOpt+extraAmt;
+              const floorRow=(floorRows||[]).find(f=>f.id===opt.floor_id);
+              const floorName=floorRow?.name||"";
+              return (
+                <div key={opt.id} style={{padding:"8px 0",borderBottom:i<areaOptions.length-1?`1px dashed ${C.border}`:"none"}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6}}>
+                    <div style={{flex:1}}>
+                      <div style={{fontSize:12,fontWeight:700,color:C.ink}}>{floorName} — {opt.area_type}</div>
+                      <div style={{fontSize:10,color:C.muted}}>{mls.map(ml=>[ml.thickness_in,ml.material,ml.r_value].filter(Boolean).join(" ")).join(" + ")} · {fmt(opt.sqft)} ft²</div>
+                    </div>
+                    <span style={{fontWeight:700,color:"#f59e0b",fontSize:12}}>${fmt(matCostOpt)}</span>
+                  </div>
+                  <div style={{display:"flex",alignItems:"center",gap:8,background:"#fff7ed",borderRadius:6,padding:"6px 8px"}}>
+                    <span style={{fontSize:11,color:"#92400e",flex:1}}>+ Extra (labor, etc.)</span>
+                    <span style={{fontSize:11,color:"#92400e"}}>$</span>
+                    <input type="number" min="0" placeholder="0"
+                      value={optionAmounts[opt.id]||""}
+                      onChange={e=>setOptionAmounts(p=>({...p,[opt.id]:e.target.value}))}
+                      style={{width:80,padding:"4px 6px",border:"1px solid #fed7aa",borderRadius:6,fontSize:12,textAlign:"right"}}/>
+                    <span style={{fontSize:12,fontWeight:700,color:"#059669",minWidth:60,textAlign:"right"}}>= ${fmt(totalOpt)}</span>
+                  </div>
                 </div>
-                <div style={{display:"flex",alignItems:"center",gap:4}}>
-                  <span style={{fontSize:12,color:C.faint}}>$</span>
-                  <input type="number" min="0" placeholder="0"
-                    value={optionAmounts[opt.key]||""}
-                    onChange={e=>setOptionAmounts(p=>({...p,[opt.key]:e.target.value}))}
-                    style={{width:80,padding:"4px 6px",border:`1px solid ${C.border}`,borderRadius:6,fontSize:12,textAlign:"right"}}/>
-                </div>
-              </div>
-            ))}
+              );
+            })}
+            <div style={{...TOTAL_ROW,marginTop:8,paddingTop:8,borderTop:`1px solid ${C.border}`}}>
+              <span>Total Options (if all selected)</span>
+              <span style={{color:"#f59e0b"}}>+${fmt(areaOptions.reduce((s,opt)=>{
+                const mls=(opt.mat_lines&&opt.mat_lines.length>0)?opt.mat_lines:[{material:opt.material||"",thickness_in:opt.thickness_in||"",r_value:opt.r_value||""}];
+                const mc=mls.reduce((ss,ml)=>{const {line_total}=calcArea(opt.sqft,ml.thickness_in,matCostMap[ml.material],ml.r_value,variantMap);return ss+line_total;},0);
+                return s+mc+Number(optionAmounts[opt.id]||0);
+              },0))}</span>
+            </div>
           </div>
         )}
 
