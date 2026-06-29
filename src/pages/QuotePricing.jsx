@@ -598,6 +598,7 @@ export default function QuotePricing() {
                     <div style={{flex:1}}>
                       <div style={{fontSize:12,fontWeight:700,color:C.ink}}>{floorName} — {opt.area_type}</div>
                       <div style={{fontSize:10,color:C.muted}}>{mls.map(ml=>[ml.thickness_in,ml.material,ml.r_value].filter(Boolean).join(" ")).join(" + ")} · {fmt(opt.sqft)} ft²</div>
+                    {opt.optional_note&&<div style={{fontSize:10,color:"#92400e",fontStyle:"italic",marginTop:2}}>📝 {opt.optional_note}</div>}
                     </div>
                     <span style={{fontWeight:700,color:"#f59e0b",fontSize:12}}>${fmt(matCostOpt)}</span>
                   </div>

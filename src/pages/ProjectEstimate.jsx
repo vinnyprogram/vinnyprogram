@@ -1102,6 +1102,7 @@ function EstimatePanel({ floors, areas, materialMap, variantMap, crewNotes, proj
                     <div style={{flex:1,paddingRight:4,lineHeight:1.5}}>
                       <div style={{fontWeight:700,fontSize:12,color:C.ink}}>{a.floor.replace(" Floor","")} — {a.area_type}</div>
                       <div style={{fontSize:10,color:C.muted,lineHeight:1.5}}>{matLabel}{" · "}{fmt(a.sqft)} ft²</div>
+                  {a.optional_note&&<div style={{fontSize:10,color:"#92400e",fontStyle:"italic",marginTop:1}}>📝 {a.optional_note}</div>}
                     </div>
                     {cost>0&&<span style={{fontWeight:700,color:"#f59e0b",fontSize:12,flexShrink:0,paddingTop:2}}>+${fmt(cost)}</span>}
                   </div>
