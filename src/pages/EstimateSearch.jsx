@@ -269,14 +269,12 @@ export default function EstimateSearch() {
                   <span style={{fontSize:11,fontWeight:600,color:"#94a3b8",fontFamily:"monospace"}}>
                     #{p.id.toString().slice(-6).toUpperCase()}
                   </span>
-                  <select value={p.pipeline_status||"Lead"}
-                    onChange={e=>updatePipelineStatus(p.id, e.target.value)}
-                    style={{marginLeft:6,fontSize:10,fontWeight:700,padding:"2px 6px",
-                      borderRadius:5,border:"1px solid #e2e8f0",cursor:"pointer",
-                      background: PIPELINE_COLORS[p.pipeline_status||"Lead"]?.bg,
-                      color: PIPELINE_COLORS[p.pipeline_status||"Lead"]?.text}}>
-                    {PIPELINE_STAGES.map(s=><option key={s}>{s}</option>)}
-                  </select>
+                  <span style={{marginLeft:6,fontSize:10,fontWeight:700,padding:"2px 8px",
+                      borderRadius:5,
+                      background: PIPELINE_COLORS[p.pipeline_status||"Draft"]?.bg||"#f1f5f9",
+                      color: PIPELINE_COLORS[p.pipeline_status||"Draft"]?.text||"#64748b"}}>
+                    {p.pipeline_status||"Draft"}
+                  </span>
                  {p.address && (
                   <div style={{fontSize:15,fontWeight:700,color:"#0f172a",marginTop:2}}>
                     📍 {p.address}
@@ -304,39 +302,11 @@ export default function EstimateSearch() {
                 )}
               </div>
               <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                <button onClick={()=>navigate(`/field-report/${p.id}`)}
-                  style={{flex:1,border:"none",background:"#3b82f6",color:"white",
-                    padding:"5px 0",borderRadius:6,cursor:"pointer",
+                <button onClick={()=>navigate(`/customer/${p.lead_id}`)}
+                  style={{flex:1,border:"none",background:"#0f172a",color:"white",
+                    padding:"7px 0",borderRadius:6,cursor:"pointer",
                     fontSize:11,fontWeight:700}}>
-                  📋 Office
-                </button>
-                <button onClick={()=>{
-                    if(["Measured","Sent to Office"].includes(p.pipeline_status||"Draft")) updatePipelineStatus(p.id,"Quote Ready");
-                    navigate(`/quote-pricing/${p.id}`);
-                  }}
-                  style={{flex:1,border:"none",background:"#f97316",color:"white",
-                    padding:"5px 0",borderRadius:6,cursor:"pointer",
-                    fontSize:11,fontWeight:700}}>
-                  📄 Quote
-                </button>
-                <button onClick={()=>navigate(`/project/${p.id}`)}
-                  style={{flex:1,border:"1px solid #e2e8f0",background:"white",
-                    color:"#0f172a",padding:"5px 0",borderRadius:6,
-                    cursor:"pointer",fontSize:11,fontWeight:700}}>
-                  ✏️ Edit
-                </button>
-                <button onClick={()=>navigate(`/project/drawings/${p.id}`)}
-                  style={{flex:1,border:"none",background:"#7c3aed",color:"white",
-                    padding:"5px 0",borderRadius:6,cursor:"pointer",
-                    fontSize:11,fontWeight:700}}>
-                  📐 Draw
-                </button>
-                <button onClick={()=>setOpenCost(openCost===p.id?null:p.id)}
-                  style={{flex:1,border:"1px solid #e2e8f0",
-                    background:openCost===p.id?"#f0fdf4":"white",
-                    color:"#059669",padding:"7px 0",borderRadius:7,
-                    cursor:"pointer",fontSize:12,fontWeight:700}}>
-                  💰 Cost
+                  👤 Go to Profile
                 </button>
               </div>
 
