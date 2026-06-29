@@ -484,6 +484,14 @@ export default function QuotePricing() {
           .update({estimate_amount: Math.round(finP*100)/100})
           .eq("id", project.lead_id);
       }
+      // Auto-advance status to Quote Ready when quote is generated
+      const currentStatus = project?.pipeline_status||"Draft";
+      const preQuoteStatuses = ["Draft","Measured","Sent to Office"];
+      if(preQuoteStatuses.includes(currentStatus)){
+        await supabase.from("projects")
+          .update({pipeline_status:"Quote Ready"})
+          .eq("id", projectId);
+      }
       setAutoSaved(true);
       setTimeout(()=>setAutoSaved(false), 2500);
       if(doNavigate) navigate(`/quote/${projectId}`);

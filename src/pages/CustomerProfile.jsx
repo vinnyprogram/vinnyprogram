@@ -608,11 +608,21 @@ export default function CustomerProfile() {
                         📅 Schedule
                       </button>
                     )}
+                    {/* Quote PDF button - opens generated quote */}
+                    {job.quotes?.[0]?.grand_total>0 && (
+                      <button onClick={()=>navigate(`/quote/${job.id}`)}
+                        style={{flex:1,minWidth:70,border:"none",background:"#7c3aed",
+                          color:"white",padding:"8px 0",borderRadius:8,
+                          cursor:"pointer",fontSize:12,fontWeight:700}}>
+                        📄 PDF
+                      </button>
+                    )}
+                    {/* Upload PDF/docs */}
                     <label style={{flex:1,minWidth:70,border:"1px solid #e2e8f0",
-                        background:"white",color:"#7c3aed",padding:"8px 0",
+                        background:"white",color:"#64748b",padding:"8px 0",
                         borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:700,
                         textAlign:"center",display:"inline-block"}}>
-                      📎 PDF
+                      📎 Doc
                       <input type="file" accept="application/pdf" style={{display:"none"}}
                         onChange={async e=>{
                           await uploadDocs(e.target.files, job.id);
