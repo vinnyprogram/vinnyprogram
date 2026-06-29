@@ -344,7 +344,7 @@ export default function QuotePricing() {
     const grouped = [];
     const groupMap = {};
     lines.forEach(l => {
-      const key = `${l.area_type}|${l.material}|${l.r_value}|${l.lineData?.thickness_label||""}`;
+      const key = `${l.area_type}|${l.material}`;
       if (groupMap[key] !== undefined) {
         grouped[groupMap[key]].floors.push(l.floor);
         grouped[groupMap[key]].sqft += l.sqft;
