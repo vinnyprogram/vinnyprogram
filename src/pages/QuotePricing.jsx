@@ -316,6 +316,7 @@ export default function QuotePricing() {
       if(!seenOptKeys.has(dupKey)) optAreaMap[key]._matCost+=Number(a.line_total||0);
       seenOptKeys.add(dupKey);
     });
+    setAreasData(areas||[]);
     setAreaOptions(Object.values(optAreaMap).map(a=>({...a,_matCost:Math.round(a._matCost*100)/100})));
     // Group by floor+area_type+sqft to handle both combos and any DB duplicates
     const seenAreaKeys = new Set();
