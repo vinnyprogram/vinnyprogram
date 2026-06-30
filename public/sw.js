@@ -1,4 +1,4 @@
-const CACHE = "insulationpro-v1";
+const CACHE = "insulationpro-v3";
 
 const SHELL = [
   "/",
@@ -47,8 +47,12 @@ self.addEventListener("fetch", e => {
           if(cached) return cached;
           // For navigation requests, return the app shell
           if(e.request.mode === "navigate") {
-            return caches.match("/index.html");
+            return caches.match("/index.html").then(shell => 
+              shell || new Response("App offline", {status: 503, headers: {"Content-Type":"text/plain"}})
+            );
           }
+          // Always return a valid Response to prevent TypeError
+          return new Response("", {status: 204});
         });
       })
   );
