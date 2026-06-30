@@ -52,7 +52,7 @@ self.addEventListener("fetch", e => {
             );
           }
           // Always return a valid Response to prevent TypeError
-          return new Response("", {status: 204});
+          return new Response(null, {status: 204});
         });
       })
   );

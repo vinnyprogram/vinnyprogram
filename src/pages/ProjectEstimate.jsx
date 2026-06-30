@@ -1133,34 +1133,7 @@ function EstimatePanel({ floors, areas, materialMap, variantMap, crewNotes, proj
           </div>
         );
       })()}
-      {/* Per-area sub-options */}
-      {(()=>{
-        const allSubOptions = floors.flatMap(floor=>
-          (areas[floor]||[]).filter(a=>a.area_type&&a.sqft).flatMap(a=>{
-            try{
-              const opts = Array.isArray(a.options)?a.options:(typeof a.options==="string"?JSON.parse(a.options||"[]"):[]);
-              return (opts||[]).filter(o=>o.material||o.label).map((o,oi)=>({...o,_area:a,_floor:floor,_oi:oi}));
-            }catch(e){ return []; }
-          })
-        );
-        if(!allSubOptions.length) return null;
-        return (
-          <div style={{marginTop:6,paddingTop:6,borderTop:`1px dashed ${C.chip}`}}>
-            <div style={{fontSize:10,fontWeight:800,color:"#92400e",textTransform:"uppercase",letterSpacing:0.4,marginBottom:4}}>⚡ Sub-Options</div>
-            {allSubOptions.map((o,i)=>{
-              const optMls=(o.mat_lines||[]).length>0?o.mat_lines:[{material:o.material||"",thickness_in:o.thickness_in||o._area?.thickness_in||"",r_value:o.r_value||o._area?.r_value||""}];
-              const matLabel=optMls.map(ml=>[ml.thickness_in,ml.material,ml.r_value].filter(Boolean).join(" ")).join(" + ");
-              return (
-                <div key={i} style={{fontSize:11,color:"#92400e",marginBottom:4,paddingLeft:6,borderLeft:"2px solid #fed7aa"}}>
-                  <div style={{fontWeight:700}}>{o.label||`Option ${o._oi+1}`} — {o._area.area_type}</div>
-                  <div style={{fontSize:10,color:C.muted}}>{matLabel} · {o._area.sqft} ft²</div>
-                  {o.note&&<div style={{fontSize:10,color:"#b45309",fontStyle:"italic"}}>📝 {o.note}</div>}
-                </div>
-              );
-            })}
-          </div>
-        );
-      })()}
+
       <div style={{ display:"flex", justifyContent:"space-between", paddingTop:6, borderTop:`2px solid ${C.ink}`, fontWeight:700 }}>
         <span style={{fontSize:12}}>Total</span>
         <span style={{fontSize:17,color:C.green}}>${fmt(total)}</span>
