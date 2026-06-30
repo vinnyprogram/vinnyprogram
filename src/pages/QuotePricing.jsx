@@ -667,12 +667,14 @@ export default function QuotePricing() {
                     <span style={{fontWeight:700,color:"#f59e0b",fontSize:12}}>${fmt(matCostOpt)}</span>
                   </div>
                   <div style={{display:"flex",alignItems:"center",gap:8,background:"#fff7ed",borderRadius:6,padding:"6px 8px"}}>
-                    <span style={{fontSize:11,color:"#92400e",flex:1}}>+ Extra (labor, etc.)</span>
-                    <span style={{fontSize:11,color:"#92400e"}}>$</span>
+                    <div style={{flex:1}}>
+                      <div style={{fontSize:10,color:"#92400e"}}>Material: <strong>${fmt(matCostOpt)}</strong></div>
+                    </div>
+                    <span style={{fontSize:11,color:"#92400e"}}>+ Extra $</span>
                     <input type="number" min="0" placeholder="0"
                       value={optionAmounts[opt.id]||""}
                       onChange={e=>setOptionAmounts(p=>({...p,[opt.id]:e.target.value}))}
-                      style={{width:80,padding:"4px 6px",border:"1px solid #fed7aa",borderRadius:6,fontSize:12,textAlign:"right"}}/>
+                      style={{width:70,padding:"4px 6px",border:"1px solid #fed7aa",borderRadius:6,fontSize:12,textAlign:"right"}}/>
                     <span style={{fontSize:12,fontWeight:700,color:"#059669",minWidth:60,textAlign:"right"}}>= ${fmt(totalOpt)}</span>
                   </div>
                 </div>
