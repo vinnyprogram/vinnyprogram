@@ -700,6 +700,11 @@ export default function QuotePricing() {
               {subOpts.map((o,i)=>{
                 const optMls=(o.mat_lines||[]).length>0?o.mat_lines:[{material:o.material||"",thickness_in:o.thickness_in||o._area?.thickness_in||"",r_value:o.r_value||o._area?.r_value||""}];
                 const matLabel=optMls.map(ml=>[ml.thickness_in,ml.material,ml.r_value].filter(Boolean).join(" ")).join(" + ");
+                // Calculate option material cost
+                const optMatCost = optMls.reduce((s,ml)=>{
+                  const {line_total}=calcArea(o._area.sqft,ml.thickness_in,matCostMap[ml.material],ml.r_value,variantMap);
+                  return s+line_total;
+                },0);
                 return (
                   <div key={i} style={{padding:"8px 0",borderBottom:i<subOpts.length-1?`1px dashed ${C.border}`:"none"}}>
                     <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6}}>
@@ -712,8 +717,8 @@ export default function QuotePricing() {
                     </div>
                     <div style={{display:"flex",alignItems:"center",gap:8,background:"#fff7ed",borderRadius:6,padding:"6px 8px"}}>
                       <div style={{flex:1}}>
-                        <div style={{fontSize:11,color:"#92400e"}}>Material cost</div>
-                        <div style={{fontSize:12,fontWeight:700,color:"#92400e"}}>${fmt(o._area.line_total||0)}</div>
+                        <div style={{fontSize:11,color:"#92400e"}}>Material cost (reference)</div>
+                        <div style={{fontSize:12,fontWeight:700,color:"#92400e"}}>${fmt(optMatCost)}</div>
                       </div>
                       <div style={{display:"flex",alignItems:"center",gap:4}}>
                         <span style={{fontSize:11,color:"#92400e"}}>+ Extra $</span>
@@ -721,7 +726,7 @@ export default function QuotePricing() {
                           value={optionAmounts[`sub-${i}`]||""}
                           onChange={e=>setOptionAmounts(p=>({...p,[`sub-${i}`]:e.target.value}))}
                           style={{width:70,padding:"4px 6px",border:"1px solid #fed7aa",borderRadius:6,fontSize:12,textAlign:"right"}}/>
-                        <span style={{fontSize:12,fontWeight:700,color:"#059669"}}>= ${fmt((o._area.line_total||0)+Number(optionAmounts[`sub-${i}`]||0))}</span>
+                        <span style={{fontSize:12,fontWeight:700,color:"#059669"}}>= ${fmt(optMatCost+Number(optionAmounts[`sub-${i}`]||0))}</span>
                       </div>
                     </div>
                   </div>
