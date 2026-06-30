@@ -608,10 +608,15 @@ export default function CustomerProfile() {
                         📅 Schedule
                       </button>
                     )}
-                    {/* Quote PDF button - opens generated quote */}
+                    {/* Quote PDF button - opens generated quote + advances status to Proposal */}
                     {job.quotes?.[0]?.grand_total>0 && (
-                      <button onClick={()=>navigate(`/quote/${job.id}`)}
-                        style={{flex:1,minWidth:70,border:"none",background:"#7c3aed",
+                      <button onClick={async()=>{
+                        if(["Quote Ready","Measured","Sent to Office","Draft"].includes(job.pipeline_status||"Draft")){
+                          await supabase.from("projects").update({pipeline_status:"Proposal"}).eq("id",job.id);
+                          load();
+                        }
+                        navigate(`/quote/${job.id}`);
+                      }} style={{flex:1,minWidth:70,border:"none",background:"#7c3aed",
                           color:"white",padding:"8px 0",borderRadius:8,
                           cursor:"pointer",fontSize:12,fontWeight:700}}>
                         📄 PDF
