@@ -42,6 +42,7 @@ export default function QuotePricing() {
   const [optionAmounts, setOptionAmounts] = useState({}); // {optKey: amount}
   const [areaOptions, setAreaOptions] = useState([]);
   const [areasData, setAreasData] = useState([]);
+  const [floorNameMap, setFloorNameMap] = useState({});
   const [matCostMap, setMatCostMap] = useState({});
   const [variantMap, setVariantMap] = useState({});
   const [floorRowsData, setFloorRowsData] = useState([]);
@@ -317,6 +318,7 @@ export default function QuotePricing() {
       seenOptKeys.add(dupKey);
     });
     setAreasData(areas||[]);
+    setFloorNameMap(floorNameMap);
     setAreaOptions(Object.values(optAreaMap).map(a=>({...a,_matCost:Math.round(a._matCost*100)/100})));
     // Group by floor+area_type+sqft to handle both combos and any DB duplicates
     const seenAreaKeys = new Set();
