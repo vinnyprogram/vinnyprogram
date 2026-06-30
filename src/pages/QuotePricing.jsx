@@ -686,7 +686,7 @@ export default function QuotePricing() {
         {/* ── SUB-OPTIONS (per-area options from estimate) ── */}
         {(()=>{
           const subOpts = (areas||[]).filter(a=>a.area_type&&a.sqft>0).flatMap(a=>{
-            const opts = Array.isArray(a.options)?a.options:(typeof a.options==="string"?JSON.parse(a.options||"[]"):[]);
+            let opts=[]; try{ opts=Array.isArray(a.options)?a.options:(typeof a.options==="string"?JSON.parse(a.options||"[]"):[]); }catch(e){}
             return opts.filter(o=>o.material||o.label).map((o,oi)=>({...o,_area:a,_oi:oi,_floorName:floorNameMap[a.floor_id]||""}));
           });
           if(!subOpts.length) return null;

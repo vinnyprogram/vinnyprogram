@@ -1082,8 +1082,12 @@ function EstimatePanel({ floors, areas, materialMap, variantMap, crewNotes, proj
         // Collect all options from all areas
         // Collect per-area sub-options (from + Add Option button)
         const allSubOptions = floors.flatMap(floor=>
-          (areas[floor]||[]).filter(a=>a.area_type&&a.sqft&&(a.options||[]).some(o=>o.material||o.label))
-            .flatMap(a=>(a.options||[]).filter(o=>o.material||o.label).map((o,oi)=>({...o,_area:a,_floor:floor,_oi:oi})))
+          (areas[floor]||[]).filter(a=>a.area_type&&a.sqft).flatMap(a=>{
+            try{
+              const opts = Array.isArray(a.options)?a.options:(typeof a.options==="string"?JSON.parse(a.options||"[]"):[]);
+              return (opts||[]).filter(o=>o.material||o.label).map((o,oi)=>({...o,_area:a,_floor:floor,_oi:oi}));
+            }catch(e){ return []; }
+          })
         );
         const optionalAreas=floors.flatMap(floor=>(areas[floor]||[]).filter(a=>a.area_type&&a.sqft&&a.material!=="__custom_mat__"&&a.is_optional).map(a=>({...a,floor})));
         if(!optionalAreas.length && !allSubOptions.length) return null;
@@ -1138,8 +1142,12 @@ function EstimatePanel({ floors, areas, materialMap, variantMap, crewNotes, proj
       {/* Per-area sub-options */}
       {(()=>{
         const allSubOptions = floors.flatMap(floor=>
-          (areas[floor]||[]).filter(a=>a.area_type&&a.sqft&&(a.options||[]).some(o=>o.material||o.label))
-            .flatMap(a=>(a.options||[]).filter(o=>o.material||o.label).map((o,oi)=>({...o,_area:a,_floor:floor,_oi:oi})))
+          (areas[floor]||[]).filter(a=>a.area_type&&a.sqft).flatMap(a=>{
+            try{
+              const opts = Array.isArray(a.options)?a.options:(typeof a.options==="string"?JSON.parse(a.options||"[]"):[]);
+              return (opts||[]).filter(o=>o.material||o.label).map((o,oi)=>({...o,_area:a,_floor:floor,_oi:oi}));
+            }catch(e){ return []; }
+          })
         );
         if(!allSubOptions.length) return null;
         return (

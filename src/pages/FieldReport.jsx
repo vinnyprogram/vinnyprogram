@@ -484,36 +484,47 @@ export default function FieldReport() {
             );
           })()}
 
-          {/* optional items */}
-          {options.length>0 && (
-            <div style={{marginBottom:20}}>
-              <div style={{fontSize:9,fontWeight:800,color:"#94a3b8",
-                  textTransform:"uppercase",letterSpacing:0.5,marginBottom:8}}>
-                Optional / Alternatives
+          {/* sub-options from areas */}
+          {(()=>{
+            const subOpts = areas.filter(a=>a.area_type&&a.sqft>0).flatMap(a=>{
+              try{
+                const opts = Array.isArray(a.options)?a.options:(typeof a.options==="string"?JSON.parse(a.options||"[]"):[]);
+                return (opts||[]).filter(o=>o.material||o.label).map((o,oi)=>({...o,_area:a,_oi:oi}));
+              }catch(e){ return []; }
+            });
+            if(!subOpts.length) return null;
+            return (
+              <div style={{marginBottom:16}}>
+                <div style={{fontSize:9,fontWeight:800,color:"#92400e",textTransform:"uppercase",
+                    letterSpacing:0.5,marginBottom:8,background:"#fff7ed",
+                    padding:"6px 12px",borderRadius:6,border:"1px solid #fed7aa"}}>
+                  ⚡ Sub-Options (Price Separately)
+                </div>
+                {subOpts.map((o,i)=>{
+                  const fl = floors.find(f=>f.id===o._area.floor_id);
+                  const optMls=(o.mat_lines||[]).length>0?o.mat_lines:[{material:o.material||"",thickness_in:o.thickness_in||o._area?.thickness_in||"",r_value:o.r_value||o._area?.r_value||""}];
+                  const matLabel=optMls.map(ml=>[ml.thickness_in,ml.material,ml.r_value].filter(Boolean).join(" ")).join(" + ");
+                  return (
+                    <div key={i} style={{padding:"8px 12px",background:i%2===0?"#fffbeb":"white",
+                        border:"1px solid #fde68a",borderTop:i===0?"1px solid #fde68a":"none",
+                        borderRadius:i===0?"6px 6px 0 0":i===subOpts.length-1?"0 0 6px 6px":"0"}}>
+                      <div style={{display:"flex",justifyContent:"space-between",flexWrap:"wrap",gap:4}}>
+                        <div>
+                          <span style={{fontSize:12,fontWeight:700,color:"#92400e"}}>{fl?.name} — {o._area.area_type}</span>
+                          <span style={{fontSize:11,color:"#374151",marginLeft:6}}>{o.label||`Option ${o._oi+1}`}</span>
+                          <div style={{fontSize:10,color:"#64748b"}}>{matLabel}</div>
+                          {o.note&&<div style={{fontSize:10,color:"#b45309",fontStyle:"italic"}}>📝 {o.note}</div>}
+                        </div>
+                        <span style={{fontSize:12,fontWeight:700,color:"#92400e"}}>{o._area.sqft} ft²</span>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
-              <table style={{width:"100%",borderCollapse:"collapse",
-                  border:"1px solid #e2e8f0",borderRadius:6}}>
-                <tbody>
-                  {options.map((o,i)=>(
-                    <tr key={o.id} style={{
-                      background:i%2===0?"#fffbeb":"#fefce8",
-                      borderBottom:i<options.length-1?"1px solid #fde68a":"none"}}>
-                      <td style={{padding:"8px 12px",fontSize:11,fontWeight:700,
-                          color:"#92400e",width:"35%",verticalAlign:"top"}}>
-                        {o.label||"Optional"}
-                      </td>
-                      <td style={{padding:"8px 12px",fontSize:11,
-                          color:"#78350f",verticalAlign:"top"}}>
-                        {o.description}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+            );
+          })()}
 
-          {/* notes box */}
+                    {/* notes box */}
           <div style={{border:"1px solid #e2e8f0",borderRadius:6,
               padding:"10px 14px",marginBottom:20,minHeight:60}}>
             <div style={{fontSize:9,fontWeight:800,color:"#94a3b8",
