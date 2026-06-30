@@ -437,7 +437,7 @@ export default function FieldReport() {
             // Merge optional groups across floors same as main areas
             const optMerged = {};
             Object.values(optGroupMap).forEach(g=>{
-              const matKey = g.materials.map(m=>m.material+m.thickness_in+m.r_value).sort().join("+");
+              const matKey = g.materials.map(m=>m.material+(m.thickness_in||"")+(m.r_value||"")).sort().join("+");
               const key = g.area_type+"||||"+matKey;
               if(!optMerged[key]) optMerged[key]={...g,floors:[g.floor],sqft:g.sqft};
               else {

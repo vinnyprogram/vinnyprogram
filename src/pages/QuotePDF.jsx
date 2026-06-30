@@ -168,7 +168,7 @@ export default function QuotePDF() {
     areas.filter(a=>a.area_type&&a.sqft>0&&a.is_optional&&((a.order_index%10===0)||(a.order_index===0))).forEach(a=>{
       const fl = floors.find(f=>f.id===a.floor_id);
       const flName = fl?.name||"";
-      const key = `${a.area_type}|${a.material}`;
+      const key = `${a.area_type}|${a.material}|${a.r_value||""}|${a.thickness_in||""}`;
       if(!typeMap[key]) typeMap[key]={
         area_type:a.area_type, material:a.material, r_value:a.r_value||"",
         thickness_in:a.thickness_in||"", areas:[], floorNames:[],

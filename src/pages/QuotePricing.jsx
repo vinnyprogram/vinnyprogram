@@ -303,9 +303,15 @@ export default function QuotePricing() {
     (areas||[]).filter(a=>a.is_optional&&a.area_type&&a.sqft>0).forEach(a=>{
       // primary row key = floor_id + area_type + sqft (unique per area)
       const isPrimary = (a.order_index%10===0)||(a.order_index===0);
-      const key=`${a.floor_id}-${a.area_type}-${a.sqft}`;
+      const key=`${a.area_type}-${a.material}-${a.r_value||""}-${a.thickness_in||""}`;
       if(isPrimary){
-        if(!optAreaMap[key]) optAreaMap[key]={...a,_floorName:floorNameMap[a.floor_id]||"",_matCost:0};
+        if(!optAreaMap[key]){
+          optAreaMap[key]={...a,_floorName:floorNameMap[a.floor_id]||"",_matCost:0,_floorNames:[floorNameMap[a.floor_id]||""]};
+        } else {
+          const fn=floorNameMap[a.floor_id]||"";
+          if(!optAreaMap[key]._floorNames.includes(fn)) optAreaMap[key]._floorNames.push(fn);
+          optAreaMap[key].sqft+=a.sqft||0;
+        }
       }
       if(optAreaMap[key]) optAreaMap[key]._matCost+=Number(a.line_total||0);
     });
@@ -624,7 +630,7 @@ export default function QuotePricing() {
               const matCostOpt=opt._matCost||0;
               const extraAmt=Number(optionAmounts[opt.id]||0);
               const totalOpt=matCostOpt+extraAmt;
-              const floorName=opt._floorName||"";
+              const floorName=(opt._floorNames||[opt._floorName||""]).join(", ");
               const optMls=(opt.mat_lines&&opt.mat_lines.length>0)?opt.mat_lines:[{material:opt.material||"",thickness_in:opt.thickness_in||"",r_value:opt.r_value||""}];
               return (
                 <div key={opt.id} style={{padding:"8px 0",borderBottom:i<areaOptions.length-1?`1px dashed ${C.border}`:"none"}}>
