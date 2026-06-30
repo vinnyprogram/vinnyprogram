@@ -1110,32 +1110,26 @@ function EstimatePanel({ floors, areas, materialMap, variantMap, crewNotes, proj
                     </div>
                     {cost>0&&<span style={{fontWeight:700,color:"#f59e0b",fontSize:12,flexShrink:0,paddingTop:2}}>+${fmt(cost)}</span>}
                   </div>
-                  {/* Show area options */}
-                  {(a.options||[]).filter(o=>o.material||o.label).map((o,oi)=>{
-                    const optMls=(o.mat_lines||[]).length>0?o.mat_lines:[{material:o.material||"",thickness_in:o.thickness_in||"",r_value:o.r_value||""}];
-                    const optMatLabel=optMls.map(ml=>[ml.thickness_in,ml.material,ml.r_value].filter(Boolean).join(" ")).join(" + ");
-                    const isSwap=o.type==="swap";
-                    const extraAmt=Number(o.extra_amount||0);
-                    return (
-                      <div key={oi} style={{marginTop:4,paddingTop:4,paddingLeft:8,borderLeft:"2px solid #fed7aa"}}>
-                        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
-                          <div style={{flex:1,paddingRight:4}}>
-                            <div style={{fontSize:11,fontWeight:700,color:isSwap?"#dc2626":"#059669"}}>
-                              {isSwap?"⇄":"+"} Option {oi+1}{o.label?`: ${o.label}`:""}
-                            </div>
-                            {optMatLabel&&<div style={{fontSize:10,color:C.muted}}>{optMatLabel}</div>}
-                            {o.description&&<div style={{fontSize:10,color:C.muted,fontStyle:"italic"}}>{o.description}</div>}
-                          </div>
-                          {extraAmt>0&&<span style={{fontWeight:700,fontSize:11,color:isSwap?"#dc2626":"#059669",flexShrink:0}}>
-                            {isSwap?"-":"+"}${fmt(extraAmt)}
-                          </span>}
-                        </div>
-                      </div>
-                    );
-                  })}
                 </div>
               );
             })}
+            {/* Sub-options (per-area alternatives) */}
+            {allSubOptions.length>0&&(
+              <div style={{marginTop:6,paddingTop:6,borderTop:`1px dashed ${C.chip}`}}>
+                <div style={{fontSize:10,fontWeight:800,color:"#92400e",textTransform:"uppercase",letterSpacing:0.4,marginBottom:4}}>⚡ Sub-Options</div>
+                {allSubOptions.map((o,i)=>{
+                  const optMls=(o.mat_lines||[]).length>0?o.mat_lines:[{material:o.material||"",thickness_in:o.thickness_in||o._area?.thickness_in||"",r_value:o.r_value||o._area?.r_value||""}];
+                  const matLabel=optMls.map(ml=>[ml.thickness_in,ml.material,ml.r_value].filter(Boolean).join(" ")).join(" + ");
+                  return (
+                    <div key={i} style={{fontSize:11,color:"#92400e",marginBottom:4,paddingLeft:6,borderLeft:"2px solid #fed7aa"}}>
+                      <div style={{fontWeight:700}}>{o.label||`Option ${o._oi+1}`} — {o._area.area_type}</div>
+                      <div style={{fontSize:10,color:C.muted}}>{matLabel} · {o._area.sqft} ft²</div>
+                      {o.note&&<div style={{fontSize:10,color:"#b45309",fontStyle:"italic"}}>📝 {o.note}</div>}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         );
       })()}
