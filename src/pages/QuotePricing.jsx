@@ -711,12 +711,18 @@ export default function QuotePricing() {
                       </div>
                     </div>
                     <div style={{display:"flex",alignItems:"center",gap:8,background:"#fff7ed",borderRadius:6,padding:"6px 8px"}}>
-                      <span style={{fontSize:11,color:"#92400e",flex:1}}>Price for this option</span>
-                      <span style={{fontSize:11,color:"#92400e"}}>$</span>
-                      <input type="number" min="0" placeholder="0"
-                        value={optionAmounts[`sub-${i}`]||""}
-                        onChange={e=>setOptionAmounts(p=>({...p,[`sub-${i}`]:e.target.value}))}
-                        style={{width:80,padding:"4px 6px",border:"1px solid #fed7aa",borderRadius:6,fontSize:12,textAlign:"right"}}/>
+                      <div style={{flex:1}}>
+                        <div style={{fontSize:11,color:"#92400e"}}>Material cost</div>
+                        <div style={{fontSize:12,fontWeight:700,color:"#92400e"}}>${fmt(o._area.line_total||0)}</div>
+                      </div>
+                      <div style={{display:"flex",alignItems:"center",gap:4}}>
+                        <span style={{fontSize:11,color:"#92400e"}}>+ Extra $</span>
+                        <input type="number" min="0" placeholder="0"
+                          value={optionAmounts[`sub-${i}`]||""}
+                          onChange={e=>setOptionAmounts(p=>({...p,[`sub-${i}`]:e.target.value}))}
+                          style={{width:70,padding:"4px 6px",border:"1px solid #fed7aa",borderRadius:6,fontSize:12,textAlign:"right"}}/>
+                        <span style={{fontSize:12,fontWeight:700,color:"#059669"}}>= ${fmt((o._area.line_total||0)+Number(optionAmounts[`sub-${i}`]||0))}</span>
+                      </div>
                     </div>
                   </div>
                 );
