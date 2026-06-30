@@ -666,16 +666,16 @@ export default function QuotePricing() {
                     </div>
                     <span style={{fontWeight:700,color:"#f59e0b",fontSize:12}}>${fmt(matCostOpt)}</span>
                   </div>
-                  <div style={{display:"flex",alignItems:"center",gap:8,background:"#fff7ed",borderRadius:6,padding:"6px 8px"}}>
-                    <div style={{flex:1}}>
-                      <div style={{fontSize:10,color:"#92400e"}}>Material: <strong>${fmt(matCostOpt)}</strong></div>
+                  <div style={{background:"#fff7ed",borderRadius:6,padding:"8px 10px"}}>
+                    <div style={{fontSize:11,color:"#92400e",marginBottom:6}}>Material cost: <strong>${fmt(matCostOpt)}</strong></div>
+                    <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                      <span style={{fontSize:11,color:"#92400e"}}>+ Extra (labor, etc.) $</span>
+                      <input type="number" min="0" placeholder="0"
+                        value={optionAmounts[opt.id]||""}
+                        onChange={e=>setOptionAmounts(p=>({...p,[opt.id]:e.target.value}))}
+                        style={{width:80,padding:"6px 8px",border:"1px solid #fed7aa",borderRadius:6,fontSize:13,textAlign:"right",flex:1,minWidth:70}}/>
+                      <span style={{fontSize:13,fontWeight:700,color:"#059669",whiteSpace:"nowrap"}}>= ${fmt(totalOpt)}</span>
                     </div>
-                    <span style={{fontSize:11,color:"#92400e"}}>+ Extra $</span>
-                    <input type="number" min="0" placeholder="0"
-                      value={optionAmounts[opt.id]||""}
-                      onChange={e=>setOptionAmounts(p=>({...p,[opt.id]:e.target.value}))}
-                      style={{width:70,padding:"4px 6px",border:"1px solid #fed7aa",borderRadius:6,fontSize:12,textAlign:"right"}}/>
-                    <span style={{fontSize:12,fontWeight:700,color:"#059669",minWidth:60,textAlign:"right"}}>= ${fmt(totalOpt)}</span>
                   </div>
                 </div>
               );
@@ -717,18 +717,15 @@ export default function QuotePricing() {
                         {o.note&&<div style={{fontSize:10,color:"#b45309",fontStyle:"italic"}}>📝 {o.note}</div>}
                       </div>
                     </div>
-                    <div style={{display:"flex",alignItems:"center",gap:8,background:"#fff7ed",borderRadius:6,padding:"6px 8px"}}>
-                      <div style={{flex:1}}>
-                        <div style={{fontSize:11,color:"#92400e"}}>Material cost (reference)</div>
-                        <div style={{fontSize:12,fontWeight:700,color:"#92400e"}}>${fmt(optMatCost)}</div>
-                      </div>
-                      <div style={{display:"flex",alignItems:"center",gap:4}}>
+                    <div style={{background:"#fff7ed",borderRadius:6,padding:"8px 10px"}}>
+                      <div style={{fontSize:11,color:"#92400e",marginBottom:6}}>Material cost (reference): <strong>${fmt(optMatCost)}</strong></div>
+                      <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
                         <span style={{fontSize:11,color:"#92400e"}}>+ Extra $</span>
                         <input type="number" min="0" placeholder="0"
                           value={optionAmounts[`sub-${i}`]||""}
                           onChange={e=>setOptionAmounts(p=>({...p,[`sub-${i}`]:e.target.value}))}
-                          style={{width:70,padding:"4px 6px",border:"1px solid #fed7aa",borderRadius:6,fontSize:12,textAlign:"right"}}/>
-                        <span style={{fontSize:12,fontWeight:700,color:"#059669"}}>= ${fmt(optMatCost+Number(optionAmounts[`sub-${i}`]||0))}</span>
+                          style={{width:80,padding:"6px 8px",border:"1px solid #fed7aa",borderRadius:6,fontSize:13,textAlign:"right",flex:1,minWidth:70}}/>
+                        <span style={{fontSize:13,fontWeight:700,color:"#059669",whiteSpace:"nowrap"}}>= ${fmt(optMatCost+Number(optionAmounts[`sub-${i}`]||0))}</span>
                       </div>
                     </div>
                   </div>
