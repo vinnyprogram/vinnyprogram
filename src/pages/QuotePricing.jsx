@@ -721,7 +721,7 @@ export default function QuotePricing() {
           );
         })()}
 
-        {/* ── 2. OVERHEAD & BUSINESS COSTS ── */}}
+        {/* ── 2. OVERHEAD & BUSINESS COSTS ── */}
         <div style={CARD}>
           <div style={SEC}>
             <span>🏢 Overhead & Business Costs</span>
