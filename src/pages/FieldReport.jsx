@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 
@@ -26,6 +26,20 @@ export default function FieldReport() {
   const [project,  setProject]  = useState(null);
   const [lead,     setLead]     = useState(null);
   const [areas,    setAreas]    = useState([]);
+  // Compute optional group map at component level so it's accessible in render
+  const optGroupMapComputed = useMemo(()=>{
+    const ogm = {};
+    (areas||[]).forEach(a=>{
+      if(!a.is_optional||!a.area_type||!a.sqft) return;
+      const key = (a.floor_id||"")+"||||"+(a.area_type||"")+"||||"+(a.sqft||0);
+      if(!ogm[key]) ogm[key]={area_type:a.area_type,floor:null,floorOrder:0,sqft:a.sqft||0,materials:[],optional_note:a.optional_note||""};
+      const og=ogm[key];
+      const exists=og.materials.find(m=>m.material===a.material&&m.r_value===a.r_value);
+      if(!exists) og.materials.push({material:a.material||"",thickness_in:a.thickness_in||"",r_value:a.r_value||""});
+      if(a.optional_note) og.optional_note=a.optional_note;
+    });
+    return ogm;
+  },[areas]);
   const [floors,   setFloors]   = useState([]);
   const [segments, setSegments] = useState([]);
   const [user,     setUser]     = useState(null);
@@ -320,21 +334,13 @@ export default function FieldReport() {
               // group by floor + area_type + sqft
               // same floor+type+sqft = same area (combo = multiple rows with same sqft)
               const groupMap = {};
-              const optGroupMap = {};
               areas.forEach(a=>{
                 const fl = floors.find(f=>f.id===a.floor_id);
                 const floorIdx = floors.findIndex(f=>f.id===a.floor_id);
                 // key = floor + area_type + sqft (combos share same sqft)
                 const key = (a.floor_id||"")+"||||"+(a.area_type||"")+"||||"+(a.sqft||0);
-                // Separate optional areas
-                if(a.is_optional){
-                  if(!optGroupMap[key]) optGroupMap[key]={area_type:a.area_type,floor:fl,floorOrder:floorIdx,sqft:a.sqft||0,materials:[],optional_note:a.optional_note||""};
-                  const og=optGroupMap[key];
-                  const exists=og.materials.find(m=>m.material===a.material&&m.r_value===a.r_value);
-                  if(!exists) og.materials.push({material:a.material||"",thickness_in:a.thickness_in||"",r_value:a.r_value||""});
-                  if(a.optional_note) og.optional_note=a.optional_note;
-                  return;
-                }
+                // Skip optional areas - handled separately
+                if(a.is_optional) return;
                 if(!groupMap[key]) groupMap[key]={
                   area_type: a.area_type,
                   floor: fl,
@@ -433,10 +439,10 @@ export default function FieldReport() {
           </div>
 
           {/* ⭐ Optional areas as options */}
-          {Object.keys(optGroupMap).length>0 && (()=>{
+          {Object.keys(optGroupMapComputed).length>0 && (()=>{
             // Merge optional groups across floors same as main areas
             const optMerged = {};
-            Object.values(optGroupMap).forEach(g=>{
+            Object.values(optGroupMapComputed).forEach(g=>{
               const matKey = g.materials.map(m=>m.material+(m.thickness_in||"")+(m.r_value||"")).sort().join("+");
               const key = g.area_type+"||||"+matKey;
               if(!optMerged[key]) optMerged[key]={...g,floors:[g.floor],sqft:g.sqft};
