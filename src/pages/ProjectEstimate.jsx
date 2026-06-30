@@ -1200,7 +1200,12 @@ export default function ProjectEstimate() {
   const isEditing=!!projectId;
   const [isLocked, setIsLocked] = useState(false); // true when pipeline_status is sent
 
-  const [floors,setFloors]=useState(["Attic","3rd","2nd","1st","Basement"]);
+  const [floors, setFloorsRaw]=useState(["Attic","3rd","2nd","1st","Basement"]);
+  // Always deduplicate floors — this is the ONLY place floors state is set
+  const setFloors = (v) => setFloorsRaw(prev => {
+    const next = typeof v === "function" ? v(prev) : v;
+    return [...new Set((next||[]).filter(f=>f && f!=="Floor"))];
+  });
   const [activeFloor,setActiveFloor]=useState("Attic");
   const [pendingFloor,setPendingFloor]=useState(null);
   const [areas,setAreas]=useState(()=>{const i={};DEFAULT_FLOORS.forEach(f=>{i[f]=[];});return i;});
@@ -1614,6 +1619,7 @@ export default function ProjectEstimate() {
 
   function addFloor(){
     const name=newFloorName.trim();if(!name)return;
+    if(floors.includes(name)){alert(`"${name}" already exists.`);return;}
     setFloors(p=>[...p,name]);setAreas(p=>({...p,[name]:[]}));
     setActiveFloor(name);setNewFloorName("");setAddingFloor(false);
   }
