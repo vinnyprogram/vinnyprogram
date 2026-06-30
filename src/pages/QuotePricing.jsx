@@ -473,6 +473,19 @@ export default function QuotePricing() {
     const comm   = (preBD + extT) * commPct/100;
     const finP   = preBD + extT + comm - discA;
     try {
+      // Save price history before overwriting (for negotiation tracking)
+      const negotiationStatuses = ["Proposal","Negotiation","Quote Ready"];
+      if(negotiationStatuses.includes(project?.pipeline_status) && quote?.grand_total){
+        const oldHistory = (() => { try{ return JSON.parse(quote.price_history_json||"[]"); }catch{ return []; } })();
+        const currentTotal = Number(quote.grand_total||0);
+        const lastEntry = oldHistory[oldHistory.length-1];
+        // Only add to history if price actually changed
+        if(!lastEntry || Math.abs(lastEntry.price - currentTotal) > 0.01){
+          oldHistory.push({ price: currentTotal, date: new Date().toISOString(), status: project.pipeline_status });
+          await supabase.from("quotes").update({ price_history_json: JSON.stringify(oldHistory) }).eq("project_id", projectId);
+        }
+      }
+
       await supabase.from("quotes").update({
         material_cost: Math.round(matCst*100)/100,
         overhead_cost: Math.round(ohCst*100)/100,

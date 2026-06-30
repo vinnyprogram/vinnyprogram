@@ -128,7 +128,7 @@ export default function CustomerProfile() {
     if(projs?.length) {
       const ids = projs.map(p=>p.id);
       const { data:quotes } = await supabase.from("quotes")
-        .select("id,project_id,grand_total,final_price,material_cost,overhead_cost,labor_cost,profit_margin_pct,status,created_at")
+        .select("id,project_id,grand_total,final_price,material_cost,overhead_cost,labor_cost,profit_margin_pct,status,created_at,price_history_json")
         .in("project_id", ids)
         .order("created_at", { ascending:false });
 
@@ -718,6 +718,24 @@ export default function CustomerProfile() {
                                 <span>Final Price</span>
                                 <span style={{color:"#059669"}}>${finalPrice.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})}</span>
                               </div>
+                              {/* Price negotiation history */}
+                              {(()=>{
+                                try{
+                                  const hist = JSON.parse(job.quotes[0].price_history_json||"[]");
+                                  if(!hist.length) return null;
+                                  return (
+                                    <div style={{marginTop:8,paddingTop:8,borderTop:"1px dashed #86efac"}}>
+                                      <div style={{fontSize:10,fontWeight:700,color:"#64748b",marginBottom:4,textTransform:"uppercase"}}>📋 Price History</div>
+                                      {hist.map((h,i)=>(
+                                        <div key={i} style={{display:"flex",justifyContent:"space-between",fontSize:11,color:"#64748b",marginBottom:2}}>
+                                          <span>{new Date(h.date).toLocaleDateString("en-US",{month:"short",day:"numeric"})} · {h.status}</span>
+                                          <span style={{textDecoration:"line-through"}}>${Number(h.price||0).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})}</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  );
+                                }catch{ return null; }
+                              })()}
                             </>
                           );
                         })()}
