@@ -45,6 +45,7 @@ export default function QuotePricing() {
   const [floorNameMap, setFloorNameMap] = useState({});
   const [matCostMap, setMatCostMap] = useState({});
   const [variantMap, setVariantMap] = useState({});
+  const [effectiveCostMap, setEffectiveCostMap] = useState({}); // material -> $/sqft
   const [floorRowsData, setFloorRowsData] = useState([]);
   const [liveOverheadCost, setLiveOverheadCost] = useState(null);
 
@@ -319,6 +320,10 @@ export default function QuotePricing() {
     });
     setAreasData(areas||[]);
     setFloorNameMap(floorNameMap);
+    // Build effective cost per sqft per material for option pricing
+    const effMap = {};
+    lines.forEach(l=>{ if(l.material&&l.sqft>0&&l.lineTotal>0) effMap[l.material]=(effMap[l.material]||0)||l.lineTotal/l.sqft; });
+    setEffectiveCostMap(effMap);
     setAreaOptions(Object.values(optAreaMap).map(a=>({...a,_matCost:Math.round(a._matCost*100)/100})));
     // Group by floor+area_type+sqft to handle both combos and any DB duplicates
     const seenAreaKeys = new Set();
@@ -704,6 +709,9 @@ export default function QuotePricing() {
                 const matLabel=optMls.map(ml=>[ml.thickness_in,ml.material,ml.r_value].filter(Boolean).join(" ")).join(" + ");
                 // Calculate option material cost
                 const optMatCost = optMls.reduce((s,ml)=>{
+                  // Use effective $/sqft from main areas if available
+                  const effPerSqft = effectiveCostMap[ml.material]||0;
+                  if(effPerSqft>0) return s+(o._area.sqft*effPerSqft);
                   const {line_total}=calcArea(o._area.sqft,ml.thickness_in,matCostMap[ml.material],ml.r_value,variantMap);
                   return s+line_total;
                 },0);
