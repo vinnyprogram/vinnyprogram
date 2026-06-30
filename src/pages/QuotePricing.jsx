@@ -126,6 +126,8 @@ export default function QuotePricing() {
     if(q?.sales_rep_id)    setSelectedRep(q.sales_rep_id);
     if(q?.discount_amount) setDiscount(String(q.discount_amount));
     if(q?.option_amounts_json){ try{ setOptionAmounts(JSON.parse(q.option_amounts_json)); }catch{} }
+    if(q?.extras_json){ try{ const ex=JSON.parse(q.extras_json); if(ex?.length) setExtras(ex); }catch{} }
+    if(q?.consumables_json){ try{ const co=JSON.parse(q.consumables_json); if(co?.length) setConsumables(co); }catch{} }
 
     // load customer
     if(proj?.lead_id){
@@ -483,6 +485,8 @@ export default function QuotePricing() {
         discount_amount: Number(discount||0),
         labor_roles_json: JSON.stringify(laborRoles),
         option_amounts_json: JSON.stringify(optionAmounts),
+        extras_json: JSON.stringify(extras),
+        consumables_json: JSON.stringify(consumables),
         sales_rep_id: selectedRep||null,
         grand_total: Math.round(finP*100)/100,
         final_price: Math.round(finP*100)/100,
