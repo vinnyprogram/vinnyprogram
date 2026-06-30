@@ -1080,9 +1080,13 @@ function EstimatePanel({ floors, areas, materialMap, variantMap, crewNotes, proj
       })()}
       {(()=>{
         // Collect all options from all areas
-        const allOptionsWithArea = [];// unused - options shown via is_optional areas
+        // Collect per-area sub-options (from + Add Option button)
+        const allSubOptions = floors.flatMap(floor=>
+          (areas[floor]||[]).filter(a=>a.area_type&&a.sqft&&(a.options||[]).some(o=>o.material||o.label))
+            .flatMap(a=>(a.options||[]).filter(o=>o.material||o.label).map((o,oi)=>({...o,_area:a,_floor:floor,_oi:oi})))
+        );
         const optionalAreas=floors.flatMap(floor=>(areas[floor]||[]).filter(a=>a.area_type&&a.sqft&&a.material!=="__custom_mat__"&&a.is_optional).map(a=>({...a,floor})));
-        if(!optionalAreas.length && !allOptionsWithArea.length) return null;
+        if(!optionalAreas.length && !allSubOptions.length) return null;
         return (
           <div style={{marginTop:4,marginBottom:8,paddingTop:8,borderTop:`1px dashed ${C.border}`}}>
             <div style={{fontSize:10,fontWeight:800,color:"#f59e0b",textTransform:"uppercase",letterSpacing:0.4,marginBottom:6}}>
@@ -1125,6 +1129,30 @@ function EstimatePanel({ floors, areas, materialMap, variantMap, crewNotes, proj
                       </div>
                     );
                   })}
+                </div>
+              );
+            })}
+          </div>
+        );
+      })()}
+      {/* Per-area sub-options */}
+      {(()=>{
+        const allSubOptions = floors.flatMap(floor=>
+          (areas[floor]||[]).filter(a=>a.area_type&&a.sqft&&(a.options||[]).some(o=>o.material||o.label))
+            .flatMap(a=>(a.options||[]).filter(o=>o.material||o.label).map((o,oi)=>({...o,_area:a,_floor:floor,_oi:oi})))
+        );
+        if(!allSubOptions.length) return null;
+        return (
+          <div style={{marginTop:6,paddingTop:6,borderTop:`1px dashed ${C.chip}`}}>
+            <div style={{fontSize:10,fontWeight:800,color:"#92400e",textTransform:"uppercase",letterSpacing:0.4,marginBottom:4}}>⚡ Sub-Options</div>
+            {allSubOptions.map((o,i)=>{
+              const optMls=(o.mat_lines||[]).length>0?o.mat_lines:[{material:o.material||"",thickness_in:o.thickness_in||o._area?.thickness_in||"",r_value:o.r_value||o._area?.r_value||""}];
+              const matLabel=optMls.map(ml=>[ml.thickness_in,ml.material,ml.r_value].filter(Boolean).join(" ")).join(" + ");
+              return (
+                <div key={i} style={{fontSize:11,color:"#92400e",marginBottom:4,paddingLeft:6,borderLeft:"2px solid #fed7aa"}}>
+                  <div style={{fontWeight:700}}>{o.label||`Option ${o._oi+1}`} — {o._area.area_type}</div>
+                  <div style={{fontSize:10,color:C.muted}}>{matLabel} · {o._area.sqft} ft²</div>
+                  {o.note&&<div style={{fontSize:10,color:"#b45309",fontStyle:"italic"}}>📝 {o.note}</div>}
                 </div>
               );
             })}

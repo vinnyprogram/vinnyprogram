@@ -299,27 +299,30 @@ export default function QuotePricing() {
     let matTotal = 0;
     const lines = [];
     const seenOverride = new Set();
-    // Build options from is_optional primary areas only (order_index % 10 === 0)
-    // and sum all mat_lines (combo rows) for the same primary area
+    // Build options - group by area_type+material+r_value+thickness, dedup by floor+area_type+sqft
     const optAreaMap={};
+    const seenOptKeys = new Set();
     (areas||[]).filter(a=>a.is_optional&&a.area_type&&a.sqft>0).forEach(a=>{
-      // primary row key = floor_id + area_type + sqft (unique per area)
-      const isPrimary = (a.order_index%10===0)||(a.order_index===0);
+      const dupKey = `${a.floor_id}|${a.area_type}|${a.sqft}|${a.material}`;
       const key=`${a.area_type}-${a.material}-${a.r_value||""}-${a.thickness_in||""}`;
-      if(isPrimary){
-        if(!optAreaMap[key]){
-          optAreaMap[key]={...a,_floorName:floorNameMap[a.floor_id]||"",_matCost:0,_floorNames:[floorNameMap[a.floor_id]||""]};
-        } else {
-          const fn=floorNameMap[a.floor_id]||"";
-          if(!optAreaMap[key]._floorNames.includes(fn)) optAreaMap[key]._floorNames.push(fn);
-          optAreaMap[key].sqft+=a.sqft||0;
-        }
+      if(!optAreaMap[key]){
+        optAreaMap[key]={...a,_floorName:floorNameMap[a.floor_id]||"",_matCost:0,_floorNames:[floorNameMap[a.floor_id]||""]};
+      } else if(!seenOptKeys.has(dupKey)){
+        const fn=floorNameMap[a.floor_id]||"";
+        if(!optAreaMap[key]._floorNames.includes(fn)) optAreaMap[key]._floorNames.push(fn);
+        optAreaMap[key].sqft+=a.sqft||0;
       }
-      if(optAreaMap[key]) optAreaMap[key]._matCost+=Number(a.line_total||0);
+      if(!seenOptKeys.has(dupKey)) optAreaMap[key]._matCost+=Number(a.line_total||0);
+      seenOptKeys.add(dupKey);
     });
     setAreaOptions(Object.values(optAreaMap).map(a=>({...a,_matCost:Math.round(a._matCost*100)/100})));
-    // Only process primary rows (order_index % 10 === 0) to avoid duplicating combo mat_lines
-    (areas||[]).filter(a=>a.area_type&&a.sqft>0&&!a.is_optional&&((a.order_index%10===0)||(a.order_index===0))).forEach(a=>{
+    // Group by floor+area_type+sqft to handle both combos and any DB duplicates
+    const seenAreaKeys = new Set();
+    (areas||[]).filter(a=>a.area_type&&a.sqft>0&&!a.is_optional).forEach(a=>{
+      // Use floor+area_type+sqft+material as unique key to detect true duplicates
+      const areaKey = `${a.floor_id}|${a.area_type}|${a.sqft}|${a.material}`;
+      if(seenAreaKeys.has(areaKey)) return; // skip duplicate
+      seenAreaKeys.add(areaKey);
       const floorName = floorNameMap[a.floor_id]||"";
       if(a.price_override&&Number(a.price_override)>0&&seenOverride.has(a.id)) return;
       if(a.price_override&&Number(a.price_override)>0) seenOverride.add(a.id);
@@ -680,7 +683,45 @@ export default function QuotePricing() {
           </div>
         )}
 
-        {/* ── 2. OVERHEAD & BUSINESS COSTS ── */}
+        {/* ── SUB-OPTIONS (per-area options from estimate) ── */}
+        {(()=>{
+          const subOpts = (areas||[]).filter(a=>a.area_type&&a.sqft>0).flatMap(a=>{
+            const opts = Array.isArray(a.options)?a.options:(typeof a.options==="string"?JSON.parse(a.options||"[]"):[]);
+            return opts.filter(o=>o.material||o.label).map((o,oi)=>({...o,_area:a,_oi:oi,_floorName:floorNameMap[a.floor_id]||""}));
+          });
+          if(!subOpts.length) return null;
+          return (
+            <div style={CARD}>
+              <div style={SEC}><span>⚡ Sub-Options</span><span style={{fontSize:9,color:C.faint}}>Per-area alternatives — price separately</span></div>
+              {subOpts.map((o,i)=>{
+                const optMls=(o.mat_lines||[]).length>0?o.mat_lines:[{material:o.material||"",thickness_in:o.thickness_in||o._area?.thickness_in||"",r_value:o.r_value||o._area?.r_value||""}];
+                const matLabel=optMls.map(ml=>[ml.thickness_in,ml.material,ml.r_value].filter(Boolean).join(" ")).join(" + ");
+                return (
+                  <div key={i} style={{padding:"8px 0",borderBottom:i<subOpts.length-1?`1px dashed ${C.border}`:"none"}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6}}>
+                      <div style={{flex:1}}>
+                        <div style={{fontSize:12,fontWeight:700,color:"#92400e"}}>{o._floorName} — {o._area.area_type}</div>
+                        <div style={{fontSize:11,fontWeight:600,color:C.ink}}>{o.label||`Option ${o._oi+1}`}</div>
+                        <div style={{fontSize:10,color:C.muted}}>{matLabel} · {o._area.sqft} ft²</div>
+                        {o.note&&<div style={{fontSize:10,color:"#b45309",fontStyle:"italic"}}>📝 {o.note}</div>}
+                      </div>
+                    </div>
+                    <div style={{display:"flex",alignItems:"center",gap:8,background:"#fff7ed",borderRadius:6,padding:"6px 8px"}}>
+                      <span style={{fontSize:11,color:"#92400e",flex:1}}>Price for this option</span>
+                      <span style={{fontSize:11,color:"#92400e"}}>$</span>
+                      <input type="number" min="0" placeholder="0"
+                        value={optionAmounts[`sub-${i}`]||""}
+                        onChange={e=>setOptionAmounts(p=>({...p,[`sub-${i}`]:e.target.value}))}
+                        style={{width:80,padding:"4px 6px",border:"1px solid #fed7aa",borderRadius:6,fontSize:12,textAlign:"right"}}/>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })()}
+
+        {/* ── 2. OVERHEAD & BUSINESS COSTS ── */}}
         <div style={CARD}>
           <div style={SEC}>
             <span>🏢 Overhead & Business Costs</span>
