@@ -576,11 +576,15 @@ export default function CustomerProfile() {
                         cursor:"pointer",fontSize:12,fontWeight:700}}>
                       📄 Quote
                     </button>
-                    <button onClick={()=>{
+                    <button onClick={async()=>{
                       const status = job.pipeline_status||"Draft";
                       const alreadySent = ["Quote Ready","Proposal","Negotiation","Accepted","Job Scheduled","Completed","Sent to Office"].includes(status);
                       if(alreadySent){
-                        if(window.confirm(`This quote has already been sent to the customer (status: "${status}").\n\nCreate a NEW version for this address?\n\nOK = Create new version\nCancel = Do nothing`)){
+                        if(window.confirm(`This quote has already been sent (status: "${status}").\n\nThis will create a NEW version to negotiate.\nThe current version stays as-is for reference.\n\nOK = Create new version\nCancel = Do nothing`)){
+                          // Mark current as Negotiation before creating new version
+                          if(status==="Proposal"){
+                            await supabase.from("projects").update({pipeline_status:"Negotiation"}).eq("id",job.id);
+                          }
                           duplicateProject(job.id);
                         }
                       } else {
