@@ -724,7 +724,8 @@ export default function QuotePricing() {
                     const parseR=rv=>Number((rv||"").replace(/[^0-9.]/g,""))||0;
                     const thick=ml.thickness_in?(Number(ml.thickness_in.replace(/[^0-9.]/g,""))||0):(rpi>0&&ml.r_value?parseR(ml.r_value)/rpi:0);
                     const qty=mc.unit==="board_ft"?(o._area.sqft*thick):o._area.sqft;
-                    return s+qty*Number(mc.price_per_sqft||mc.cost_per_unit||0);
+                    const sellPrice=Number(mc.cost_per_unit||0)*(1+Number(mc.markup_pct||0)/100);
+                    return s+qty*sellPrice;
                   }
                   return s;
                 },0);
