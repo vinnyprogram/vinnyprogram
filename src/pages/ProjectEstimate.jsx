@@ -119,7 +119,7 @@ function calcArea(sqft, thick, mat, rValue, variantMap) {
 
 
 function CustomerSection({ leads, selectedLead, selectedLeadId, projectAddress,
-    projectName, onSelect, onClear, onSaveNew, onAddressChange, onNameChange, isEditing }) {
+    projectName, onSelect, onClear, onSaveNew, onAddressChange, onNameChange, isEditing, isLocked }) {
   const [query, setQuery]     = useState("");
   const [mode, setMode]       = useState(selectedLead ? "selected" : "search");
   const [saving, setSaving]   = useState(false);
@@ -2009,8 +2009,8 @@ export default function ProjectEstimate() {
             projectAddress={projectAddress} projectName={projectName}
             onSelect={(lead)=>{setSelectedLeadId(String(lead.id));setProjectName(lead.name||"");/* never overwrite address when editing */}}
             onClear={()=>{setSelectedLeadId("");setProjectName("");if(!projectId) setProjectAddress("");}}
-            isEditing={isEditing}
-            onSaveNew={saveNewCustomer} onAddressChange={isEditing ? ()=>{} : setProjectAddress} onNameChange={setProjectName} />
+            isEditing={isEditing} isLocked={isLocked}
+            onSaveNew={saveNewCustomer} onAddressChange={isLocked ? ()=>{} : setProjectAddress} onNameChange={setProjectName} />
 
             <div style={CARD_ORANGE} className={currentAreas.some(a=>!isAreaComplete(a))?"area-focus-bg":""}>
             <div style={{display:"flex",gap:6,marginBottom:6}}>
