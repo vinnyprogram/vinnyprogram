@@ -215,7 +215,7 @@ async function saveNew() {
             </div>
             <button onClick={clear} style={{ border:"none", background:"none", color:C.faint, fontSize:13, cursor:"pointer", padding:"0 4px", flexShrink:0 }}>✕</button>
           </div>
-          {isEditing ? (
+          {isLocked ? (
             <div style={{...TI, width:"100%", background:"#f1f5f9", color:"#64748b", cursor:"not-allowed", padding:"5px 8px", borderRadius:6, fontSize:12}}>
               📍 {projectAddress}
             </div>
@@ -261,7 +261,7 @@ async function saveNew() {
             <div style={{ display:"flex", gap:4, marginTop:2 }}>
               <input style={{...TI, flex:1}} placeholder="Customer"
                 value={projectName} onChange={e=>onNameChange(e.target.value)} />
-              {!isEditing && <AddressInput style={{...TI, flex:2}}
+              {!isLocked && <AddressInput style={{...TI, flex:2}}
                 placeholder="Job address" value={projectAddress} onChange={onAddressChange} />}
             </div>
           )}
