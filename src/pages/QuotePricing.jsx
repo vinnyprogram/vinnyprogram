@@ -537,7 +537,7 @@ export default function QuotePricing() {
       else console.warn("Auto-save error:", err.message);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[projectId, liveMaterialCost, liveOverheadCost, laborRoles, jobMiles, fuelRate, consumables, extras, discount, selectedRep, salesReps, quote, project]);
+  },[projectId, liveMaterialCost, liveOverheadCost, laborRoles, jobMiles, fuelRate, consumables, extras, discount, selectedRep, salesReps, quote, project, optionAmounts]);
 
   // ── Auto-save: debounce 1.2 s after any editable field changes ──────────────
   useEffect(()=>{
