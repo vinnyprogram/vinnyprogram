@@ -59,12 +59,27 @@ export default function QuotePDF() {
   const [user, setUser]         = useState(null);
   const [loading, setLoading]   = useState(true);
   const [options, setOptions]   = useState([]); // optional items
+  const [matCostMap, setMatCostMap] = useState({});
 
   useEffect(()=>{
     async function load() {
       // get logged in user
       const { data:{ user } } = await supabase.auth.getUser();
       setUser(user);
+
+      // material_costs lookup (needed to price sub-options by their own
+      // material, not the parent area's material)
+      if(user){
+        const { data:cd } = await supabase.from("companies")
+          .select("id").eq("user_id",user.id).maybeSingle();
+        if(cd){
+          const { data:matCosts } = await supabase.from("material_costs")
+            .select("*").eq("company_id",cd.id);
+          const mcm = {};
+          (matCosts||[]).forEach(m=>{ mcm[m.material_name]=m; });
+          setMatCostMap(mcm);
+        }
+      }
 
       // project
       const { data:proj } = await supabase.from("projects")
@@ -230,10 +245,19 @@ export default function QuotePDF() {
         const matLabel=optMls.map(ml=>[ml.thickness_in,ml.material,ml.r_value].filter(Boolean).join(" ")).join(" + ");
         const savedAmounts=(() => { try{ return JSON.parse(quote?.option_amounts_json||"{}"); }catch{ return {}; } })();
         const extraAmt=Number(savedAmounts[`sub-${oi}`]||0);
-        // Calculate material cost for this option
-        const mc_map = {}; // use area line_total as reference per sqft
-        const effPerSqft = a.sqft>0&&a.line_total>0?a.line_total/a.sqft:0;
-        const matCost = effPerSqft>0?Math.round(a.sqft*effPerSqft*100)/100:0;
+        // Calculate material cost for this option using ITS OWN material
+        // (not the parent area's), same logic as QuotePricing.jsx
+        const thickMap={"2x4":3.5,"2x6":5.5,"2x8":7.25,"2x10":9.25,"2x12":11.25};
+        const matCost = Math.round(optMls.reduce((s,ml)=>{
+          const mc=matCostMap[ml.material];
+          if(!mc) return s;
+          const matNameL=(ml.material||"").toLowerCase();
+          const rpi=mc.r_per_inch>0?Number(mc.r_per_inch):matNameL.includes("closed")?6.8:matNameL.includes("open")?3.8:0;
+          const thick=thickMap[ml.thickness_in]||(ml.thickness_in?Number(ml.thickness_in.replace(/[^0-9.]/g,""))||0:0);
+          const qty=mc.unit==="board_ft"?(a.sqft*(thick||1)):a.sqft;
+          const sellPrice=Number(mc.cost_per_unit||0)*(1+Number(mc.markup_pct||0)/100);
+          return s+qty*sellPrice;
+        },0)*100)/100;
         return {label:o.label||`Option ${oi+1}`,note:o.note||"",matLabel,floorName:fl?.name||"",areaType:a.area_type,sqft:a.sqft,extraAmt,matCost};
       });
     }catch(e){ return []; }
