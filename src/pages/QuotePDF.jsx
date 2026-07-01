@@ -220,6 +220,20 @@ export default function QuotePDF() {
   const quoteNum = quote?.id ? String(quote.id).padStart(4,"0") : String(projectId).padStart(4,"0");
   const scope = groupedScope();
   const optScope = groupedOptions();
+  // Collect sub-options (per-area alternatives)
+  const subOptions = (areas||[]).filter(a=>a.area_type&&a.sqft>0).flatMap(a=>{
+    try{
+      const opts=Array.isArray(a.options)?a.options:(typeof a.options==="string"?JSON.parse(a.options||"[]"):[]);
+      return (opts||[]).filter(o=>o.material||o.label).map((o,oi)=>{
+        const fl=floors.find(f=>f.id===a.floor_id);
+        const optMls=(o.mat_lines||[]).length>0?o.mat_lines:[{material:o.material||"",thickness_in:o.thickness_in||a.thickness_in||"",r_value:o.r_value||""}];
+        const matLabel=optMls.map(ml=>[ml.thickness_in,ml.material,ml.r_value].filter(Boolean).join(" ")).join(" + ");
+        const savedAmounts=(() => { try{ return JSON.parse(quote?.option_amounts_json||"{}"); }catch{ return {}; } })();
+        const extraAmt=Number(savedAmounts[`sub-${oi}`]||0);
+        return {label:o.label||`Option ${oi+1}`,note:o.note||"",matLabel,floorName:fl?.name||"",areaType:a.area_type,sqft:a.sqft,extraAmt};
+      });
+    }catch(e){ return []; }
+  });
   // Use the authoritative grand_total saved when the costing sheet was
   // generated — it includes live material pricing, labor, overhead,
   // consumables, fuel, commission, and discount. Summing stale area
