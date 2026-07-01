@@ -709,21 +709,18 @@ export default function QuotePricing() {
                 const matLabel=optMls.map(ml=>[ml.thickness_in,ml.material,ml.r_value].filter(Boolean).join(" ")).join(" + ");
                 // Calculate option material cost
                 const optMatCost = optMls.reduce((s,ml)=>{
-                  // Try effective cost map first (from main areas)
+                  // Try effective $/sqft from main areas using same material
                   const effPerSqft = effectiveCostMap[ml.material]||0;
                   if(effPerSqft>0) return s+(o._area.sqft*effPerSqft);
-                  // Try variant map
-                  const vKey=`${ml.material||""}|${ml.r_value||""}`.toLowerCase();
-                  const variant=variantMap[vKey];
-                  if(variant){ return s+(o._area.sqft*Number(variant.cost_per_sqft||0)*(1+Number(variant.markup_pct||0)/100)); }
-                  // Try matCostMap (legacy)
+                  // Try matCostMap with thickness_in from the option
                   const mc=matCostMap[ml.material];
                   if(mc){
                     const matNameL=(ml.material||"").toLowerCase();
-                    const rpi=mc.r_per_inch>0?Number(mc.r_per_inch):matNameL.includes("closed")?6.8:matNameL.includes("open")?3.75:0;
-                    const parseR=rv=>Number((rv||"").replace(/[^0-9.]/g,""))||0;
-                    const thick=ml.thickness_in?(Number(ml.thickness_in.replace(/[^0-9.]/g,""))||0):(rpi>0&&ml.r_value?parseR(ml.r_value)/rpi:0);
-                    const qty=mc.unit==="board_ft"?(o._area.sqft*thick):o._area.sqft;
+                    const rpi=mc.r_per_inch>0?Number(mc.r_per_inch):matNameL.includes("closed")?6.8:matNameL.includes("open")?3.8:0;
+                    // Use thickness_in directly if available (e.g. "2x6" = 5.5")
+                    const thickMap={"2x4":3.5,"2x6":5.5,"2x8":7.25,"2x10":9.25,"2x12":11.25};
+                    const thick=thickMap[ml.thickness_in]||(ml.thickness_in?Number(ml.thickness_in.replace(/[^0-9.]/g,""))||0:0);
+                    const qty=mc.unit==="board_ft"?(o._area.sqft*(thick||1)):o._area.sqft;
                     const sellPrice=Number(mc.cost_per_unit||0)*(1+Number(mc.markup_pct||0)/100);
                     return s+qty*sellPrice;
                   }
