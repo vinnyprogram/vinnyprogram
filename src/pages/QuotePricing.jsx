@@ -709,11 +709,24 @@ export default function QuotePricing() {
                 const matLabel=optMls.map(ml=>[ml.thickness_in,ml.material,ml.r_value].filter(Boolean).join(" ")).join(" + ");
                 // Calculate option material cost
                 const optMatCost = optMls.reduce((s,ml)=>{
-                  // Use effective $/sqft from main areas if available
+                  // Try effective cost map first (from main areas)
                   const effPerSqft = effectiveCostMap[ml.material]||0;
                   if(effPerSqft>0) return s+(o._area.sqft*effPerSqft);
-                  const {line_total}=calcArea(o._area.sqft,ml.thickness_in,matCostMap[ml.material],ml.r_value,variantMap);
-                  return s+line_total;
+                  // Try variant map
+                  const vKey=`${ml.material||""}|${ml.r_value||""}`.toLowerCase();
+                  const variant=variantMap[vKey];
+                  if(variant){ return s+(o._area.sqft*Number(variant.cost_per_sqft||0)*(1+Number(variant.markup_pct||0)/100)); }
+                  // Try matCostMap (legacy)
+                  const mc=matCostMap[ml.material];
+                  if(mc){
+                    const matNameL=(ml.material||"").toLowerCase();
+                    const rpi=mc.r_per_inch>0?Number(mc.r_per_inch):matNameL.includes("closed")?6.8:matNameL.includes("open")?3.75:0;
+                    const parseR=rv=>Number((rv||"").replace(/[^0-9.]/g,""))||0;
+                    const thick=ml.thickness_in?(Number(ml.thickness_in.replace(/[^0-9.]/g,""))||0):(rpi>0&&ml.r_value?parseR(ml.r_value)/rpi:0);
+                    const qty=mc.unit==="board_ft"?(o._area.sqft*thick):o._area.sqft;
+                    return s+qty*Number(mc.price_per_sqft||mc.cost_per_unit||0);
+                  }
+                  return s;
                 },0);
                 return (
                   <div key={i} style={{padding:"8px 0",borderBottom:i<subOpts.length-1?`1px dashed ${C.border}`:"none"}}>
