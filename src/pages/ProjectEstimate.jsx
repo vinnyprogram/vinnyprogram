@@ -1401,9 +1401,11 @@ export default function ProjectEstimate() {
       if(!user) return;
       const {data:cd}=await supabase.from("companies").select("id").eq("user_id",user.id).maybeSingle();
       if(!cd) return;
+      // period must match "list_area_type" — that's what Settings.jsx reads back out.
+      // sort_order must stay within normal integer range — Date.now() overflows it.
       await supabase.from("cost_settings").insert([{
-        company_id:cd.id, category:"Custom Area Types", name, period:"custom_area_type",
-        amount:0, sort_order:Date.now(),
+        company_id:cd.id, category:"Lists", name, period:"list_area_type",
+        amount:0, sort_order: customAreaTypes.length,
       }]);
     }catch(e){ console.warn("Could not save custom area type:",e.message); }
   }
