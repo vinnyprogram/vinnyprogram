@@ -442,6 +442,28 @@ export default function QuotePDF() {
             </tbody>
           </table>
 
+          {/* sub-options */}
+          {subOptions.length>0&&(
+            <div style={{marginBottom:16,border:"1px solid #fde68a",borderRadius:8,overflow:"hidden"}}>
+              <div style={{background:"#fff7ed",padding:"8px 16px",fontSize:11,fontWeight:800,color:"#92400e",textTransform:"uppercase",letterSpacing:0.5}}>
+                ⚡ Alternative Options (Priced Separately)
+              </div>
+              {subOptions.map((o,i)=>(
+                <div key={i} style={{padding:"10px 16px",borderTop:"1px solid #fde68a",background:i%2===0?"#fffbeb":"white"}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
+                    <div style={{flex:1}}>
+                      <div style={{fontSize:12,fontWeight:700,color:"#92400e"}}>{o.floorName} — {o.areaType}</div>
+                      <div style={{fontSize:11,color:"#374151"}}>{o.label}: {o.matLabel} · {o.sqft} ft²</div>
+                      {o.note&&<div style={{fontSize:10,color:"#b45309",fontStyle:"italic"}}>📝 {o.note}</div>}
+                    </div>
+                    <div style={{fontSize:13,fontWeight:700,color:"#059669",whiteSpace:"nowrap"}}>
+                      {o.extraAmt>0?`$${o.extraAmt.toFixed(2)}`:"TBQ"}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
           {/* total row */}
           <div style={{display:"flex",justifyContent:"flex-end",
               marginBottom:28,borderTop:"1px solid #e2e8f0",paddingTop:12}}>
