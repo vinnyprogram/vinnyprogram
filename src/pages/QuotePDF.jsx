@@ -230,7 +230,11 @@ export default function QuotePDF() {
         const matLabel=optMls.map(ml=>[ml.thickness_in,ml.material,ml.r_value].filter(Boolean).join(" ")).join(" + ");
         const savedAmounts=(() => { try{ return JSON.parse(quote?.option_amounts_json||"{}"); }catch{ return {}; } })();
         const extraAmt=Number(savedAmounts[`sub-${oi}`]||0);
-        return {label:o.label||`Option ${oi+1}`,note:o.note||"",matLabel,floorName:fl?.name||"",areaType:a.area_type,sqft:a.sqft,extraAmt};
+        // Calculate material cost for this option
+        const mc_map = {}; // use area line_total as reference per sqft
+        const effPerSqft = a.sqft>0&&a.line_total>0?a.line_total/a.sqft:0;
+        const matCost = effPerSqft>0?Math.round(a.sqft*effPerSqft*100)/100:0;
+        return {label:o.label||`Option ${oi+1}`,note:o.note||"",matLabel,floorName:fl?.name||"",areaType:a.area_type,sqft:a.sqft,extraAmt,matCost};
       });
     }catch(e){ return []; }
   });
@@ -471,7 +475,7 @@ export default function QuotePDF() {
                       {o.note&&<div style={{fontSize:10,color:"#b45309",fontStyle:"italic"}}>📝 {o.note}</div>}
                     </div>
                     <div style={{fontSize:13,fontWeight:700,color:"#059669",whiteSpace:"nowrap"}}>
-                      {o.extraAmt>0?`$${o.extraAmt.toFixed(2)}`:"TBQ"}
+                      ${(o.extraAmt>0?(o.matCost+o.extraAmt):o.matCost).toFixed(2)}
                     </div>
                   </div>
                 </div>
