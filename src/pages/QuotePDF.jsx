@@ -139,25 +139,36 @@ export default function QuotePDF() {
     setOptions(p=>p.filter((_,j)=>j!==i));
   }
 
-  // group areas by area_type+material across ALL floors (like estimate panel)
+  // group areas by area_type across ALL floors, collecting all mat_lines per area
   function groupedScope() {
-    const typeMap = {};
-    // Only primary rows, exclude optional areas
-    areas.filter(a=>a.area_type&&a.sqft>0&&!a.is_optional&&((a.order_index%10===0)||(a.order_index===0))).forEach(a=>{
+    // First build per-area groups (combining combo rows by floor+area_type+sqft)
+    const areaMap = {};
+    areas.filter(a=>a.area_type&&a.sqft>0&&!a.is_optional).forEach(a=>{
       const fl = floors.find(f=>f.id===a.floor_id);
       const flName = fl?.name||"";
-      const key = `${a.area_type}|${a.material}`;
+      const areaKey = `${a.floor_id}|${a.area_type}|${a.sqft}`;
+      if(!areaMap[areaKey]){
+        areaMap[areaKey]={area_type:a.area_type,flName,sqft:a.sqft,
+          matLines:[],totalCost:0,totalPaintSqft:0,phase:a.phase||null};
+      }
+      areaMap[areaKey].matLines.push({material:a.material,thickness_in:a.thickness_in||"",r_value:a.r_value||""});
+      areaMap[areaKey].totalCost += a.line_total||0;
+      areaMap[areaKey].totalPaintSqft += Number(a.paint_sqft||0);
+      if(a.phase) areaMap[areaKey].phase=a.phase;
+    });
+    // Now group by area_type+matLines signature across floors
+    const typeMap = {};
+    Object.values(areaMap).forEach(a=>{
+      const matSig = a.matLines.map(m=>m.material).sort().join("+");
+      const key = `${a.area_type}|${matSig}`;
       if(!typeMap[key]) typeMap[key]={
-        area_type:a.area_type, material:a.material, r_value:a.r_value||"",
-        thickness_in:a.thickness_in||"", areas:[], floorNames:[],
-        totalSqft:0, totalCost:0, totalPaintSqft:0, phase:a.phase||null,
+        area_type:a.area_type, matLines:a.matLines, floorNames:[],
+        totalSqft:0, totalCost:0, totalPaintSqft:0, phase:a.phase,
       };
-      typeMap[key].areas.push(a);
-      if(!typeMap[key].floorNames.includes(flName)) typeMap[key].floorNames.push(flName);
-      typeMap[key].totalSqft += a.sqft||0;
-      typeMap[key].totalCost += a.line_total||0;
-      typeMap[key].totalPaintSqft += Number(a.paint_sqft||0);
-      if(a.phase) typeMap[key].phase = a.phase;
+      if(!typeMap[key].floorNames.includes(a.flName)) typeMap[key].floorNames.push(a.flName);
+      typeMap[key].totalSqft += a.sqft;
+      typeMap[key].totalCost += a.totalCost;
+      typeMap[key].totalPaintSqft += a.totalPaintSqft;
     });
     return Object.values(typeMap);
   }
@@ -185,17 +196,11 @@ export default function QuotePDF() {
 
   // build description for each group
   function buildDescription(group) {
-    const floorNames = group.floorNames || [...new Set(group.areas.map(a=>{
-      const fl = floors.find(f=>f.id===a.floor_id);
-      return fl?.name||"";
-    }))];
-    const thick = group.thickness_in||group.areas[0]?.thickness_in||"";
-    const rval  = group.r_value||group.areas[0]?.r_value||"";
-    const desc  = `${thick ? thick+' ' : ''}${group.material||''}${rval ? ' ('+rval+')' : ''}`;
-    const floorList = floorNames.map(f=>`- ${f} ${group.area_type}`).join('\n');
-    const paintLine = group.totalPaintSqft>0
-      ? `\n🎨 Intumescent paint: ${group.totalPaintSqft} ft²`
-      : "";
+    const floorNames = group.floorNames||[];
+    const matLines = group.matLines||[{material:group.material||"",thickness_in:group.thickness_in||"",r_value:group.r_value||""}];
+    const desc = matLines.map(m=>`${m.thickness_in?m.thickness_in+" ":""}${m.material}${m.r_value?" ("+m.r_value+")":""}`).join(" + ");
+    const floorList = floorNames.map(f=>`- ${f} ${group.area_type}`).join("\n");
+    const paintLine = group.totalPaintSqft>0?`\n🎨 Intumescent paint: ${group.totalPaintSqft} ft²`:"";
     return `${desc} over the following areas:\n${floorList}${paintLine}`;
   }
 
@@ -377,7 +382,7 @@ export default function QuotePDF() {
                 const hasPhases = scope.some(g=>g.phase===1||g.phase===2);
                 if(!hasPhases) return scope.map((g,i)=>(
                   <tr key={i} style={{borderBottom:"1px solid #e2e8f0",background:i%2===0?"white":"#fafbfc"}}>
-                    <td style={{padding:"12px",fontSize:12,fontWeight:600,color:"#0f172a",verticalAlign:"top"}}>{g.material||g.area_type}</td>
+                    <td style={{padding:"12px",fontSize:12,fontWeight:600,color:"#0f172a",verticalAlign:"top"}}>{(g.matLines||[{material:g.material}]).map(m=>m.material).join(" + ")||g.area_type}</td>
                     <td style={{padding:"12px",fontSize:12,color:"#374151",lineHeight:1.7,verticalAlign:"top"}}>
                       {buildDescription(g).split('\n').map((line,j)=>(<div key={j}>{line}</div>))}
                     </td>
@@ -403,7 +408,7 @@ export default function QuotePDF() {
                   }
                   rows.push(
                     <tr key={i} style={{borderBottom:"1px solid #e2e8f0",background:i%2===0?"white":"#fafbfc"}}>
-                      <td style={{padding:"12px",fontSize:12,fontWeight:600,color:"#0f172a",verticalAlign:"top"}}>{g.material||g.area_type}</td>
+                      <td style={{padding:"12px",fontSize:12,fontWeight:600,color:"#0f172a",verticalAlign:"top"}}>{(g.matLines||[{material:g.material}]).map(m=>m.material).join(" + ")||g.area_type}</td>
                       <td style={{padding:"12px",fontSize:12,color:"#374151",lineHeight:1.7,verticalAlign:"top"}}>
                         {buildDescription(g).split('\n').map((line,j)=>(<div key={j}>{line}</div>))}
                       </td>
