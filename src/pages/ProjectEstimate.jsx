@@ -1632,12 +1632,15 @@ export default function ProjectEstimate() {
     const handleOnline = ()=>{
       flushQueue();
       const targetId = projectId || savedProjectId;
-      if(selectedLeadId && targetId) saveProject({silent:true});
+      // Retry for BOTH: updates to an existing project (targetId set) AND
+      // brand-new jobs that were created entirely offline (no targetId yet,
+      // but the user has an in-progress draft with unsaved changes).
+      if(selectedLeadId && (targetId || hasUnsavedChanges)) saveProject({silent:true});
     };
     window.addEventListener("online", handleOnline);
     return ()=>window.removeEventListener("online", handleOnline);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[projectId, savedProjectId, selectedLeadId]);
+  },[projectId, savedProjectId, selectedLeadId, hasUnsavedChanges]);
 
   function addArea(floor){
     setAreas(prev=>{
@@ -1814,6 +1817,16 @@ export default function ProjectEstimate() {
   // Also update state so UI reflects the committed measurements
   setAreas(committedAreas);
   if(!hasAreas){ if(!silent) alert("Add at least one area before saving."); return; }
+  // Offline: don't even attempt the network round-trip (avoids a raw fetch-error
+  // alert and, for brand-new jobs, a failed insert that never gets retried).
+  // Everything is already being auto-saved to localStorage as you work; the
+  // "online" listener below will call saveProject() again once signal returns.
+  if(!navigator.onLine){
+    saveDraftNow(committedAreas, floors);
+    setHasUnsavedChanges(true);
+    if(!silent) alert("You're offline — this job is saved on this device and will upload automatically once you're back online.");
+    return;
+  }
   if(!silent) setSaving(true);
   try {
     const {data:{user}} = await supabase.auth.getUser();
