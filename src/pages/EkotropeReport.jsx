@@ -4,6 +4,7 @@ import { supabase } from "../lib/supabase";
 
 function parseArr(v){ return Array.isArray(v)?v:(typeof v==="string"?JSON.parse(v||"[]"):[]); }
 function fmt(n,d=1){ return Number(n||0).toLocaleString("en-US",{minimumFractionDigits:d,maximumFractionDigits:d}); }
+const ORIENTATION_NAMES = { N:"North", NE:"Northeast", E:"East", SE:"Southeast", S:"South", SW:"Southwest", W:"West", NW:"Northwest" };
 
 export default function EkotropeReport() {
   const navigate   = useNavigate();
@@ -233,23 +234,21 @@ export default function EkotropeReport() {
               <div style={CARD_S}>
                 <div style={SEC}>Windows — By Orientation</div>
                 {Object.entries(windowsByOrientation).map(([orientation,wins],oi,oarr)=>{
-                  const totalWinArea = wins.reduce((s,w)=>(s+(Number(w.width)||0)*(Number(w.height)||0)*(Number(w.qty)||1)),0);
-                  const totalCount = wins.reduce((s,w)=>s+(Number(w.qty)||1),0);
                   return (
-                    <div key={orientation} style={{borderBottom:oi<oarr.length-1?"1px solid #e2e8f0":"none"}}>
-                      <div style={{...SEC,background:"#eff6ff",color:"#1d4ed8",fontSize:11}}>
-                        {orientation} — {totalCount} window{totalCount!==1?"s":""} · {fmt(totalWinArea,1)} ft² total
+                    <div key={orientation} style={{borderBottom:oi<oarr.length-1?"1px solid #e2e8f0":"none",paddingBottom:oi<oarr.length-1?10:0,marginBottom:oi<oarr.length-1?10:0}}>
+                      <div style={{fontSize:14,fontWeight:800,color:"#0f172a",padding:"8px 0"}}>
+                        {ORIENTATION_NAMES[orientation]||orientation}
                       </div>
-                      {wins.map((w,wi)=>{
-                        const qty = Number(w.qty)||1;
-                        const eachArea = (Number(w.width)||0)*(Number(w.height)||0);
-                        const area = eachArea*qty;
-                        return (
-                          <div key={w.id||wi} style={{...ROW,borderBottom:wi<wins.length-1?"1px solid #f1f5f9":"none",alignItems:"flex-start"}}>
-                            <div>
+                      <div style={{display:"flex",flexWrap:"wrap",gap:10}}>
+                        {wins.map((w,wi)=>{
+                          const qty = Number(w.qty)||1;
+                          const eachArea = (Number(w.width)||0)*(Number(w.height)||0);
+                          const area = eachArea*qty;
+                          return (
+                            <div key={w.id||wi} style={{border:"1px solid #0f172a",borderRadius:8,padding:"8px 10px",flex:"1 1 210px",minWidth:190,maxWidth:260}}>
                               <div style={{fontSize:13,fontWeight:600,color:"#0f172a",marginBottom:4}}>
                                 {w.label||`Window ${wi+1}`}{qty>1?` (×${qty})`:""}
-                                {w.floor && <span style={{fontSize:10,color:"#94a3b8",fontWeight:500,marginLeft:6}}>· {w.floor}</span>}
+                                {w.floor && <span style={{fontSize:13,color:"#64748b",fontWeight:600,marginLeft:6}}>· {w.floor}</span>}
                               </div>
                               <div style={{fontSize:12,color:"#64748b"}}>
                                 {w.width||"?"} × {w.height||"?"} ft{qty>1?` × ${qty}`:""} = {fmt(area,1)} ft²
@@ -269,16 +268,9 @@ export default function EkotropeReport() {
                                 </div>
                               )}
                             </div>
-                            <div style={{textAlign:"right",paddingLeft:16,flexShrink:0}}>
-                              <div style={{fontSize:18,fontWeight:800,color:"#3b82f6"}}>{fmt(area,1)}</div>
-                              <div style={{fontSize:10,color:"#94a3b8"}}>ft²</div>
-                              <div style={{fontSize:11,fontWeight:700,color:"#1d4ed8",marginTop:2,whiteSpace:"nowrap"}}>
-                                {w.orientation} · {w.elevation||"—"}
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })}
+                          );
+                        })}
+                      </div>
                     </div>
                   );
                 })}
