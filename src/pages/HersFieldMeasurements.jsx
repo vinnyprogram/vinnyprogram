@@ -657,17 +657,17 @@ function WindowsEditor({ windows, onChange, onCommit, floorOptions }) {
         .no-spinner { -moz-appearance: textfield; }
       `}</style>
       <div style={{fontSize:11,fontWeight:700,color:C.faint,textTransform:"uppercase",letterSpacing:0.4,marginBottom:10}}>Windows</div>
+      <datalist id="window-floor-options">
+        {(floorOptions||[]).map(fl=><option key={fl} value={fl} />)}
+      </datalist>
       {windows.map((w,idx)=>(
         <div key={w.id} style={{border:"2px solid #0f172a",borderRadius:8,padding:"8px 10px",marginBottom:8}}>
 
           {/* Row 1: Floor, Side, Orientation, U-Factor, SHGC, Qty */}
           <div style={{display:"flex",gap:5,marginBottom:6,alignItems:"center",flexWrap:"wrap"}}>
-            <select value={w.floor||""} onChange={e=>updAndCommit(idx,"floor",e.target.value)}
-              title="Which floor/level this window is on"
-              style={{...I,width:60,height:28,fontSize:11,flexShrink:0}}>
-              <option value="">Floor…</option>
-              {(floorOptions||[]).map(fl=><option key={fl} value={fl}>{fl}</option>)}
-            </select>
+            <input list="window-floor-options" value={w.floor||""} onChange={e=>updAndCommit(idx,"floor",e.target.value)}
+              title="Which floor/level this window is on — type any name, or pick a suggestion"
+              placeholder="Floor…" style={{...I,width:60,height:28,fontSize:11,flexShrink:0}} />
             <select value={w.elevation||""} onChange={e=>pickSide(idx,e.target.value)}
               title="Building side / elevation — picking this fills in Orientation automatically once the building's facing is known"
               style={{...I,width:58,height:28,fontSize:11,flexShrink:0}}>
