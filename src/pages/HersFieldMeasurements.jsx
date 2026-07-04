@@ -695,7 +695,8 @@ function WindowsEditor({ windows, onChange, onCommit, floorOptions }) {
                 placeholder="Qty" title="Quantity — how many identical windows"
                 style={{...I,height:28,fontSize:12,textAlign:"center"}} />
             </div>
-            <button onClick={()=>rem(idx)} style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:16,flexShrink:0}}>✕</button>
+            <button onClick={()=>{ if(window.confirm(`Delete ${w.label||"this window"}? This can't be undone.`)) rem(idx); }}
+              style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:16,flexShrink:0}}>✕</button>
           </div>
 
           {/* Row 2: Label, Width, Height together — placeholders instead of labels above, to save height */}
