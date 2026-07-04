@@ -664,7 +664,7 @@ function WindowsEditor({ windows, onChange, onCommit, floorOptions }) {
           <div style={{display:"flex",gap:5,marginBottom:6,alignItems:"center",flexWrap:"wrap"}}>
             <select value={w.floor||""} onChange={e=>updAndCommit(idx,"floor",e.target.value)}
               title="Which floor/level this window is on"
-              style={{...I,flex:1,height:28,fontSize:11,minWidth:52}}>
+              style={{...I,width:60,height:28,fontSize:11,flexShrink:0}}>
               <option value="">Floor…</option>
               {(floorOptions||[]).map(fl=><option key={fl} value={fl}>{fl}</option>)}
             </select>
@@ -696,17 +696,26 @@ function WindowsEditor({ windows, onChange, onCommit, floorOptions }) {
                 style={{...I,height:28,fontSize:12,textAlign:"center"}} />
             </div>
             <button onClick={()=>{ if(window.confirm(`Delete ${w.label||"this window"}? This can't be undone.`)) rem(idx); }}
-              style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:16,flexShrink:0}}>✕</button>
+              style={{border:"1px solid #dc2626",background:"#fee2e2",color:"#dc2626",cursor:"pointer",fontSize:11,fontWeight:700,flexShrink:0,borderRadius:6,padding:"0 10px",height:28}}>
+              Del
+            </button>
           </div>
 
-          {/* Row 2: Label, Width, Height together — placeholders instead of labels above, to save height */}
-          <div style={{display:"flex",gap:6,marginBottom:8}}>
+          {/* Row 2: Label, Width, Height together — Width/Height keep their labels since
+              the auto bottom-to-overhang calc depends on Height being entered correctly */}
+          <div style={{display:"flex",gap:6,marginBottom:8,alignItems:"flex-end"}}>
             <input value={w.label} onChange={e=>upd(idx,"label",e.target.value)} onBlur={onCommit} placeholder="e.g. Living room"
               style={{...I,flex:"2 1 0",height:32,fontSize:12,minWidth:0}} />
-            <input {...noSpin} type="number" value={w.width} onChange={e=>upd(idx,"width",e.target.value)} onBlur={onCommit}
-              placeholder="Width (ft)" style={{...I,flex:"1 1 0",height:32,fontSize:12,textAlign:"right",minWidth:0}} />
-            <input {...noSpin} type="number" value={w.height} onChange={e=>upd(idx,"height",e.target.value)} onBlur={onCommit}
-              placeholder="Height (ft)" style={{...I,flex:"1 1 0",height:32,fontSize:12,textAlign:"right",minWidth:0}} />
+            <div style={{flex:"1 1 0",minWidth:0}}>
+              <div style={lbl}>Width (ft)</div>
+              <input {...noSpin} type="number" value={w.width} onChange={e=>upd(idx,"width",e.target.value)} onBlur={onCommit}
+                style={{...I,height:32,fontSize:12,textAlign:"right",width:"100%"}} />
+            </div>
+            <div style={{flex:"1 1 0",minWidth:0}}>
+              <div style={lbl}>Height (ft)</div>
+              <input {...noSpin} type="number" value={w.height} onChange={e=>upd(idx,"height",e.target.value)} onBlur={onCommit}
+                style={{...I,height:32,fontSize:12,textAlign:"right",width:"100%"}} />
+            </div>
           </div>
 
           <div style={{fontSize:9,color:C.faint,fontWeight:700,textTransform:"uppercase",marginBottom:4}}>Overhang shading (for Ekotrope)</div>
