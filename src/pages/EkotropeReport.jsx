@@ -249,8 +249,8 @@ export default function EkotropeReport() {
                           return (
                             <div key={w.id||wi} style={{border:"1px solid #0f172a",borderRadius:8,padding:"8px 10px",flex:"1 1 210px",minWidth:190,maxWidth:260}}>
                               <div style={{fontSize:13,fontWeight:600,color:"#0f172a",marginBottom:4}}>
+                                {w.floor && <span style={{fontSize:15,fontWeight:800,color:"#0f172a"}}>{w.floor} - </span>}
                                 {w.label||`Window ${wi+1}`}{qty>1?` (×${qty})`:""}
-                                {w.floor && <span style={{fontSize:13,color:"#64748b",fontWeight:600,marginLeft:6}}>· {w.floor}</span>}
                               </div>
                               <div style={{fontSize:12,color:"#64748b"}}>
                                 {w.width||"?"} × {w.height||"?"} ft{qty>1?` × ${qty}`:""} = {fmt(area,1)} ft²
