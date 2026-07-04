@@ -234,10 +234,12 @@ export default function EkotropeReport() {
               <div style={CARD_S}>
                 <div style={SEC}>Windows — By Orientation</div>
                 {Object.entries(windowsByOrientation).map(([orientation,wins],oi,oarr)=>{
+                  const elevations = [...new Set(wins.map(w=>w.elevation).filter(Boolean))];
+                  const elevLabel = elevations.length ? ` - ${elevations.join(", ")}` : "";
                   return (
                     <div key={orientation} style={{borderBottom:oi<oarr.length-1?"1px solid #e2e8f0":"none",paddingBottom:oi<oarr.length-1?10:0,marginBottom:oi<oarr.length-1?10:0}}>
                       <div style={{fontSize:14,fontWeight:800,color:"#0f172a",padding:"8px 0"}}>
-                        {ORIENTATION_NAMES[orientation]||orientation}
+                        {ORIENTATION_NAMES[orientation]||orientation}{elevLabel}
                       </div>
                       <div style={{display:"flex",flexWrap:"wrap",gap:10}}>
                         {wins.map((w,wi)=>{
