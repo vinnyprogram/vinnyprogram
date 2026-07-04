@@ -104,51 +104,119 @@ function EkotropeSummary({ floors, areas, bedrooms }) {
 }
 
 // ── CFA / Volume floors editor ──
+// Data stays a flat array (one row per measurement, each carrying a
+// `label` field) so save() and EkotropeSummary don't need to change.
+// This just PRESENTS those rows grouped by their label, as floor tabs,
+// so you pick a floor once and add as many measurements to it as you
+// need without retyping the floor name each time.
 function FloorsEditor({ floors, onChange, onCommit }) {
-  function add(){ onChange([...floors,{id:uid(),label:`Floor ${floors.length+1}`,width:"",length:"",height:"",cfaInclude:true}]); }
-  function upd(idx,f,v){ onChange(floors.map((fl,i)=>i===idx?{...fl,[f]:v}:fl)); }
-  function rem(idx){ onChange(floors.filter((_,i)=>i!==idx)); }
+  const floorLabels = [];
+  floors.forEach(f=>{ if(!floorLabels.includes(f.label)) floorLabels.push(f.label); });
+  const [activeLabel, setActiveLabel] = useState(floorLabels[0]||"");
+  useEffect(()=>{
+    if(!floorLabels.includes(activeLabel)) setActiveLabel(floorLabels[0]||"");
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[floors]);
+
+  function addFloor(){
+    let n=floorLabels.length+1, label=`Floor ${n}`;
+    while(floorLabels.includes(label)){ n++; label=`Floor ${n}`; }
+    onChange([...floors,{id:uid(),label,width:"",length:"",height:"",cfaInclude:true}]);
+    setActiveLabel(label);
+  }
+  function addMeasurement(label){
+    onChange([...floors,{id:uid(),label,width:"",length:"",height:"",cfaInclude:true}]);
+  }
+  function renameFloor(oldLabel,newLabel){
+    onChange(floors.map(f=>f.label===oldLabel?{...f,label:newLabel}:f));
+    setActiveLabel(newLabel);
+  }
+  function removeFloor(label){ onChange(floors.filter(f=>f.label!==label)); }
+  function updRow(id,field,val){ onChange(floors.map(f=>f.id===id?{...f,[field]:val}:f)); }
+  function removeRow(id){ onChange(floors.filter(f=>f.id!==id)); }
+
   // Volume always counts every floor/space. CFA only counts floors marked
   // as conditioned — lets you record volume for a garage/vented attic/etc.
   // without it inflating the conditioned floor area total.
   const totalCFA = floors.reduce((s,f)=>f.cfaInclude===false?s:s+(Number(f.width)||0)*(Number(f.length)||0),0);
   const totalVol = floors.reduce((s,f)=>s+(Number(f.width)||0)*(Number(f.length)||0)*(Number(f.height)||0),0);
+  const activeRows = floors.filter(f=>f.label===activeLabel);
+  const floorCFA = activeRows.reduce((s,f)=>f.cfaInclude===false?s:s+(Number(f.width)||0)*(Number(f.length)||0),0);
+  const floorVol = activeRows.reduce((s,f)=>s+(Number(f.width)||0)*(Number(f.length)||0)*(Number(f.height)||0),0);
+
   return (
     <div style={CARD}>
       <div style={{fontSize:11,fontWeight:700,color:C.faint,textTransform:"uppercase",letterSpacing:0.4,marginBottom:10}}>
         Floors / Levels — CFA &amp; Volume
       </div>
-      {floors.map((f,idx)=>{
-        const cfa=(Number(f.width)||0)*(Number(f.length)||0);
-        const vol=cfa*(Number(f.height)||0);
-        const counted = f.cfaInclude!==false;
-        return (
-          <div key={f.id} style={{border:`1px solid ${C.border}`,borderRadius:8,padding:"8px 10px",marginBottom:8}}>
-            <div style={{display:"flex",gap:6,marginBottom:6,alignItems:"center"}}>
-              <input value={f.label} onChange={e=>upd(idx,"label",e.target.value)} onBlur={onCommit} placeholder="e.g. 1st Floor"
-                style={{...I,flex:1,height:30,fontSize:12}} />
-              <button onClick={()=>rem(idx)} style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:16,flexShrink:0}}>✕</button>
-            </div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:6,marginBottom:6}}>
-              <div><div style={lbl}>Width (ft)</div><input type="number" value={f.width} onChange={e=>upd(idx,"width",e.target.value)} onBlur={onCommit} style={{...I,height:30,fontSize:12,textAlign:"right"}} /></div>
-              <div><div style={lbl}>Length (ft)</div><input type="number" value={f.length} onChange={e=>upd(idx,"length",e.target.value)} onBlur={onCommit} style={{...I,height:30,fontSize:12,textAlign:"right"}} /></div>
-              <div><div style={lbl}>Height (ft)</div><input type="number" value={f.height} onChange={e=>upd(idx,"height",e.target.value)} onBlur={onCommit} style={{...I,height:30,fontSize:12,textAlign:"right"}} /></div>
-            </div>
-            <label style={{display:"flex",alignItems:"center",gap:6,marginBottom:6,cursor:"pointer"}}>
-              <input type="checkbox" checked={counted} onChange={e=>{ upd(idx,"cfaInclude",e.target.checked); if(onCommit) onCommit(); }}
-                style={{width:14,height:14,accentColor:C.green}} />
-              <span style={{fontSize:11,color:counted?C.muted:"#b45309",fontWeight:counted?400:600}}>
-                Counts toward CFA{!counted&&" — volume only (e.g. garage, vented attic)"}
-              </span>
-            </label>
-            <div style={{display:"flex",justifyContent:"space-between",fontSize:11,color:C.muted}}>
-              <span>CFA: <b style={{color:counted?C.green:C.faint,textDecoration:counted?"none":"line-through"}}>{fmt(cfa)} ft²</b></span>
-              <span>Volume: <b style={{color:C.green}}>{fmt(vol)} ft³</b></span>
-            </div>
+
+      {floorLabels.length>0 && (
+        <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:10}}>
+          {floorLabels.map(label=>(
+            <button key={label} onClick={()=>setActiveLabel(label)}
+              style={{padding:"5px 12px",borderRadius:16,fontSize:12,fontWeight:600,cursor:"pointer",
+                border:`1px solid ${label===activeLabel?C.green:C.border}`,
+                background:label===activeLabel?C.green:"#fff",
+                color:label===activeLabel?"#fff":C.muted}}>
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {activeLabel && (
+        <div style={{border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 12px",marginBottom:10}}>
+          <div style={{display:"flex",gap:6,marginBottom:10,alignItems:"center"}}>
+            <input value={activeLabel} onChange={e=>renameFloor(activeLabel,e.target.value)} onBlur={onCommit}
+              placeholder="e.g. 1st Floor" style={{...I,flex:1,height:32,fontSize:13,fontWeight:700}} />
+            <button onClick={()=>removeFloor(activeLabel)} title="Delete this floor and all its measurements"
+              style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:16,flexShrink:0}}>✕</button>
           </div>
-        );
-      })}
-      <button onClick={add} style={Btn}>+ Add Floor/Level</button>
+
+          {activeRows.map((f,i)=>{
+            const cfa=(Number(f.width)||0)*(Number(f.length)||0);
+            const vol=cfa*(Number(f.height)||0);
+            const counted=f.cfaInclude!==false;
+            return (
+              <div key={f.id} style={{borderTop:i>0?`1px dashed ${C.border}`:"none",paddingTop:i>0?10:0,marginTop:i>0?10:0}}>
+                {activeRows.length>1 && (
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+                    <span style={{fontSize:11,color:C.faint,fontWeight:600}}>Measurement {i+1}</span>
+                    <button onClick={()=>removeRow(f.id)} style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:14}}>✕</button>
+                  </div>
+                )}
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:6,marginBottom:6}}>
+                  <div><div style={lbl}>Width (ft)</div><input type="number" value={f.width} onChange={e=>updRow(f.id,"width",e.target.value)} onBlur={onCommit} style={{...I,height:30,fontSize:12,textAlign:"right"}} /></div>
+                  <div><div style={lbl}>Length (ft)</div><input type="number" value={f.length} onChange={e=>updRow(f.id,"length",e.target.value)} onBlur={onCommit} style={{...I,height:30,fontSize:12,textAlign:"right"}} /></div>
+                  <div><div style={lbl}>Height (ft)</div><input type="number" value={f.height} onChange={e=>updRow(f.id,"height",e.target.value)} onBlur={onCommit} style={{...I,height:30,fontSize:12,textAlign:"right"}} /></div>
+                </div>
+                <label style={{display:"flex",alignItems:"center",gap:6,marginBottom:6,cursor:"pointer"}}>
+                  <input type="checkbox" checked={counted} onChange={e=>{ updRow(f.id,"cfaInclude",e.target.checked); if(onCommit) onCommit(); }}
+                    style={{width:14,height:14,accentColor:C.green}} />
+                  <span style={{fontSize:11,color:counted?C.muted:"#b45309",fontWeight:counted?400:600}}>
+                    Counts toward CFA{!counted&&" — volume only (e.g. garage, vented attic)"}
+                  </span>
+                </label>
+                <div style={{display:"flex",justifyContent:"space-between",fontSize:11,color:C.muted}}>
+                  <span>CFA: <b style={{color:counted?C.green:C.faint,textDecoration:counted?"none":"line-through"}}>{fmt(cfa)} ft²</b></span>
+                  <span>Volume: <b style={{color:C.green}}>{fmt(vol)} ft³</b></span>
+                </div>
+              </div>
+            );
+          })}
+
+          <button onClick={()=>addMeasurement(activeLabel)} style={{...Btn,marginTop:10,fontSize:12}}>+ Add measurement to {activeLabel}</button>
+
+          {activeRows.length>1 && (
+            <div style={{display:"flex",justifyContent:"space-between",marginTop:10,paddingTop:10,borderTop:`1px solid ${C.border}`,fontSize:12,fontWeight:700}}>
+              <span>{activeLabel} CFA: <span style={{color:C.green}}>{fmt(floorCFA)} ft²</span></span>
+              <span>{activeLabel} Volume: <span style={{color:C.green}}>{fmt(floorVol)} ft³</span></span>
+            </div>
+          )}
+        </div>
+      )}
+
+      <button onClick={addFloor} style={Btn}>+ Add Floor/Level</button>
       {floors.length>0 && (
         <div style={{display:"flex",justifyContent:"space-between",marginTop:10,paddingTop:10,
             borderTop:`1px solid ${C.border}`,fontSize:13,fontWeight:700}}>
