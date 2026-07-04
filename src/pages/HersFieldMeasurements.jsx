@@ -584,10 +584,14 @@ function WindowsEditor({ windows, onChange, onCommit, floorOptions }) {
 
   function add(){
     const last = windows[windows.length-1];
-    onChange([...windows,{
+    onChange([...windows, last ? {
+      ...last,
+      id:uid(),
+      label:`Window ${windows.length+1}`,
+    } : {
       id:uid(), label:`Window ${windows.length+1}`, orientation:"N", elevation:"", floor:"", qty:"1",
       width:"", height:"",
-      u_factor:last?.u_factor||"", shgc:last?.shgc||"",
+      u_factor:"", shgc:"",
       top_to_overhang:"", bottom_to_overhang:"", overhang_depth:"",
     }]);
   }
