@@ -53,6 +53,11 @@ export default function EkotropeReport() {
   const cfaFloors = parseArr(fm?.floors||[]);
   const totalCFA = cfaFloors.reduce((s,f)=>f.cfaInclude===false?s:s+(Number(f.width)||0)*(Number(f.length)||0),0);
   const totalVol = cfaFloors.reduce((s,f)=>s+(Number(f.width)||0)*(Number(f.length)||0)*(Number(f.height)||0),0);
+  // Group the flat measurement rows by floor label so the report shows one
+  // heading per floor (with a subtotal) instead of repeating the floor name
+  // on every single measurement row.
+  const cfaGroups = [];
+  { const gm={}; cfaFloors.forEach(f=>{ const key=f.label||"Floor"; if(!gm[key]){ gm[key]={label:key,rows:[]}; cfaGroups.push(gm[key]); } gm[key].rows.push(f); }); }
   const bedrooms = Number(fm?.bedrooms||0);
   const allWindows  = parseArr(fm?.windows||[]);
   // Only print windows that are actually finished — width, height, and
@@ -156,25 +161,35 @@ export default function EkotropeReport() {
             {cfaFloors.length>0 && (
               <div style={CARD_S}>
                 <div style={SEC}>CFA &amp; Volume — Floor Breakdown</div>
-                {cfaFloors.map((f,i)=>{
-                  const cfa = (Number(f.width)||0)*(Number(f.length)||0);
-                  const vol = cfa*(Number(f.height)||0);
-                  const counted = f.cfaInclude!==false;
+                {cfaGroups.map((g,gi)=>{
+                  const groupCFA = g.rows.reduce((s,f)=>f.cfaInclude===false?s:s+(Number(f.width)||0)*(Number(f.length)||0),0);
+                  const groupVol = g.rows.reduce((s,f)=>s+(Number(f.width)||0)*(Number(f.length)||0)*(Number(f.height)||0),0);
                   return (
-                    <div key={f.id||i} style={{...ROW,borderBottom:i<cfaFloors.length-1?"1px solid #f1f5f9":"none"}}>
-                      <div>
-                        <div style={{fontSize:13,color:"#0f172a",fontWeight:600}}>
-                          {f.label||`Floor ${i+1}`}
-                          {!counted && <span style={{fontSize:10,color:"#b45309",fontWeight:700,marginLeft:6}}>VOLUME ONLY</span>}
-                        </div>
-                        <div style={{fontSize:11,color:"#94a3b8"}}>
-                          {f.width||"?"} × {f.length||"?"} × {f.height||"?"}ft
+                    <div key={g.label||gi} style={{marginBottom:gi<cfaGroups.length-1?12:0,paddingBottom:gi<cfaGroups.length-1?10:0,borderBottom:gi<cfaGroups.length-1?"1px solid #f1f5f9":"none"}}>
+                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:4}}>
+                        <div style={{fontSize:13,color:"#0f172a",fontWeight:700}}>{g.label}</div>
+                        <div style={{textAlign:"right"}}>
+                          <span style={{...VAL,fontSize:13,color:"#059669"}}>{fmt(groupCFA,0)} ft²</span>
+                          <span style={{fontSize:11,color:"#94a3b8",marginLeft:8}}>{fmt(groupVol,0)} ft³</span>
                         </div>
                       </div>
-                      <div style={{textAlign:"right"}}>
-                        <div style={{...VAL,fontSize:13,color:counted?"#0f172a":"#cbd5e1",textDecoration:counted?"none":"line-through"}}>{fmt(cfa,0)} ft²</div>
-                        <div style={{fontSize:11,color:"#94a3b8"}}>{fmt(vol,0)} ft³</div>
-                      </div>
+                      {g.rows.map((f,i)=>{
+                        const cfa = (Number(f.width)||0)*(Number(f.length)||0);
+                        const vol = cfa*(Number(f.height)||0);
+                        const counted = f.cfaInclude!==false;
+                        return (
+                          <div key={f.id||i} style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",padding:"3px 0 3px 10px"}}>
+                            <div style={{fontSize:11,color:"#94a3b8"}}>
+                              {f.width||"?"} × {f.length||"?"} × {f.height||"?"}ft
+                              {!counted && <span style={{fontSize:10,color:"#b45309",fontWeight:700,marginLeft:6}}>VOLUME ONLY</span>}
+                            </div>
+                            <div style={{textAlign:"right"}}>
+                              <span style={{fontSize:12,color:counted?"#0f172a":"#cbd5e1",textDecoration:counted?"none":"line-through"}}>{fmt(cfa,0)} ft²</span>
+                              <span style={{fontSize:11,color:"#94a3b8",marginLeft:8}}>{fmt(vol,0)} ft³</span>
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   );
                 })}
