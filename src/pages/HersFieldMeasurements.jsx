@@ -706,12 +706,19 @@ function WindowsEditor({ windows, onChange, onCommit, floorOptions }) {
 
           <div style={{fontSize:9,color:C.faint,fontWeight:700,textTransform:"uppercase",marginBottom:4}}>Overhang shading (for Ekotrope)</div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:5}}>
-            <input {...noSpin} type="number" value={w.overhang_depth} onChange={e=>upd(idx,"overhang_depth",e.target.value)} onBlur={onCommit}
-              placeholder="Overhang depth" style={oI} />
-            <input {...noSpin} type="number" value={w.top_to_overhang} onChange={e=>upd(idx,"top_to_overhang",e.target.value)} onBlur={onCommit}
-              placeholder="Top→overhang" style={oI} />
-            <input {...noSpin} type="number" value={w.bottom_to_overhang} onChange={e=>upd(idx,"bottom_to_overhang",e.target.value)} onBlur={onCommit}
-              placeholder="Bottom→overhang ⚡" style={{...oI,background:"#f0fdf4",borderColor:"#86efac"}} />
+            <div>
+              <div style={oLbl}>Overhang depth</div>
+              <input {...noSpin} type="number" value={w.overhang_depth} onChange={e=>upd(idx,"overhang_depth",e.target.value)} onBlur={onCommit} style={oI} />
+            </div>
+            <div>
+              <div style={oLbl}>Top→overhang</div>
+              <input {...noSpin} type="number" value={w.top_to_overhang} onChange={e=>upd(idx,"top_to_overhang",e.target.value)} onBlur={onCommit} style={oI} />
+            </div>
+            <div>
+              <div style={{...oLbl,color:"#059669"}}>Bottom→overhang ⚡auto</div>
+              <input {...noSpin} type="number" value={w.bottom_to_overhang} onChange={e=>upd(idx,"bottom_to_overhang",e.target.value)} onBlur={onCommit}
+                style={{...oI,background:"#f0fdf4",borderColor:"#86efac"}} />
+            </div>
           </div>
         </div>
       ))}
