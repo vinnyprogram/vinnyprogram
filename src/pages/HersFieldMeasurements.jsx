@@ -654,29 +654,16 @@ function WindowsEditor({ windows, onChange, onCommit, floorOptions }) {
       `}</style>
       <div style={{fontSize:11,fontWeight:700,color:C.faint,textTransform:"uppercase",letterSpacing:0.4,marginBottom:10}}>Windows</div>
       {windows.map((w,idx)=>(
-        <div key={w.id} style={{border:`1px solid ${C.border}`,borderRadius:8,padding:"8px 10px",marginBottom:8}}>
+        <div key={w.id} style={{border:"2px solid #0f172a",borderRadius:8,padding:"8px 10px",marginBottom:8}}>
 
-          {/* Row 1: U-Factor, SHGC, Floor, Qty, Compass orientation, Elevation */}
+          {/* Row 1: Floor, Side, Orientation, U-Factor, SHGC, Qty */}
           <div style={{display:"flex",gap:5,marginBottom:6,alignItems:"center",flexWrap:"wrap"}}>
-            <div style={{width:46,flexShrink:0}}>
-              <input {...noSpin} type="number" step="0.01" value={w.u_factor||""} onChange={e=>upd(idx,"u_factor",e.target.value)} onBlur={onCommit}
-                placeholder="U-Fac" title="U-Factor" style={{...I,height:28,fontSize:11,textAlign:"center"}} />
-            </div>
-            <div style={{width:46,flexShrink:0}}>
-              <input {...noSpin} type="number" step="0.01" value={w.shgc||""} onChange={e=>upd(idx,"shgc",e.target.value)} onBlur={onCommit}
-                placeholder="SHGC" title="SHGC" style={{...I,height:28,fontSize:11,textAlign:"center"}} />
-            </div>
             <select value={w.floor||""} onChange={e=>updAndCommit(idx,"floor",e.target.value)}
               title="Which floor/level this window is on"
-              style={{...I,flex:1,height:28,fontSize:12,minWidth:60}}>
+              style={{...I,flex:1,height:28,fontSize:11,minWidth:52}}>
               <option value="">Floor…</option>
               {(floorOptions||[]).map(fl=><option key={fl} value={fl}>{fl}</option>)}
             </select>
-            <div style={{width:34,flexShrink:0}}>
-              <input {...noSpin} type="number" value={w.qty||""} onChange={e=>upd(idx,"qty",e.target.value)} onBlur={onCommit}
-                placeholder="Qty" title="Quantity — how many identical windows"
-                style={{...I,height:28,fontSize:12,textAlign:"center"}} />
-            </div>
             <select value={w.elevation||""} onChange={e=>pickSide(idx,e.target.value)}
               title="Building side / elevation — picking this fills in Orientation automatically once the building's facing is known"
               style={{...I,width:58,height:28,fontSize:11,flexShrink:0}}>
@@ -691,33 +678,40 @@ function WindowsEditor({ windows, onChange, onCommit, floorOptions }) {
               style={{...I,width:48,height:28,fontSize:12,flexShrink:0}}>
               {ORIENTATIONS.map(o=><option key={o} value={o}>{o}</option>)}
             </select>
+            <div style={{width:54,flexShrink:0}}>
+              <input {...noSpin} type="number" step="0.01" value={w.u_factor||""} onChange={e=>upd(idx,"u_factor",e.target.value)} onBlur={onCommit}
+                placeholder="U-Fac" title="U-Factor" style={{...I,height:30,fontSize:12,textAlign:"center"}} />
+            </div>
+            <div style={{width:54,flexShrink:0}}>
+              <input {...noSpin} type="number" step="0.01" value={w.shgc||""} onChange={e=>upd(idx,"shgc",e.target.value)} onBlur={onCommit}
+                placeholder="SHGC" title="SHGC" style={{...I,height:30,fontSize:12,textAlign:"center"}} />
+            </div>
+            <div style={{width:34,flexShrink:0}}>
+              <input {...noSpin} type="number" value={w.qty||""} onChange={e=>upd(idx,"qty",e.target.value)} onBlur={onCommit}
+                placeholder="Qty" title="Quantity — how many identical windows"
+                style={{...I,height:28,fontSize:12,textAlign:"center"}} />
+            </div>
             <button onClick={()=>rem(idx)} style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:16,flexShrink:0}}>✕</button>
           </div>
 
-          {/* Row 2: Label */}
-          <input value={w.label} onChange={e=>upd(idx,"label",e.target.value)} onBlur={onCommit} placeholder="e.g. Living room"
-            style={{...I,width:"100%",height:28,fontSize:12,marginBottom:8}} />
-
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginBottom:8}}>
-            <div><div style={lbl}>Width (ft)</div><input {...noSpin} type="number" value={w.width} onChange={e=>upd(idx,"width",e.target.value)} onBlur={onCommit} style={{...I,height:30,fontSize:12,textAlign:"right"}} /></div>
-            <div><div style={lbl}>Height (ft)</div><input {...noSpin} type="number" value={w.height} onChange={e=>upd(idx,"height",e.target.value)} onBlur={onCommit} style={{...I,height:30,fontSize:12,textAlign:"right"}} /></div>
+          {/* Row 2: Label, Width, Height together — placeholders instead of labels above, to save height */}
+          <div style={{display:"flex",gap:6,marginBottom:8}}>
+            <input value={w.label} onChange={e=>upd(idx,"label",e.target.value)} onBlur={onCommit} placeholder="e.g. Living room"
+              style={{...I,flex:"2 1 0",height:32,fontSize:12,minWidth:0}} />
+            <input {...noSpin} type="number" value={w.width} onChange={e=>upd(idx,"width",e.target.value)} onBlur={onCommit}
+              placeholder="Width (ft)" style={{...I,flex:"1 1 0",height:32,fontSize:12,textAlign:"right",minWidth:0}} />
+            <input {...noSpin} type="number" value={w.height} onChange={e=>upd(idx,"height",e.target.value)} onBlur={onCommit}
+              placeholder="Height (ft)" style={{...I,flex:"1 1 0",height:32,fontSize:12,textAlign:"right",minWidth:0}} />
           </div>
 
           <div style={{fontSize:9,color:C.faint,fontWeight:700,textTransform:"uppercase",marginBottom:4}}>Overhang shading (for Ekotrope)</div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:5}}>
-            <div>
-              <div style={oLbl}>Overhang depth</div>
-              <input {...noSpin} type="number" value={w.overhang_depth} onChange={e=>upd(idx,"overhang_depth",e.target.value)} onBlur={onCommit} style={oI} />
-            </div>
-            <div>
-              <div style={oLbl}>Top→overhang</div>
-              <input {...noSpin} type="number" value={w.top_to_overhang} onChange={e=>upd(idx,"top_to_overhang",e.target.value)} onBlur={onCommit} style={oI} />
-            </div>
-            <div>
-              <div style={{...oLbl,color:"#059669"}}>Bottom→overhang ⚡auto</div>
-              <input {...noSpin} type="number" value={w.bottom_to_overhang} onChange={e=>upd(idx,"bottom_to_overhang",e.target.value)} onBlur={onCommit}
-                style={{...oI,background:"#f0fdf4",borderColor:"#86efac"}} />
-            </div>
+            <input {...noSpin} type="number" value={w.overhang_depth} onChange={e=>upd(idx,"overhang_depth",e.target.value)} onBlur={onCommit}
+              placeholder="Overhang depth" style={oI} />
+            <input {...noSpin} type="number" value={w.top_to_overhang} onChange={e=>upd(idx,"top_to_overhang",e.target.value)} onBlur={onCommit}
+              placeholder="Top→overhang" style={oI} />
+            <input {...noSpin} type="number" value={w.bottom_to_overhang} onChange={e=>upd(idx,"bottom_to_overhang",e.target.value)} onBlur={onCommit}
+              placeholder="Bottom→overhang ⚡" style={{...oI,background:"#f0fdf4",borderColor:"#86efac"}} />
           </div>
         </div>
       ))}
