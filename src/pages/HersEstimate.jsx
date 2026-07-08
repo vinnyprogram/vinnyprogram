@@ -485,6 +485,19 @@ export default function HersEstimate() {
         unit_count: Number(unitCount)||1,
         updated_at: new Date().toISOString(),
       };
+      // Grow unit_labels to match unit_count, preserving any units that
+      // were already renamed (e.g. "1A") - only appends new default
+      // "Unit N" entries for newly-added slots, never removes existing
+      // ones (even if you lower the count) so no data ever gets orphaned.
+      const targetCount = Number(unitCount)||1;
+      let currentLabels = [];
+      if(isEditing){
+        const { data:existing } = await supabase.from("hers_estimates").select("unit_labels").eq("id",estimateId).maybeSingle();
+        currentLabels = existing?.unit_labels || [];
+      }
+      const newLabels = [...currentLabels];
+      while(newLabels.length < targetCount) newLabels.push(`Unit ${newLabels.length+1}`);
+      payload.unit_labels = newLabels;
       if(isEditing){
         await supabase.from("hers_estimates").update(payload).eq("id", estimateId);
       } else {

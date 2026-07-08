@@ -272,14 +272,13 @@ export default function EkotropeReport() {
   useEffect(()=>{
     async function load(){
       let context = null;
-      let unitCount = 1;
-      let unitNames = {};
+      let unitLabels = [];
       if(mode==="estimate"){
         const { data:e } = await supabase.from("hers_estimates").select("*").eq("id",estimateId).maybeSingle();
         if(!e){ setLoading(false); return; }
         context = e;
-        unitCount = Number(e.unit_count)||1;
-        unitNames = e.unit_names||{};
+        const uc = Number(e.unit_count)||1;
+        unitLabels = e.unit_labels || (uc>1 ? Array.from({length:uc},(_,i)=>`Unit ${i+1}`) : []);
         setAddress(e.address||"");
       } else {
         const { data:i } = await supabase.from("hers_invoices").select("*").eq("id",invoiceId).maybeSingle();
@@ -298,17 +297,14 @@ export default function EkotropeReport() {
           ? supabase.from("hers_field_measurements").select("*").eq("hers_estimate_id",estimateId).eq("unit_label",requestedUnit)
           : supabase.from("hers_field_measurements").select("*").eq("hers_invoice_id",invoiceId).eq("unit_label",requestedUnit);
         const { data:fmData } = await fmQuery.maybeSingle();
-        setUnitReports([{ label:unitNames[requestedUnit]||requestedUnit, fm:fmData||null }]);
-      } else if(mode==="estimate" && unitCount>1){
+        setUnitReports([{ label:requestedUnit, fm:fmData||null }]);
+      } else if(mode==="estimate" && unitLabels.length>1){
         // Whole-building report: every unit, grouped, in one printable page
         const { data:allFm } = await supabase.from("hers_field_measurements")
           .select("*").eq("hers_estimate_id",estimateId);
         const byLabel = {};
-        (allFm||[]).forEach(f=>{ byLabel[f.unit_label||"Unit 1"] = f; });
-        const reports = Array.from({length:unitCount}).map((_,i)=>{
-          const internalId = `Unit ${i+1}`;
-          return { label: unitNames[internalId]||internalId, fm: byLabel[internalId]||null };
-        });
+        (allFm||[]).forEach(f=>{ byLabel[f.unit_label] = f; });
+        const reports = unitLabels.map(label=>({ label, fm: byLabel[label]||null }));
         setUnitReports(reports);
       } else {
         // Regular single-family job
