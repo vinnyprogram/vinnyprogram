@@ -782,6 +782,12 @@ export default function HersFieldMeasurements() {
   const [uploading, setUploading]       = useState(false);
   const [uploadingDoc, setUploadingDoc] = useState(false);
 
+  // Local safety-net key: if a save gets cut off (app backgrounded/closed
+  // right after an edit, before the network request finishes), this lets
+  // us detect and retry it next time the page loads, instead of the change
+  // silently vanishing.
+  function backupKey(){ return `hers_fm_backup_${mode}_${estimateId||invoiceId}`; }
+
   const loadData = useCallback(async()=>{
     let context = null;
     if(mode==="estimate"){
@@ -805,14 +811,31 @@ export default function HersFieldMeasurements() {
       : supabase.from("hers_field_measurements").select("*").eq("hers_invoice_id",invoiceId);
     const { data:fm } = await fmQuery.maybeSingle();
 
-    if(fm){
-      setCfaFloors(parseArr(fm.floors).map(withId));
-      setBedrooms(String(fm.bedrooms||0));
-      setWindows(parseArr(fm.windows).map(withId));
-      setNotes(fm.notes||"");
+    // Recover from a local backup if it's newer than what made it to the
+    // server - means a previous save got cut off (app closed/backgrounded
+    // right after an edit, before the request finished).
+    let recovered = null;
+    try {
+      const raw = localStorage.getItem(backupKey());
+      if(raw){
+        const backup = JSON.parse(raw);
+        if(!fm || new Date(backup.updated_at) > new Date(fm.updated_at||0)){
+          recovered = backup;
+        } else {
+          localStorage.removeItem(backupKey()); // backup is stale, server already has it
+        }
+      }
+    } catch(e){}
+    const fmToUse = recovered || fm;
+
+    if(fmToUse){
+      setCfaFloors(parseArr(fmToUse.floors).map(withId));
+      setBedrooms(String(fmToUse.bedrooms||0));
+      setWindows(parseArr(fmToUse.windows).map(withId));
+      setNotes(fmToUse.notes||"");
 
       // Load floor-structured measurement data from areas column
-      const savedAreas = parseArr(fm.areas);
+      const savedAreas = parseArr(fmToUse.areas);
       // Detect v2 format: array of {floor_name, areas: [...]}
       if(savedAreas.length && savedAreas[0]?.floor_name){
         const floorNames = savedAreas.map(f=>f.floor_name);
@@ -846,6 +869,12 @@ export default function HersFieldMeasurements() {
     const { data:docData } = await docFilter.eq("doc_type","document").order("created_at",{ascending:false});
     setDocs(docData||[]);
     setLoading(false);
+    // A previous save never made it to the server - retry it now that we're
+    // back online, instead of leaving the recovered data only in memory.
+    // Goes through the same autoSaveTick mechanism as every other edit
+    // (not a direct save() call) since loadData is memoized and would
+    // otherwise close over stale, mount-time state.
+    if(recovered) setTimeout(()=>setAutoSaveTick(t=>t+1),300);
   },[invoiceId, estimateId, mode]);
 
   useEffect(()=>{ loadData(); },[loadData]);
@@ -918,6 +947,12 @@ export default function HersFieldMeasurements() {
         updated_at: new Date().toISOString(),
       };
 
+      // Write to local storage FIRST, synchronously, before the network
+      // request - so if the app gets closed/backgrounded before the
+      // request finishes, this change is recoverable next time the page
+      // loads instead of silently reverting.
+      try { localStorage.setItem(backupKey(), JSON.stringify(payload)); } catch(e){}
+
       if(mode==="estimate"){
         payload.hers_estimate_id = estimateId;
         const { error } = await supabase.from("hers_field_measurements").upsert(payload,{onConflict:"hers_estimate_id"});
@@ -927,6 +962,7 @@ export default function HersFieldMeasurements() {
         const { error } = await supabase.from("hers_field_measurements").upsert(payload,{onConflict:"hers_invoice_id"});
         if(error) throw error;
       }
+      try { localStorage.removeItem(backupKey()); } catch(e){} // made it to the server - backup no longer needed
 
       const incompleteAreas = floors.reduce((s,f)=>s+(areas[f]||[]).filter(a=>!(a.area_type&&a.sqft>0)).length,0);
       const incompleteWindows = windows.filter(w=>!(Number(w.width)>0&&Number(w.height)>0&&w.top_to_overhang!=="")).length;
