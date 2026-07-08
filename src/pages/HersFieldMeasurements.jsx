@@ -123,17 +123,19 @@ function FloorsEditor({ floors, onChange, onCommit }) {
     while(floorLabels.includes(label)){ n++; label=`Floor ${n}`; }
     onChange([...floors,{id:uid(),label,width:"",length:"",height:"",cfaInclude:true}]);
     setActiveLabel(label);
+    if(onCommit) onCommit();
   }
   function addMeasurement(label){
     onChange([...floors,{id:uid(),label,width:"",length:"",height:"",cfaInclude:true}]);
+    if(onCommit) onCommit();
   }
   function renameFloor(oldLabel,newLabel){
     onChange(floors.map(f=>f.label===oldLabel?{...f,label:newLabel}:f));
     setActiveLabel(newLabel);
   }
-  function removeFloor(label){ onChange(floors.filter(f=>f.label!==label)); }
+  function removeFloor(label){ onChange(floors.filter(f=>f.label!==label)); if(onCommit) onCommit(); }
   function updRow(id,field,val){ onChange(floors.map(f=>f.id===id?{...f,[field]:val}:f)); }
-  function removeRow(id){ onChange(floors.filter(f=>f.id!==id)); }
+  function removeRow(id){ onChange(floors.filter(f=>f.id!==id)); if(onCommit) onCommit(); }
 
   // Volume always counts every floor/space. CFA only counts floors marked
   // as conditioned — lets you record volume for a garage/vented attic/etc.
@@ -594,6 +596,7 @@ function WindowsEditor({ windows, onChange, onCommit, floorOptions }) {
       u_factor:"", shgc:"",
       top_to_overhang:"", bottom_to_overhang:"", overhang_depth:"",
     }]);
+    if(onCommit) onCommit();
   }
   function upd(idx,f,v){
     onChange(windows.map((w,i)=>{
@@ -611,7 +614,7 @@ function WindowsEditor({ windows, onChange, onCommit, floorOptions }) {
       return updated;
     }));
   }
-  function rem(idx){ onChange(windows.filter((_,i)=>i!==idx)); }
+  function rem(idx){ onChange(windows.filter((_,i)=>i!==idx)); if(onCommit) onCommit(); }
   // selects commit immediately on change (no separate blur needed);
   // text/number inputs autosave on blur, same pattern as areas/floors
   function updAndCommit(idx,f,v){ upd(idx,f,v); if(onCommit) onCommit(); }
