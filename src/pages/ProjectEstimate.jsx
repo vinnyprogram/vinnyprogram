@@ -1293,6 +1293,13 @@ export default function ProjectEstimate() {
     // in the Estimates list that looks like a second copy of the project.
     if(isEditing) return;
     if(!selectedLeadId) return;
+    // Don't save while a resumed draft is still loading. selectedLeadId and
+    // projectAddress get set from the URL immediately, but floors/areas only
+    // get restored from localStorage once the customer list finishes loading
+    // (which can take a while on weak field signal). Saving in that window
+    // would overwrite the real, already-saved data with the blank initial
+    // state under the SAME key - silently wiping out real measurements.
+    if(resumeMode && !draftRestored) return;
     const key=getDraftKey(selectedLeadId, projectAddress);
     try{
       localStorage.setItem(key,JSON.stringify({savedAt:new Date().toISOString(),selectedLeadId,projectName,projectAddress,crewNotes,floors:overrideFloors||floors,areas:overrideAreas||areas,editingProjectId:null}));
@@ -1326,6 +1333,10 @@ export default function ProjectEstimate() {
         const first=(draft.floors||[]).find(f=>(draft.areas?.[f]||[]).some(a=>a.area_type||a.sqft>0));
         if(first) setPendingFloor(first);
       }
+      // Mark as "checked" regardless of whether a draft was actually found -
+      // otherwise saving stays blocked forever if this exact key has nothing
+      // to restore (e.g. the draft was saved under a slightly different key).
+      setDraftRestored(true);
     }
   },[leads,resumeMode,leadId]);
 
