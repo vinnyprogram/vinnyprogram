@@ -92,6 +92,20 @@ export default function EkotropeReport() {
     if(!windowsByOrientation[or]) windowsByOrientation[or] = [];
     windowsByOrientation[or].push(w);
   });
+  // Sort each orientation's windows by floor (using the floor order from the
+  // CFA/Volume measurements) so windows on the same floor stay grouped
+  // together, instead of showing in whatever order they were entered.
+  const floorOrder = [];
+  cfaFloors.forEach(f=>{ if(f.label && !floorOrder.includes(f.label)) floorOrder.push(f.label); });
+  Object.values(windowsByOrientation).forEach(wins=>{
+    wins.sort((a,b)=>{
+      const ai = floorOrder.indexOf(a.floor), bi = floorOrder.indexOf(b.floor);
+      if(ai===-1 && bi===-1) return 0;
+      if(ai===-1) return 1;
+      if(bi===-1) return -1;
+      return ai-bi;
+    });
+  });
 
   const ROW = { display:"flex", justifyContent:"space-between", alignItems:"center",
     padding:"10px 14px", borderBottom:"1px solid #f1f5f9", fontSize:14 };
