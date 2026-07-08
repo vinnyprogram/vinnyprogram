@@ -838,6 +838,19 @@ export default function HersFieldMeasurements() {
     } catch(e){}
     const fmToUse = recovered || fm;
 
+    // Always start from a clean slate before populating - otherwise
+    // switching to a unit with less/no data leaves the PREVIOUS unit's
+    // floors/windows/bedrooms/notes sitting in memory instead of clearing.
+    const emptyAreas = {};
+    DEFAULT_FLOORS.forEach(f=>{ emptyAreas[f]=[]; });
+    setFloors([...DEFAULT_FLOORS]);
+    setActiveFloor(DEFAULT_FLOORS[0]);
+    setAreas(emptyAreas);
+    setCfaFloors([]);
+    setBedrooms("0");
+    setWindows([]);
+    setNotes("");
+
     if(fmToUse){
       setCfaFloors(parseArr(fmToUse.floors).map(withId));
       setBedrooms(String(fmToUse.bedrooms||0));
@@ -861,11 +874,6 @@ export default function HersFieldMeasurements() {
         const legacyAreas = savedAreas.map(a=>({...withId(a),mh:"",ml:"",mq:"1"}));
         setAreas({"Attic":legacyAreas});
       }
-    } else {
-      // Fresh start — initialize empty floors
-      const emptyAreas = {};
-      DEFAULT_FLOORS.forEach(f=>{ emptyAreas[f]=[]; });
-      setAreas(emptyAreas);
     }
 
     const photoFilter = mode==="invoice"
