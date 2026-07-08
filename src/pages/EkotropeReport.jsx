@@ -6,53 +6,18 @@ function parseArr(v){ return Array.isArray(v)?v:(typeof v==="string"?JSON.parse(
 function fmt(n,d=1){ return Number(n||0).toLocaleString("en-US",{minimumFractionDigits:d,maximumFractionDigits:d}); }
 const ORIENTATION_NAMES = { N:"North", NE:"Northeast", E:"East", SE:"Southeast", S:"South", SW:"Southwest", W:"West", NW:"Northwest" };
 
-export default function EkotropeReport() {
-  const navigate   = useNavigate();
-  const { invoiceId, estimateId } = useParams();
-  const mode = estimateId ? "estimate" : "invoice";
-  const [searchParams] = useSearchParams();
-  const unitLabel = searchParams.get("unit") || ""; // multifamily: which unit's report this is
+const ROW = { display:"flex", justifyContent:"space-between", alignItems:"center",
+  padding:"10px 14px", borderBottom:"1px solid #f1f5f9", fontSize:14 };
+const VAL = { fontWeight:700, color:"#0f172a", fontSize:15, minWidth:80, textAlign:"right" };
+const SEC = { fontSize:10, fontWeight:800, color:"#94a3b8", textTransform:"uppercase",
+  letterSpacing:1, padding:"10px 14px 4px", borderBottom:"1px solid #e2e8f0", background:"#f8fafc" };
+const CARD_S = { background:"#fff", borderRadius:10, border:"1px solid #e2e8f0",
+  marginBottom:16, overflow:"hidden", boxShadow:"0 1px 4px rgba(0,0,0,.06)" };
 
-  const [loading, setLoading] = useState(true);
-  const [customer, setCustomer] = useState(null);
-  const [address, setAddress] = useState("");
-  const [fm, setFm] = useState(null);
-
-  useEffect(()=>{
-    async function load(){
-      let context = null;
-      if(mode==="estimate"){
-        const { data:e } = await supabase.from("hers_estimates").select("*").eq("id",estimateId).maybeSingle();
-        if(!e){ setLoading(false); return; }
-        context = e;
-        setAddress(e.address||"");
-      } else {
-        const { data:i } = await supabase.from("hers_invoices").select("*").eq("id",invoiceId).maybeSingle();
-        if(!i){ setLoading(false); return; }
-        context = i;
-        setAddress(i.address||"");
-      }
-      if(context.customer_id){
-        const { data:cust } = await supabase.from("customers").select("id,name,phone,company_name").eq("id",context.customer_id).maybeSingle();
-        if(cust) setCustomer(cust);
-      }
-      const fmQuery = mode==="estimate"
-        ? supabase.from("hers_field_measurements").select("*").eq("hers_estimate_id",estimateId).eq("unit_label",unitLabel)
-        : supabase.from("hers_field_measurements").select("*").eq("hers_invoice_id",invoiceId).eq("unit_label",unitLabel);
-      const { data:fmData } = await fmQuery.maybeSingle();
-      setFm(fmData||null);
-      setLoading(false);
-    }
-    load();
-  },[invoiceId, estimateId, mode, unitLabel]);
-
-  if(loading) return (
-    <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"system-ui",color:"#64748b"}}>
-      Loading…
-    </div>
-  );
-
-  // Parse measurement data
+// Everything for ONE unit's (or one single-family job's) report - CFA/Volume,
+// floor breakdown, areas by type, windows. Used once for a regular job, or
+// once per unit (looped) for a whole-building multifamily report.
+function UnitReport({ fm, label }){
   const cfaFloors = parseArr(fm?.floors||[]);
   const totalCFA = cfaFloors.reduce((s,f)=>f.cfaInclude===false?s:s+(Number(f.width)||0)*(Number(f.length)||0),0);
   const totalVol = cfaFloors.reduce((s,f)=>s+(Number(f.width)||0)*(Number(f.length)||0)*(Number(f.height)||0),0);
@@ -110,13 +75,260 @@ export default function EkotropeReport() {
     });
   });
 
-  const ROW = { display:"flex", justifyContent:"space-between", alignItems:"center",
-    padding:"10px 14px", borderBottom:"1px solid #f1f5f9", fontSize:14 };
-  const VAL = { fontWeight:700, color:"#0f172a", fontSize:15, minWidth:80, textAlign:"right" };
-  const SEC = { fontSize:10, fontWeight:800, color:"#94a3b8", textTransform:"uppercase",
-    letterSpacing:1, padding:"10px 14px 4px", borderBottom:"1px solid #e2e8f0", background:"#f8fafc" };
-  const CARD_S = { background:"#fff", borderRadius:10, border:"1px solid #e2e8f0",
-    marginBottom:16, overflow:"hidden", boxShadow:"0 1px 4px rgba(0,0,0,.06)" };
+  if(!fm){
+    return (
+      <div style={{...CARD_S,padding:"20px",textAlign:"center",color:"#94a3b8",fontSize:13}}>
+        {label && <div style={{fontWeight:800,color:"#0f172a",marginBottom:6}}>{label}</div>}
+        No measurements saved yet.
+      </div>
+    );
+  }
+
+  return (
+    <div style={{marginBottom:label?28:0}}>
+      {label && (
+        <div style={{fontSize:18,fontWeight:800,color:"#0f172a",padding:"10px 0",
+            borderBottom:"3px solid #0f172a",marginBottom:14}}>
+          {label}
+        </div>
+      )}
+
+      {/* ── Building/Unit Summary ── */}
+      <div style={CARD_S}>
+        <div style={SEC}>Summary</div>
+        <div style={ROW}>
+          <span style={{color:"#64748b"}}>Conditioned Floor Area (CFA)</span>
+          <span style={{...VAL,color:"#059669"}}>{fmt(totalCFA,0)} ft²</span>
+        </div>
+        <div style={ROW}>
+          <span style={{color:"#64748b"}}>Conditioned Volume</span>
+          <span style={{...VAL,color:"#059669"}}>{fmt(totalVol,0)} ft³</span>
+        </div>
+        <div style={{...ROW,borderBottom:"none"}}>
+          <span style={{color:"#64748b"}}>Bedrooms</span>
+          <span style={VAL}>{bedrooms}</span>
+        </div>
+      </div>
+
+      {/* ── CFA Floor Breakdown ── */}
+      {cfaFloors.length>0 && (
+        <div style={CARD_S}>
+          <div style={{...SEC,display:"flex",justifyContent:"space-between",alignItems:"baseline"}}>
+            <span>CFA &amp; Volume — Floor Breakdown</span>
+            <div style={{display:"flex",gap:20}}>
+              <span style={{fontSize:11,fontWeight:800,color:"#0f172a",textTransform:"none",letterSpacing:0,width:64,textAlign:"right"}}>CFA</span>
+              <span style={{fontSize:11,fontWeight:800,color:"#0f172a",textTransform:"none",letterSpacing:0,width:64,textAlign:"right"}}>Volume</span>
+            </div>
+          </div>
+          <div style={{padding:"10px 14px"}}>
+          {cfaGroups.map((g,gi)=>{
+            const groupCFA = g.rows.reduce((s,f)=>f.cfaInclude===false?s:s+(Number(f.width)||0)*(Number(f.length)||0),0);
+            const groupVol = g.rows.reduce((s,f)=>s+(Number(f.width)||0)*(Number(f.length)||0)*(Number(f.height)||0),0);
+            return (
+              <div key={g.label||gi} style={{marginBottom:gi<cfaGroups.length-1?14:0,paddingBottom:gi<cfaGroups.length-1?12:0,borderBottom:gi<cfaGroups.length-1?"1px solid #f1f5f9":"none"}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline"}}>
+                  <div style={{fontSize:14,color:"#0f172a",fontWeight:800}}>{g.label}</div>
+                  <div style={{display:"flex",gap:20}}>
+                    <span style={{fontSize:14,fontWeight:800,color:"#0f172a",width:64,textAlign:"right"}}>{fmt(groupCFA,0)} ft²</span>
+                    <span style={{fontSize:14,fontWeight:800,color:"#0f172a",width:64,textAlign:"right"}}>{fmt(groupVol,0)} ft³</span>
+                  </div>
+                </div>
+                <div style={{borderTop:"1px solid #e2e8f0",margin:"6px 0"}} />
+                {g.rows.map((f,i)=>{
+                  const cfa = (Number(f.width)||0)*(Number(f.length)||0);
+                  const vol = cfa*(Number(f.height)||0);
+                  const counted = f.cfaInclude!==false;
+                  return (
+                    <div key={f.id||i} style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",padding:"3px 0"}}>
+                      <div style={{fontSize:11,color:"#94a3b8"}}>
+                        {f.width||"?"} × {f.length||"?"} × {f.height||"?"}ft
+                        {!counted && <span style={{fontSize:10,color:"#b45309",fontWeight:700,marginLeft:6}}>VOLUME ONLY</span>}
+                      </div>
+                      <div style={{display:"flex",gap:8}}>
+                        <span style={{fontSize:12,color:counted?"#0f172a":"#cbd5e1",textDecoration:counted?"none":"line-through",width:64,textAlign:"right"}}>{fmt(cfa,0)} ft²</span>
+                        <span style={{fontSize:11,color:"#94a3b8",width:64,textAlign:"right"}}>{fmt(vol,0)} ft³</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })}
+          </div>
+        </div>
+      )}
+
+      {/* ── Areas by Type (for Ekotrope) ── */}
+      {Object.keys(byType).length>0 && (
+        <div style={CARD_S}>
+          <div style={SEC}>Envelope Areas — Enter into Ekotrope</div>
+          {Object.entries(byType).map(([type,data],i,arr)=>(
+            <div key={type}>
+              <div style={{...ROW,alignItems:"flex-start",borderBottom:i<arr.length-1?"1px solid #f1f5f9":"none"}}>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:13,fontWeight:700,color:"#0f172a",marginBottom:4}}>{type}</div>
+                  {data.instances.map((inst,j)=>(
+                    <div key={j} style={{fontSize:11,color:"#64748b",lineHeight:1.8}}>
+                      {inst.floor&&<span style={{background:"#f1f5f9",borderRadius:4,padding:"1px 6px",marginRight:6,fontSize:10}}>{inst.floor}</span>}
+                      {inst.label&&<span style={{color:"#94a3b8",marginRight:6}}>{inst.label}</span>}
+                      <span style={{fontWeight:600}}>{fmt(inst.sqft,0)} ft²</span>
+                      {(inst.material||inst.thickness||inst.r_value)&&(
+                        <span style={{color:"#94a3b8",marginLeft:6}}>
+                          {[inst.material,inst.thickness,inst.r_value].filter(Boolean).join(" · ")}
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                <div style={{textAlign:"right",paddingLeft:16,flexShrink:0}}>
+                  <div style={{fontSize:22,fontWeight:800,color:"#059669"}}>{fmt(data.sqft,0)}</div>
+                  <div style={{fontSize:10,color:"#94a3b8"}}>ft²</div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ── Windows ── */}
+      {windows.length>0 && (
+        <div style={CARD_S}>
+          <div style={SEC}>Windows — By Orientation</div>
+          {Object.entries(windowsByOrientation).map(([orientation,wins],oi,oarr)=>{
+            const elevations = [...new Set(wins.map(w=>w.elevation).filter(Boolean))];
+            const elevLabel = elevations.length ? ` - ${elevations.join(", ")}` : "";
+            return (
+              <div key={orientation} style={{borderBottom:oi<oarr.length-1?"1px solid #e2e8f0":"none",paddingBottom:oi<oarr.length-1?10:0,marginBottom:oi<oarr.length-1?10:0}}>
+                <div style={{fontSize:14,fontWeight:800,color:"#0f172a",padding:"8px 0"}}>
+                  {ORIENTATION_NAMES[orientation]||orientation}{elevLabel}
+                </div>
+                <div style={{display:"flex",flexWrap:"wrap",gap:10}}>
+                  {wins.map((w,wi)=>{
+                    const qty = Number(w.qty)||1;
+                    const eachArea = (Number(w.width)||0)*(Number(w.height)||0);
+                    const area = eachArea*qty;
+                    return (
+                      <div key={w.id||wi} style={{border:"1px solid #0f172a",borderRadius:8,padding:"8px 10px",flex:"1 1 210px",minWidth:190,maxWidth:260}}>
+                        <div style={{fontSize:13,fontWeight:600,color:"#0f172a",marginBottom:4}}>
+                          {w.floor && <span style={{fontSize:15,fontWeight:800,color:"#0f172a"}}>{w.floor} - </span>}
+                          {w.label||`Window ${wi+1}`}{qty>1?` (×${qty})`:""}
+                        </div>
+                        <div style={{fontSize:12,color:"#64748b"}}>
+                          {w.width||"?"} × {w.height||"?"} ft{qty>1?` × ${qty}`:""} = {fmt(area,1)} ft²
+                        </div>
+                        {(w.u_factor||w.shgc) && (
+                          <div style={{marginTop:3,fontSize:11,color:"#0369a1"}}>
+                            {w.u_factor && <span>U-Factor: <b>{w.u_factor}</b></span>}
+                            {w.u_factor && w.shgc && <span style={{margin:"0 6px"}}>·</span>}
+                            {w.shgc && <span>SHGC: <b>{w.shgc}</b></span>}
+                          </div>
+                        )}
+                        {(w.top_to_overhang||w.bottom_to_overhang||w.overhang_depth) && (
+                          <div style={{marginTop:4,fontSize:11,color:"#7c3aed",lineHeight:1.8}}>
+                            {w.overhang_depth && <div>Overhang depth: <b>{w.overhang_depth} ft</b></div>}
+                            <div>Top→overhang: <b>{w.top_to_overhang||"—"} ft</b></div>
+                            <div>Bottom→overhang: <b>{w.bottom_to_overhang||"—"} ft</b></div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* ── No data sections ── */}
+      {Object.keys(byType).length===0 && (
+        <div style={{...CARD_S,padding:"20px",textAlign:"center",color:"#94a3b8",fontSize:13}}>
+          No areas entered yet.
+        </div>
+      )}
+      {windows.length===0 && (
+        <div style={{...CARD_S,padding:"14px",textAlign:"center",color:"#94a3b8",fontSize:13}}>
+          No windows entered yet.
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default function EkotropeReport() {
+  const navigate   = useNavigate();
+  const { invoiceId, estimateId } = useParams();
+  const mode = estimateId ? "estimate" : "invoice";
+  const [searchParams] = useSearchParams();
+  const requestedUnit = searchParams.get("unit"); // multifamily: a specific unit, or null = whole building
+
+  const [loading, setLoading] = useState(true);
+  const [customer, setCustomer] = useState(null);
+  const [address, setAddress] = useState("");
+  // Always a list - one entry for a single-family job or a specific unit,
+  // many entries (one per unit) for a whole-building multifamily report.
+  const [unitReports, setUnitReports] = useState([]);
+
+  useEffect(()=>{
+    async function load(){
+      let context = null;
+      let unitCount = 1;
+      if(mode==="estimate"){
+        const { data:e } = await supabase.from("hers_estimates").select("*").eq("id",estimateId).maybeSingle();
+        if(!e){ setLoading(false); return; }
+        context = e;
+        unitCount = Number(e.unit_count)||1;
+        setAddress(e.address||"");
+      } else {
+        const { data:i } = await supabase.from("hers_invoices").select("*").eq("id",invoiceId).maybeSingle();
+        if(!i){ setLoading(false); return; }
+        context = i;
+        setAddress(i.address||"");
+      }
+      if(context.customer_id){
+        const { data:cust } = await supabase.from("customers").select("id,name,phone,company_name").eq("id",context.customer_id).maybeSingle();
+        if(cust) setCustomer(cust);
+      }
+
+      if(requestedUnit){
+        // One specific unit was asked for
+        const fmQuery = mode==="estimate"
+          ? supabase.from("hers_field_measurements").select("*").eq("hers_estimate_id",estimateId).eq("unit_label",requestedUnit)
+          : supabase.from("hers_field_measurements").select("*").eq("hers_invoice_id",invoiceId).eq("unit_label",requestedUnit);
+        const { data:fmData } = await fmQuery.maybeSingle();
+        setUnitReports([{ label:requestedUnit, fm:fmData||null }]);
+      } else if(mode==="estimate" && unitCount>1){
+        // Whole-building report: every unit, grouped, in one printable page
+        const { data:allFm } = await supabase.from("hers_field_measurements")
+          .select("*").eq("hers_estimate_id",estimateId);
+        const byLabel = {};
+        (allFm||[]).forEach(f=>{ byLabel[f.unit_label||"Unit 1"] = f; });
+        const reports = Array.from({length:unitCount}).map((_,i)=>{
+          const label = `Unit ${i+1}`;
+          return { label, fm: byLabel[label]||null };
+        });
+        setUnitReports(reports);
+      } else {
+        // Regular single-family job
+        const fmQuery = mode==="estimate"
+          ? supabase.from("hers_field_measurements").select("*").eq("hers_estimate_id",estimateId).eq("unit_label","")
+          : supabase.from("hers_field_measurements").select("*").eq("hers_invoice_id",invoiceId).eq("unit_label","");
+        const { data:fmData } = await fmQuery.maybeSingle();
+        setUnitReports([{ label:"", fm:fmData||null }]);
+      }
+      setLoading(false);
+    }
+    load();
+  },[invoiceId, estimateId, mode, requestedUnit]);
+
+  if(loading) return (
+    <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"system-ui",color:"#64748b"}}>
+      Loading…
+    </div>
+  );
+
+  const isWholeBuilding = unitReports.length>1;
+  const anyData = unitReports.some(u=>u.fm);
 
   return (
     <div style={{fontFamily:"Inter,system-ui,sans-serif",background:"#f4f5f7",paddingBottom:60}}>
@@ -150,175 +362,21 @@ export default function EkotropeReport() {
 
       <div style={{maxWidth:720,margin:"0 auto",padding:"20px 16px"}}>
 
-        {!fm && (
+        {!anyData && (
           <div style={{...CARD_S,padding:"24px",textAlign:"center",color:"#94a3b8",fontSize:13}}>
             No measurements saved yet. Go to Field Measurements to enter data first.
           </div>
         )}
 
-        {fm && (
-          <>
-            {/* ── Building Summary ── */}
-            <div style={CARD_S}>
-              <div style={SEC}>Building Summary</div>
-              <div style={ROW}>
-                <span style={{color:"#64748b"}}>Conditioned Floor Area (CFA)</span>
-                <span style={{...VAL,color:"#059669"}}>{fmt(totalCFA,0)} ft²</span>
-              </div>
-              <div style={ROW}>
-                <span style={{color:"#64748b"}}>Conditioned Volume</span>
-                <span style={{...VAL,color:"#059669"}}>{fmt(totalVol,0)} ft³</span>
-              </div>
-              <div style={{...ROW,borderBottom:"none"}}>
-                <span style={{color:"#64748b"}}>Bedrooms</span>
-                <span style={VAL}>{bedrooms}</span>
-              </div>
-            </div>
-
-            {/* ── CFA Floor Breakdown ── */}
-            {cfaFloors.length>0 && (
-              <div style={CARD_S}>
-                <div style={{...SEC,display:"flex",justifyContent:"space-between",alignItems:"baseline"}}>
-                  <span>CFA &amp; Volume — Floor Breakdown</span>
-                  <div style={{display:"flex",gap:20}}>
-                    <span style={{fontSize:11,fontWeight:800,color:"#0f172a",textTransform:"none",letterSpacing:0,width:64,textAlign:"right"}}>CFA</span>
-                    <span style={{fontSize:11,fontWeight:800,color:"#0f172a",textTransform:"none",letterSpacing:0,width:64,textAlign:"right"}}>Volume</span>
-                  </div>
-                </div>
-                <div style={{padding:"10px 14px"}}>
-                {cfaGroups.map((g,gi)=>{
-                  const groupCFA = g.rows.reduce((s,f)=>f.cfaInclude===false?s:s+(Number(f.width)||0)*(Number(f.length)||0),0);
-                  const groupVol = g.rows.reduce((s,f)=>s+(Number(f.width)||0)*(Number(f.length)||0)*(Number(f.height)||0),0);
-                  return (
-                    <div key={g.label||gi} style={{marginBottom:gi<cfaGroups.length-1?14:0,paddingBottom:gi<cfaGroups.length-1?12:0,borderBottom:gi<cfaGroups.length-1?"1px solid #f1f5f9":"none"}}>
-                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline"}}>
-                        <div style={{fontSize:14,color:"#0f172a",fontWeight:800}}>{g.label}</div>
-                        <div style={{display:"flex",gap:20}}>
-                          <span style={{fontSize:14,fontWeight:800,color:"#0f172a",width:64,textAlign:"right"}}>{fmt(groupCFA,0)} ft²</span>
-                          <span style={{fontSize:14,fontWeight:800,color:"#0f172a",width:64,textAlign:"right"}}>{fmt(groupVol,0)} ft³</span>
-                        </div>
-                      </div>
-                      <div style={{borderTop:"1px solid #e2e8f0",margin:"6px 0"}} />
-                      {g.rows.map((f,i)=>{
-                        const cfa = (Number(f.width)||0)*(Number(f.length)||0);
-                        const vol = cfa*(Number(f.height)||0);
-                        const counted = f.cfaInclude!==false;
-                        return (
-                          <div key={f.id||i} style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",padding:"3px 0"}}>
-                            <div style={{fontSize:11,color:"#94a3b8"}}>
-                              {f.width||"?"} × {f.length||"?"} × {f.height||"?"}ft
-                              {!counted && <span style={{fontSize:10,color:"#b45309",fontWeight:700,marginLeft:6}}>VOLUME ONLY</span>}
-                            </div>
-                            <div style={{display:"flex",gap:8}}>
-                              <span style={{fontSize:12,color:counted?"#0f172a":"#cbd5e1",textDecoration:counted?"none":"line-through",width:64,textAlign:"right"}}>{fmt(cfa,0)} ft²</span>
-                              <span style={{fontSize:11,color:"#94a3b8",width:64,textAlign:"right"}}>{fmt(vol,0)} ft³</span>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  );
-                })}
-                </div>
-              </div>
-            )}
-
-            {/* ── Areas by Type (for Ekotrope) ── */}
-            {Object.keys(byType).length>0 && (
-              <div style={CARD_S}>
-                <div style={SEC}>Envelope Areas — Enter into Ekotrope</div>
-                {Object.entries(byType).map(([type,data],i,arr)=>(
-                  <div key={type}>
-                    <div style={{...ROW,alignItems:"flex-start",borderBottom:i<arr.length-1?"1px solid #f1f5f9":"none"}}>
-                      <div style={{flex:1}}>
-                        <div style={{fontSize:13,fontWeight:700,color:"#0f172a",marginBottom:4}}>{type}</div>
-                        {data.instances.map((inst,j)=>(
-                          <div key={j} style={{fontSize:11,color:"#64748b",lineHeight:1.8}}>
-                            {inst.floor&&<span style={{background:"#f1f5f9",borderRadius:4,padding:"1px 6px",marginRight:6,fontSize:10}}>{inst.floor}</span>}
-                            {inst.label&&<span style={{color:"#94a3b8",marginRight:6}}>{inst.label}</span>}
-                            <span style={{fontWeight:600}}>{fmt(inst.sqft,0)} ft²</span>
-                            {(inst.material||inst.thickness||inst.r_value)&&(
-                              <span style={{color:"#94a3b8",marginLeft:6}}>
-                                {[inst.material,inst.thickness,inst.r_value].filter(Boolean).join(" · ")}
-                              </span>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                      <div style={{textAlign:"right",paddingLeft:16,flexShrink:0}}>
-                        <div style={{fontSize:22,fontWeight:800,color:"#059669"}}>{fmt(data.sqft,0)}</div>
-                        <div style={{fontSize:10,color:"#94a3b8"}}>ft²</div>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* ── Windows ── */}
-            {windows.length>0 && (
-              <div style={CARD_S}>
-                <div style={SEC}>Windows — By Orientation</div>
-                {Object.entries(windowsByOrientation).map(([orientation,wins],oi,oarr)=>{
-                  const elevations = [...new Set(wins.map(w=>w.elevation).filter(Boolean))];
-                  const elevLabel = elevations.length ? ` - ${elevations.join(", ")}` : "";
-                  return (
-                    <div key={orientation} style={{borderBottom:oi<oarr.length-1?"1px solid #e2e8f0":"none",paddingBottom:oi<oarr.length-1?10:0,marginBottom:oi<oarr.length-1?10:0}}>
-                      <div style={{fontSize:14,fontWeight:800,color:"#0f172a",padding:"8px 0"}}>
-                        {ORIENTATION_NAMES[orientation]||orientation}{elevLabel}
-                      </div>
-                      <div style={{display:"flex",flexWrap:"wrap",gap:10}}>
-                        {wins.map((w,wi)=>{
-                          const qty = Number(w.qty)||1;
-                          const eachArea = (Number(w.width)||0)*(Number(w.height)||0);
-                          const area = eachArea*qty;
-                          return (
-                            <div key={w.id||wi} style={{border:"1px solid #0f172a",borderRadius:8,padding:"8px 10px",flex:"1 1 210px",minWidth:190,maxWidth:260}}>
-                              <div style={{fontSize:13,fontWeight:600,color:"#0f172a",marginBottom:4}}>
-                                {w.floor && <span style={{fontSize:15,fontWeight:800,color:"#0f172a"}}>{w.floor} - </span>}
-                                {w.label||`Window ${wi+1}`}{qty>1?` (×${qty})`:""}
-                              </div>
-                              <div style={{fontSize:12,color:"#64748b"}}>
-                                {w.width||"?"} × {w.height||"?"} ft{qty>1?` × ${qty}`:""} = {fmt(area,1)} ft²
-                              </div>
-                              {(w.u_factor||w.shgc) && (
-                                <div style={{marginTop:3,fontSize:11,color:"#0369a1"}}>
-                                  {w.u_factor && <span>U-Factor: <b>{w.u_factor}</b></span>}
-                                  {w.u_factor && w.shgc && <span style={{margin:"0 6px"}}>·</span>}
-                                  {w.shgc && <span>SHGC: <b>{w.shgc}</b></span>}
-                                </div>
-                              )}
-                              {(w.top_to_overhang||w.bottom_to_overhang||w.overhang_depth) && (
-                                <div style={{marginTop:4,fontSize:11,color:"#7c3aed",lineHeight:1.8}}>
-                                  {w.overhang_depth && <div>Overhang depth: <b>{w.overhang_depth} ft</b></div>}
-                                  <div>Top→overhang: <b>{w.top_to_overhang||"—"} ft</b></div>
-                                  <div>Bottom→overhang: <b>{w.bottom_to_overhang||"—"} ft</b></div>
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-
-            {/* ── No data sections ── */}
-            {Object.keys(byType).length===0 && (
-              <div style={{...CARD_S,padding:"20px",textAlign:"center",color:"#94a3b8",fontSize:13}}>
-                No areas entered yet. Add measurements in the Field Measurements page.
-              </div>
-            )}
-
-            {windows.length===0 && (
-              <div style={{...CARD_S,padding:"14px",textAlign:"center",color:"#94a3b8",fontSize:13}}>
-                No windows entered yet.
-              </div>
-            )}
-          </>
+        {isWholeBuilding && anyData && (
+          <div style={{fontSize:12,color:"#64748b",marginBottom:16,textAlign:"center"}}>
+            Whole-building report — {unitReports.length} units
+          </div>
         )}
+
+        {anyData && unitReports.map(u=>(
+          <UnitReport key={u.label||"single"} fm={u.fm} label={isWholeBuilding?u.label:""} />
+        ))}
       </div>
 
       <style>{`

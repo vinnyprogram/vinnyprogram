@@ -793,6 +793,7 @@ export default function HersFieldMeasurements() {
   // silently vanishing.
   function backupKey(){ return `hers_fm_backup_${mode}_${estimateId||invoiceId}_${unitLabel}`; }
   const [buildingUnitCount, setBuildingUnitCount] = useState(1); // multifamily: how many units this building has
+  const [duplicating, setDuplicating] = useState(false);
 
   const loadData = useCallback(async()=>{
     let context = null;
@@ -1200,7 +1201,7 @@ export default function HersFieldMeasurements() {
       {/* multifamily unit switcher - jump between units without leaving this page */}
       {mode==="estimate" && buildingUnitCount>1 && (
         <div style={{background:"#f8fafc",borderBottom:`1px solid ${C.border}`,
-            padding:"8px 16px",display:"flex",gap:6,justifyContent:"center",flexWrap:"wrap"}}>
+            padding:"8px 16px",display:"flex",gap:6,justifyContent:"center",alignItems:"center",flexWrap:"wrap"}}>
           {Array.from({length:buildingUnitCount}).map((_,i)=>{
             const label = `Unit ${i+1}`;
             const isActive = unitLabel===label;
@@ -1215,6 +1216,34 @@ export default function HersFieldMeasurements() {
               </button>
             );
           })}
+          {unitLabel && (
+            <button disabled={duplicating}
+              onClick={async()=>{
+                const from = prompt(`Copy measurements from which unit into ${unitLabel}? (e.g. Unit 1)`);
+                if(!from||!from.trim()) return;
+                setDuplicating(true);
+                try {
+                  const { data:src } = await supabase.from("hers_field_measurements")
+                    .select("*").eq("hers_estimate_id",estimateId).eq("unit_label",from.trim()).maybeSingle();
+                  if(!src){ alert(`${from.trim()} doesn't have any measurements yet - nothing to copy.`); return; }
+                  const { id, unit_label, created_at, ...rest } = src;
+                  await supabase.from("hers_field_measurements").upsert(
+                    { ...rest, hers_estimate_id: estimateId, unit_label: unitLabel },
+                    { onConflict: "hers_estimate_id,unit_label" }
+                  );
+                  alert(`Copied ${from.trim()} into ${unitLabel}. Adjust anything that's different, then Save.`);
+                  loadData();
+                } catch(err){
+                  alert("Error duplicating unit: "+(err.message||JSON.stringify(err)));
+                }
+                setDuplicating(false);
+              }}
+              style={{padding:"5px 12px",borderRadius:16,fontSize:12,fontWeight:600,cursor:"pointer",
+                border:`1px solid ${C.border}`,background:"#fff",color:C.muted,whiteSpace:"nowrap",
+                opacity:duplicating?0.5:1,marginLeft:6}}>
+              ⧉ Duplicate from…
+            </button>
+          )}
         </div>
       )}
 
