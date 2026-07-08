@@ -92,10 +92,11 @@ export default function EkotropeReport() {
     if(!windowsByOrientation[or]) windowsByOrientation[or] = [];
     windowsByOrientation[or].push(w);
   });
-  // Sort each orientation's windows by floor (using the floor order from the
-  // CFA/Volume measurements) so windows on the same floor stay grouped
-  // together, instead of showing in whatever order they were entered.
-  const floorOrder = [];
+  // Sort each orientation's windows by floor - standard top-down building
+  // order first (Attic, 3rd, 2nd, 1st, Basement, Crawlspace), falling back
+  // to entry order for any custom floor names not in that list.
+  const STANDARD_FLOOR_ORDER = ["Attic","3rd","2nd","1st","Basement","Crawlspace"];
+  const floorOrder = [...STANDARD_FLOOR_ORDER];
   cfaFloors.forEach(f=>{ if(f.label && !floorOrder.includes(f.label)) floorOrder.push(f.label); });
   Object.values(windowsByOrientation).forEach(wins=>{
     wins.sort((a,b)=>{
