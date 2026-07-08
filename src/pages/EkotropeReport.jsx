@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 
 function parseArr(v){ return Array.isArray(v)?v:(typeof v==="string"?JSON.parse(v||"[]"):[]); }
@@ -10,6 +10,8 @@ export default function EkotropeReport() {
   const navigate   = useNavigate();
   const { invoiceId, estimateId } = useParams();
   const mode = estimateId ? "estimate" : "invoice";
+  const [searchParams] = useSearchParams();
+  const unitLabel = searchParams.get("unit") || ""; // multifamily: which unit's report this is
 
   const [loading, setLoading] = useState(true);
   const [customer, setCustomer] = useState(null);
@@ -35,14 +37,14 @@ export default function EkotropeReport() {
         if(cust) setCustomer(cust);
       }
       const fmQuery = mode==="estimate"
-        ? supabase.from("hers_field_measurements").select("*").eq("hers_estimate_id",estimateId)
-        : supabase.from("hers_field_measurements").select("*").eq("hers_invoice_id",invoiceId);
+        ? supabase.from("hers_field_measurements").select("*").eq("hers_estimate_id",estimateId).eq("unit_label",unitLabel)
+        : supabase.from("hers_field_measurements").select("*").eq("hers_invoice_id",invoiceId).eq("unit_label",unitLabel);
       const { data:fmData } = await fmQuery.maybeSingle();
       setFm(fmData||null);
       setLoading(false);
     }
     load();
-  },[invoiceId, estimateId, mode]);
+  },[invoiceId, estimateId, mode, unitLabel]);
 
   if(loading) return (
     <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"system-ui",color:"#64748b"}}>

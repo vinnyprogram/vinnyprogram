@@ -316,6 +316,9 @@ export default function HersEstimate() {
   const [taxRate, setTaxRate] = useState("0");
   const [notes, setNotes]     = useState("");
   const [status, setStatus]   = useState("Draft");
+  const [unitCount, setUnitCount] = useState("1"); // multifamily: number of units in this building
+  const [unitStatus, setUnitStatus] = useState({}); // { "Unit 1": true } - which units have measurements started
+  const [duplicating, setDuplicating] = useState(false);
 
   // pricing options: markup, discount, deposit, payment schedule
   const [markupOpen, setMarkupOpen]     = useState(false);
@@ -356,6 +359,7 @@ export default function HersEstimate() {
         setTaxRate(String(est.tax_rate||0));
         setNotes(est.notes||"");
         setStatus(est.status||"Draft");
+        setUnitCount(String(est.unit_count||1));
         const items = Array.isArray(est.line_items) ? est.line_items
           : (typeof est.line_items === "string" ? JSON.parse(est.line_items||"[]") : []);
         if(items.length) setLineItems(items.map(it=>({...it, id: it.id||Date.now()+Math.random()})));
@@ -371,9 +375,37 @@ export default function HersEstimate() {
           .select("id").eq("hers_estimate_id", estimateId)
           .order("created_at",{ascending:false}).limit(1).maybeSingle();
         if(existingInv) setExistingInvoiceId(existingInv.id);
+
+        // Which units already have measurements started, so the Units
+        // list can show a checkmark instead of everything looking empty.
+        const { data:fms } = await supabase.from("hers_field_measurements")
+          .select("unit_label").eq("hers_estimate_id", estimateId);
+        const statusMap = {};
+        (fms||[]).forEach(f=>{ statusMap[f.unit_label||""] = true; });
+        setUnitStatus(statusMap);
       }
       setLoading(false);
     }
+  }
+
+  async function duplicateUnit(fromLabel, toLabel){
+    if(!estimateId) return;
+    setDuplicating(true);
+    try {
+      const { data:src } = await supabase.from("hers_field_measurements")
+        .select("*").eq("hers_estimate_id",estimateId).eq("unit_label",fromLabel).maybeSingle();
+      if(!src){ alert(`${fromLabel} doesn't have any measurements yet - nothing to copy.`); return; }
+      const { id, unit_label, created_at, ...rest } = src;
+      await supabase.from("hers_field_measurements").upsert(
+        { ...rest, hers_estimate_id: estimateId, unit_label: toLabel },
+        { onConflict: "hers_estimate_id,unit_label" }
+      );
+      setUnitStatus(p=>({ ...p, [toLabel]: true }));
+      alert(`Copied ${fromLabel} into ${toLabel}. Open ${toLabel} to adjust anything that's different.`);
+    } catch(err){
+      alert("Error duplicating unit: "+(err.message||JSON.stringify(err)));
+    }
+    setDuplicating(false);
   }
 
   const selectedLead = leads.find(l=>String(l.id)===String(selectedLeadId));
@@ -476,6 +508,7 @@ export default function HersEstimate() {
           id: s.id, label: s.label||"", type: s.type, value: Number(s.value)||0,
         })) : [],
         notes,
+        unit_count: Number(unitCount)||1,
         updated_at: new Date().toISOString(),
       };
       if(isEditing){
@@ -627,7 +660,7 @@ export default function HersEstimate() {
               📧 Email
             </button>
           )}
-          {isEditing && (
+          {isEditing && Number(unitCount)<=1 && (
             <button onClick={()=>navigate(`/hers/measurements/estimate/${estimateId}`)}
               style={{...Btn,color:"#059669",borderColor:"#059669"}}>
               📐 Measurements
@@ -675,6 +708,59 @@ export default function HersEstimate() {
           onSaveNew={saveNewCustomer}
           onAddressChange={setAddress}
         />
+
+        {/* multifamily units */}
+        <div style={CARD}>
+          <div style={{fontSize:11,fontWeight:700,color:C.faint,textTransform:"uppercase",letterSpacing:0.4,marginBottom:10}}>
+            Multifamily — Units
+          </div>
+          <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:isEditing&&Number(unitCount)>1?12:0}}>
+            <span style={{fontSize:13,color:"#374151"}}>Number of units</span>
+            <input type="number" min="1" value={unitCount} onChange={e=>setUnitCount(e.target.value)}
+              style={{...I,width:70,height:32,fontSize:13,textAlign:"center"}} />
+            <span style={{fontSize:11,color:C.faint}}>(leave at 1 for a single-family job)</span>
+          </div>
+
+          {isEditing && Number(unitCount)>1 && (
+            <div>
+              {Array.from({length:Number(unitCount)||0}).map((_,i)=>{
+                const label = `Unit ${i+1}`;
+                const started = !!unitStatus[label];
+                return (
+                  <div key={label} style={{display:"flex",alignItems:"center",gap:8,
+                      padding:"8px 0",borderTop:i>0?`1px solid ${C.border}`:"none"}}>
+                    <span style={{fontSize:13,fontWeight:600,color:"#0f172a",flex:1}}>
+                      {started?"✅":"⬜"} {label}
+                    </span>
+                    <button onClick={()=>navigate(`/hers/measurements/estimate/${estimateId}?unit=${encodeURIComponent(label)}`)}
+                      style={{...Btn,color:"#059669",borderColor:"#059669",fontSize:11,padding:"5px 10px"}}>
+                      📐 Measure
+                    </button>
+                    {started && (
+                      <button onClick={()=>navigate(`/hers/ekotrope/estimate/${estimateId}?unit=${encodeURIComponent(label)}`)}
+                        style={{...Btn,color:"#2563eb",borderColor:"#2563eb",fontSize:11,padding:"5px 10px"}}>
+                        📊 Report
+                      </button>
+                    )}
+                    <button disabled={duplicating}
+                      onClick={()=>{
+                        const from = prompt(`Copy measurements from which unit into ${label}? (e.g. Unit 1)`);
+                        if(from && from.trim()) duplicateUnit(from.trim(), label);
+                      }}
+                      style={{...Btn,fontSize:11,padding:"5px 10px",opacity:duplicating?0.5:1}}>
+                      ⧉ Duplicate from…
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          {!isEditing && Number(unitCount)>1 && (
+            <div style={{fontSize:11,color:C.faint,marginTop:8}}>
+              Save the estimate first to unlock per-unit measurements.
+            </div>
+          )}
+        </div>
 
         {/* line items */}
         <div style={CARD}>

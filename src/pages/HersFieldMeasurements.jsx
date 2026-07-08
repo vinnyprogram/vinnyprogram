@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 
 // ── Same constants as insulation estimate ──
@@ -749,6 +749,11 @@ export default function HersFieldMeasurements() {
   const navigate   = useNavigate();
   const { invoiceId, estimateId } = useParams();
   const mode = estimateId ? "estimate" : "invoice";
+  const [searchParams] = useSearchParams();
+  // Multifamily support: which unit this page is measuring. Empty string
+  // means "the only unit" - existing single-unit jobs work exactly as
+  // before with no visible change.
+  const unitLabel = searchParams.get("unit") || "";
 
   const [loading, setLoading]     = useState(true);
   const [saving, setSaving]       = useState(false);
@@ -786,7 +791,7 @@ export default function HersFieldMeasurements() {
   // right after an edit, before the network request finishes), this lets
   // us detect and retry it next time the page loads, instead of the change
   // silently vanishing.
-  function backupKey(){ return `hers_fm_backup_${mode}_${estimateId||invoiceId}`; }
+  function backupKey(){ return `hers_fm_backup_${mode}_${estimateId||invoiceId}_${unitLabel}`; }
 
   const loadData = useCallback(async()=>{
     let context = null;
@@ -807,8 +812,8 @@ export default function HersFieldMeasurements() {
     }
 
     const fmQuery = mode==="estimate"
-      ? supabase.from("hers_field_measurements").select("*").eq("hers_estimate_id",estimateId)
-      : supabase.from("hers_field_measurements").select("*").eq("hers_invoice_id",invoiceId);
+      ? supabase.from("hers_field_measurements").select("*").eq("hers_estimate_id",estimateId).eq("unit_label",unitLabel)
+      : supabase.from("hers_field_measurements").select("*").eq("hers_invoice_id",invoiceId).eq("unit_label",unitLabel);
     const { data:fm } = await fmQuery.maybeSingle();
 
     // Recover from a local backup if it's newer than what made it to the
@@ -875,7 +880,7 @@ export default function HersFieldMeasurements() {
     // (not a direct save() call) since loadData is memoized and would
     // otherwise close over stale, mount-time state.
     if(recovered) setTimeout(()=>setAutoSaveTick(t=>t+1),300);
-  },[invoiceId, estimateId, mode]);
+  },[invoiceId, estimateId, mode, unitLabel]);
 
   useEffect(()=>{ loadData(); },[loadData]);
 
@@ -953,13 +958,14 @@ export default function HersFieldMeasurements() {
       // loads instead of silently reverting.
       try { localStorage.setItem(backupKey(), JSON.stringify(payload)); } catch(e){}
 
+      payload.unit_label = unitLabel;
       if(mode==="estimate"){
         payload.hers_estimate_id = estimateId;
-        const { error } = await supabase.from("hers_field_measurements").upsert(payload,{onConflict:"hers_estimate_id"});
+        const { error } = await supabase.from("hers_field_measurements").upsert(payload,{onConflict:"hers_estimate_id,unit_label"});
         if(error) throw error;
       } else {
         payload.hers_invoice_id = invoiceId;
-        const { error } = await supabase.from("hers_field_measurements").upsert(payload,{onConflict:"hers_invoice_id"});
+        const { error } = await supabase.from("hers_field_measurements").upsert(payload,{onConflict:"hers_invoice_id,unit_label"});
         if(error) throw error;
       }
       try { localStorage.removeItem(backupKey()); } catch(e){} // made it to the server - backup no longer needed
@@ -1169,7 +1175,7 @@ export default function HersFieldMeasurements() {
       <div style={{position:"sticky",top:0,zIndex:100,background:C.white,borderBottom:`1px solid ${C.border}`,
           padding:"10px 16px",display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,flexWrap:"wrap"}}>
         <button onClick={()=>navigate(-1)} style={Btn}>← Back</button>
-        <span style={{fontWeight:700,fontSize:14,flex:1,textAlign:"center"}}>📐 Field Measurements</span>
+        <span style={{fontWeight:700,fontSize:14,flex:1,textAlign:"center"}}>📐 Field Measurements{unitLabel?` — ${unitLabel}`:""}</span>
         <div style={{display:"flex",gap:6,flexWrap:"wrap",justifyContent:"flex-end"}}>
           <button onClick={importFromInsulation} disabled={importing}
             style={{...Btn,color:"#7c3aed",borderColor:"#7c3aed",opacity:importing?0.6:1,fontSize:11}}>
