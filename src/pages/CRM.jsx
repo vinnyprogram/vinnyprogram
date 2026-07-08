@@ -622,33 +622,6 @@ export default function CRM() {
           </div>
         </>
       )}
-
-      {/* delete confirm */}
-      {confirmDeleteId && (
-        <div onClick={()=>setConfirmDeleteId(null)}
-          style={{position:"fixed",inset:0,background:"rgba(0,0,0,.45)",
-            display:"flex",justifyContent:"center",alignItems:"center",zIndex:1000}}>
-          <div onClick={e=>e.stopPropagation()}
-            style={{background:"white",borderRadius:16,padding:"28px 32px",
-              width:340,textAlign:"center",boxShadow:"0 20px 60px rgba(0,0,0,.2)"}}>
-            <div style={{fontSize:36,marginBottom:12}}>🗑️</div>
-            <p style={{margin:"0 0 20px",fontSize:16,color:"#333"}}>
-              Delete this customer? This cannot be undone.
-            </p>
-            <div style={{display:"flex",gap:10,justifyContent:"center"}}>
-              <button onClick={()=>setConfirmDeleteId(null)}
-                style={{padding:"10px 20px",borderRadius:10,
-                  border:"1px solid #e0e0e0",background:"#f1f3f9",
-                  fontWeight:600,cursor:"pointer"}}>Cancel</button>
-              <button onClick={()=>deleteCustomer(confirmDeleteId)}
-                style={{padding:"10px 20px",borderRadius:10,border:"none",
-                  background:"#ef4444",color:"white",fontWeight:600,cursor:"pointer"}}>
-                Delete
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
