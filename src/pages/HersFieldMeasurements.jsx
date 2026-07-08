@@ -1202,8 +1202,9 @@ export default function HersFieldMeasurements() {
               const unitQuery = unitLabel ? `?unit=${encodeURIComponent(unitLabel)}` : "";
               navigate(mode==="estimate"?`/hers/ekotrope/estimate/${estimateId}${unitQuery}`:`/hers/ekotrope/${invoiceId}${unitQuery}`);
             }}
+            title={unitLabel?"Shows just this unit's report":"Shows the whole-building report"}
             style={{...Btn,color:"#1d4ed8",borderColor:"#1d4ed8",fontSize:11}}>
-            🟦 Ekotrope Report
+            🟦 {unitLabel?`This Unit's Report`:`Ekotrope Report`}
           </button>
           <button onClick={save} disabled={saving} style={{...BtnD,opacity:saving?0.6:1}}>
             {saving?"Saving…":"Save"}
@@ -1289,6 +1290,12 @@ export default function HersFieldMeasurements() {
               ⧉ Duplicate from…
             </button>
           )}
+          <button
+            onClick={()=>navigate(`/hers/ekotrope/estimate/${estimateId}`)}
+            style={{padding:"5px 12px",borderRadius:16,fontSize:12,fontWeight:600,cursor:"pointer",
+              border:"1px solid #1d4ed8",background:"#fff",color:"#1d4ed8",whiteSpace:"nowrap",marginLeft:6}}>
+            📊 Whole Building Report
+          </button>
         </div>
       )}
 
