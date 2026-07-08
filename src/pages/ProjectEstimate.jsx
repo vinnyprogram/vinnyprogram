@@ -1862,6 +1862,24 @@ export default function ProjectEstimate() {
       }
       await supabase.from("projects").update(updateFields).eq("id", targetProjectId);
 
+      // Dedup floor names first so we can pre-check whether there's
+      // actually anything to save BEFORE deleting anything.
+      const uniqueFloors = [...new Set(floors)];
+      const willHaveAnyAreas = uniqueFloors.some(floor=>
+        (committedAreas[floor]||[]).some(a=>a.area_type&&(a.sqft>0||a.measurements?.length>0))
+      );
+      // CRITICAL SAFETY CHECK: never delete the existing areas/floors unless
+      // we've confirmed there's real data to replace them with. Without this,
+      // any bug/race that leaves committedAreas empty at save time would
+      // silently wipe out everything already saved for this project and
+      // replace it with nothing - a real data-loss incident this guards
+      // against no matter what caused the empty state upstream.
+      if(!willHaveAnyAreas){
+        setSaving(false);
+        alert("Something went wrong: this save would have removed ALL existing measurements for this job with nothing to replace them. Nothing was changed — please reload the page and re-check your data before saving again. If your measurements are missing after reloading, stop and get help before saving.");
+        return;
+      }
+
       // delete old areas and re-insert
       await supabase.from("segments").delete().in("area_id",
         (await supabase.from("areas").select("id").eq("project_id",targetProjectId)).data?.map(a=>a.id)||[]
@@ -1869,8 +1887,7 @@ export default function ProjectEstimate() {
       await supabase.from("areas").delete().eq("project_id", targetProjectId);
       await supabase.from("floors").delete().eq("project_id", targetProjectId);
 
-      // re-insert floors — dedup first to prevent duplicate floor names
-      const uniqueFloors = [...new Set(floors)];
+      // re-insert floors — already deduped above for the safety check
       const {data:floorRows} = await supabase.from("floors").insert(
         uniqueFloors.map((name,i)=>({project_id:targetProjectId,name,order_index:i+1,company_id:companyId}))
       ).select();
