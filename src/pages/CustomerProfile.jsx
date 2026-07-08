@@ -461,11 +461,15 @@ export default function CustomerProfile() {
           </div>
         ) : (
           <>
-            {/* address tabs */}
+            {/* address tabs - active job always shown first */}
             {projects.length>1 && (
               <div style={{display:"flex",gap:6,overflowX:"auto",
                   paddingBottom:4,marginBottom:12,WebkitOverflowScrolling:"touch"}}>
-                {projects.map(pg=>(
+                {[...projects].sort((a,b)=>{
+                  if(a.address===activeJob) return -1;
+                  if(b.address===activeJob) return 1;
+                  return 0;
+                }).map(pg=>(
                   <button key={pg.address}
                     onClick={()=>setActiveJob(pg.address)}
                     style={{flexShrink:0,padding:"6px 14px",borderRadius:20,
