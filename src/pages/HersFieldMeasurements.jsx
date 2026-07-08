@@ -109,7 +109,7 @@ function EkotropeSummary({ floors, areas, bedrooms }) {
 // This just PRESENTS those rows grouped by their label, as floor tabs,
 // so you pick a floor once and add as many measurements to it as you
 // need without retyping the floor name each time.
-function FloorsEditor({ floors, onChange, onCommit }) {
+function FloorsEditor({ floors, onChange, onCommit, unitLabel }) {
   const floorLabels = [];
   floors.forEach(f=>{ if(!floorLabels.includes(f.label)) floorLabels.push(f.label); });
   const [activeLabel, setActiveLabel] = useState(floorLabels[0]||"");
@@ -207,7 +207,7 @@ function FloorsEditor({ floors, onChange, onCommit }) {
             );
           })}
 
-          <button onClick={()=>addMeasurement(activeLabel)} style={{...Btn,marginTop:10,fontSize:12}}>+ Add measurement to {activeLabel}</button>
+          <button onClick={()=>addMeasurement(activeLabel)} style={{...Btn,marginTop:10,fontSize:12}}>+ Add measurement to {activeLabel}{unitLabel?` (${unitLabel})`:""}</button>
 
           {activeRows.length>1 && (
             <div style={{display:"flex",justifyContent:"space-between",marginTop:10,paddingTop:10,borderTop:`1px solid ${C.border}`,fontSize:12,fontWeight:700}}>
@@ -218,7 +218,7 @@ function FloorsEditor({ floors, onChange, onCommit }) {
         </div>
       )}
 
-      <button onClick={addFloor} style={Btn}>+ Add Floor/Level</button>
+      <button onClick={addFloor} style={Btn}>+ Add Floor/Level{unitLabel?` (${unitLabel})`:""}</button>
       {floors.length>0 && (
         <div style={{display:"flex",justifyContent:"space-between",marginTop:10,paddingTop:10,
             borderTop:`1px solid ${C.border}`,fontSize:13,fontWeight:700}}>
@@ -570,7 +570,7 @@ function AreaRow({ area, materials, onChange, onDelete, onCommit }) {
 }
 
 // ── Windows editor ──
-function WindowsEditor({ windows, onChange, onCommit, floorOptions }) {
+function WindowsEditor({ windows, onChange, onCommit, floorOptions, unitLabel }) {
   // Learns the building's facing the first time a Side (Front/Right/Rear/Left)
   // and Orientation (N/NE/E/etc) are paired together on any window, then
   // auto-fills Orientation on every subsequent window the moment a Side is
@@ -739,7 +739,7 @@ function WindowsEditor({ windows, onChange, onCommit, floorOptions }) {
           </div>
         </div>
       ))}
-      <button onClick={add} style={Btn}>+ Add Window</button>
+      <button onClick={add} style={Btn}>+ Add Window{unitLabel?` (${unitLabel})`:""}</button>
     </div>
   );
 }
@@ -1272,9 +1272,17 @@ export default function HersFieldMeasurements() {
       <div style={{maxWidth:760,margin:"0 auto",padding:"12px 14px"}}>
 
         {/* reference — always visible */}
-        <div style={{...CARD,background:"#f8fafc"}}>
-          <div style={{fontSize:13,fontWeight:700,color:C.ink}}>{customer?.name||"Unknown"}</div>
-          {invoice.address && <div style={{fontSize:12,color:C.muted,marginTop:2}}>📍 {invoice.address}</div>}
+        <div style={{...CARD,background:"#f8fafc",display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}>
+          <div>
+            <div style={{fontSize:13,fontWeight:700,color:C.ink}}>{customer?.name||"Unknown"}</div>
+            {invoice.address && <div style={{fontSize:12,color:C.muted,marginTop:2}}>📍 {invoice.address}</div>}
+          </div>
+          {buildingUnitCount>1 && (
+            <div style={{background:unitLabel?"#0f172a":"#dc2626",color:"#fff",fontWeight:800,fontSize:14,
+                padding:"6px 16px",borderRadius:8,whiteSpace:"nowrap"}}>
+              {unitLabel || "⚠ No unit selected"}
+            </div>
+          )}
         </div>
 
         {/* ══════════ OVERVIEW TAB ══════════ */}
@@ -1290,7 +1298,7 @@ export default function HersFieldMeasurements() {
             <EkotropeSummary floors={cfaFloors} areas={areas} bedrooms={bedrooms} />
 
             {/* CFA / Volume */}
-            <FloorsEditor floors={cfaFloors} onChange={setCfaFloors} onCommit={()=>setAutoSaveTick(t=>t+1)} />
+            <FloorsEditor floors={cfaFloors} onChange={setCfaFloors} onCommit={()=>setAutoSaveTick(t=>t+1)} unitLabel={unitLabel} />
           </>
         )}
 
@@ -1339,7 +1347,7 @@ export default function HersFieldMeasurements() {
           <button onClick={()=>addArea(activeFloor)}
             style={{width:"100%",padding:"7px",borderRadius:7,border:`1px dashed ${C.border}`,
               background:C.white,color:C.muted,cursor:"pointer",fontSize:12,fontWeight:600,marginBottom:8,height:"auto"}}>
-            + Add area to {activeFloor}
+            + Add area to {activeFloor}{unitLabel?` (${unitLabel})`:""}
           </button>
 
           {/* Areas for active floor */}
@@ -1388,7 +1396,7 @@ export default function HersFieldMeasurements() {
 
         {/* ══════════ WINDOWS TAB ══════════ */}
         {section==="windows" && (
-          <WindowsEditor windows={windows} onChange={setWindows} floorOptions={floors} onCommit={()=>setAutoSaveTick(t=>t+1)} />
+          <WindowsEditor windows={windows} onChange={setWindows} floorOptions={floors} onCommit={()=>setAutoSaveTick(t=>t+1)} unitLabel={unitLabel} />
         )}
 
         {/* ══════════ OVERVIEW TAB (continued) — Notes, Photos, Documents ══════════ */}
