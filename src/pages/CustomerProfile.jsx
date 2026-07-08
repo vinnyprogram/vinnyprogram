@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import AddressInput from "./AddressInput";
 
@@ -95,6 +95,8 @@ function ActualLaborInput({ jobId, quote, onSave }) {
 
 export default function CustomerProfile() {
   const { customerId } = useParams();
+  const [searchParams] = useSearchParams();
+  const requestedJob = searchParams.get("job");
   const navigate = useNavigate();
 
   const [customer, setCustomer]   = useState(null);
@@ -149,8 +151,11 @@ export default function CustomerProfile() {
 
       setProjects(Object.values(addrMap));
 
-      // set first address as active
-      if(Object.keys(addrMap).length>0){
+      // Select the specific job that was clicked into, if one was requested
+      // (e.g. from Estimate Search) - otherwise default to the first address.
+      if(requestedJob && addrMap[requestedJob]){
+        setActiveJob(requestedJob);
+      } else if(Object.keys(addrMap).length>0){
         setActiveJob(Object.keys(addrMap)[0]);
       }
     }

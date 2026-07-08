@@ -302,7 +302,7 @@ export default function EstimateSearch() {
                 )}
               </div>
               <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                <button onClick={()=>navigate(`/project/${p.id}`)}
+                <button onClick={()=>navigate(`/customer/${p.lead_id}?job=${encodeURIComponent(p.address||"")}`)}
                   style={{flex:1,border:"none",background:"#0f172a",color:"white",
                     padding:"7px 0",borderRadius:6,cursor:"pointer",
                     fontSize:11,fontWeight:700}}>
