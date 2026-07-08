@@ -100,16 +100,37 @@ export default function FieldReport() {
       );
     const lines = [];
     lines.push(`${project?.address||""}`);
+    lines.push("");
+    lines.push("CUSTOMER");
     lines.push(`${lead?.name||""}`);
     lines.push(`${lead?.phone||""}`);
     if(lead?.company_name) lines.push(`${lead.company_name}`);
     if(lead?.email) lines.push(`${lead.email}`);
     lines.push("");
 
+    // Job Info — was missing from the email entirely before
+    const jobInfoLines = [];
+    if(crewNotes.const_type) jobInfoLines.push(`Type: ${crewNotes.const_type}`);
+    if(crewNotes.fire_blocking) jobInfoLines.push(`Fire Blocking: ${crewNotes.fire_blocking}`);
+    if(crewNotes.ladder) jobInfoLines.push(`Ladder: ${crewNotes.ladder}`);
+    if(crewNotes.parking) jobInfoLines.push(`Parking: ${crewNotes.parking}`);
+    if(crewNotes.units) jobInfoLines.push(`Units: ${crewNotes.units}`);
+    if(jobInfoLines.length){
+      lines.push("JOB INFO");
+      lines.push(jobInfoLines.join("  ·  "));
+      if(crewNotes.extra_notes) lines.push(crewNotes.extra_notes);
+      lines.push("");
+    }
+
    // Group by floor + area_type + material/thick/r_value, ordered by floor sequence
    // Group by area_type + material + thickness + R-value ONLY (merge across floors)
+   // Optional areas (⭐) are excluded here - they get their own section below,
+   // same as the printed report. Mixing them in was the bug: sqft totals were
+   // silently combining regular scope with customer-choice options.
+    lines.push("SCOPE OF WORK");
     const groupMap = {};
     areas.forEach(a=>{
+      if(a.is_optional) return;
       const fl = floors.find(f=>f.id===a.floor_id);
       const floorIdx = floors.findIndex(f=>f.id===a.floor_id);
       const key = (a.area_type||"")+"||||"+(a.material||"")+"||||"+(a.thickness_in||"")+"||||"+(a.r_value||"");
@@ -136,9 +157,34 @@ export default function FieldReport() {
       lines.push(`${floorLabel?floorLabel+": ":""}${g.area_type} ${g.material||""} ${spec} - ${fmt(g.sqft)}ft²`);
       if(measStr) lines.push(`  ${measStr}`);
     });
+
+    // ⭐ Options (Customer Choice) — the areas marked "optional", same section
+    // the printed report shows separately with its own sqft/materials.
+    if(Object.keys(optGroupMapComputed).length>0){
+      const optMerged = {};
+      Object.values(optGroupMapComputed).forEach(g=>{
+        const matKey = g.materials.map(m=>m.material+(m.thickness_in||"")+(m.r_value||"")).sort().join("+");
+        const key = g.area_type+"||||"+matKey;
+        if(!optMerged[key]) optMerged[key]={...g,floors:[g.floor],sqft:g.sqft};
+        else {
+          if(!optMerged[key].floors.find(f=>f?.id===g.floor?.id)) optMerged[key].floors.push(g.floor);
+          optMerged[key].sqft+=g.sqft;
+          if(g.optional_note) optMerged[key].optional_note=g.optional_note;
+        }
+      });
+      lines.push("");
+      lines.push("OPTIONS (CUSTOMER CHOICE)");
+      Object.values(optMerged).forEach(g=>{
+        const matLabel = g.materials.map(m=>[m.thickness_in,m.material,m.r_value].filter(Boolean).join(" ")).join(" + ");
+        lines.push(`- ${g.area_type} ${matLabel} - ${fmt(g.sqft)}ft²`);
+        if(g.optional_note) lines.push(`  ${g.optional_note}`);
+      });
+    }
+
+    // Manually-typed optional items (separate free-text list, if used)
     if(options.length){
       lines.push("");
-      lines.push("Optional:");
+      lines.push("Additional Notes:");
       options.forEach(o=>{
         lines.push(`${o.label}: ${o.description}`);
       });
