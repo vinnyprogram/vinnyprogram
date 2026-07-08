@@ -792,6 +792,7 @@ export default function HersFieldMeasurements() {
   // us detect and retry it next time the page loads, instead of the change
   // silently vanishing.
   function backupKey(){ return `hers_fm_backup_${mode}_${estimateId||invoiceId}_${unitLabel}`; }
+  const [buildingUnitCount, setBuildingUnitCount] = useState(1); // multifamily: how many units this building has
 
   const loadData = useCallback(async()=>{
     let context = null;
@@ -799,6 +800,7 @@ export default function HersFieldMeasurements() {
       const { data:e } = await supabase.from("hers_estimates").select("*").eq("id",estimateId).maybeSingle();
       if(!e){ setLoading(false); return; }
       context = { id:null, customer_id:e.customer_id, address:e.address, company_id:e.company_id };
+      setBuildingUnitCount(Number(e.unit_count)||1);
     } else {
       const { data:i } = await supabase.from("hers_invoices").select("*").eq("id",invoiceId).maybeSingle();
       if(!i){ setLoading(false); return; }
@@ -1194,6 +1196,27 @@ export default function HersFieldMeasurements() {
           </button>
         </div>
       </div>
+
+      {/* multifamily unit switcher - jump between units without leaving this page */}
+      {mode==="estimate" && buildingUnitCount>1 && (
+        <div style={{background:"#f8fafc",borderBottom:`1px solid ${C.border}`,
+            padding:"8px 16px",display:"flex",gap:6,justifyContent:"center",flexWrap:"wrap"}}>
+          {Array.from({length:buildingUnitCount}).map((_,i)=>{
+            const label = `Unit ${i+1}`;
+            const isActive = unitLabel===label;
+            return (
+              <button key={label}
+                onClick={()=>navigate(`/hers/measurements/estimate/${estimateId}?unit=${encodeURIComponent(label)}`)}
+                style={{padding:"5px 12px",borderRadius:16,fontSize:12,fontWeight:600,cursor:"pointer",
+                  border:`1px solid ${isActive?"#0f172a":C.border}`,
+                  background:isActive?"#0f172a":"#fff",
+                  color:isActive?"#fff":C.muted,whiteSpace:"nowrap"}}>
+                {label}
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {/* section tabs */}
       <div style={{background:C.white,borderBottom:`1px solid ${C.border}`,

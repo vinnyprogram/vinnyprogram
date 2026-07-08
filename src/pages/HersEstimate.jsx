@@ -445,8 +445,12 @@ export default function HersEstimate() {
       id: Date.now()+Math.random(),
       service_name: serviceName||"",
       price: svc ? String(svc.default_price||0) : "",
-      qty: "1", tax: "0",
+      qty: unitCount||"1", tax: "0",
     }]);
+  }
+
+  function applyUnitCountToQuantities(){
+    setLineItems(p=>p.map(it=>({...it, qty: unitCount||"1"})));
   }
 
   function updateLine(idx, field, value){
@@ -714,11 +718,17 @@ export default function HersEstimate() {
           <div style={{fontSize:11,fontWeight:700,color:C.faint,textTransform:"uppercase",letterSpacing:0.4,marginBottom:10}}>
             Multifamily — Units
           </div>
-          <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:isEditing&&Number(unitCount)>1?12:0}}>
+          <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",marginBottom:isEditing&&Number(unitCount)>1?12:0}}>
             <span style={{fontSize:13,color:"#374151"}}>Number of units</span>
             <input type="number" min="1" value={unitCount} onChange={e=>setUnitCount(e.target.value)}
               style={{...I,width:70,height:32,fontSize:13,textAlign:"center"}} />
             <span style={{fontSize:11,color:C.faint}}>(leave at 1 for a single-family job)</span>
+            {Number(unitCount)>1 && (
+              <button onClick={applyUnitCountToQuantities}
+                style={{...Btn,fontSize:11,padding:"5px 10px"}}>
+                Apply to all quantities below
+              </button>
+            )}
           </div>
 
           {isEditing && Number(unitCount)>1 && (
