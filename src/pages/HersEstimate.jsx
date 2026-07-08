@@ -634,7 +634,7 @@ export default function HersEstimate() {
               📧 Email
             </button>
           )}
-          {isEditing && Number(unitCount)<=1 && (
+          {isEditing && (
             <button onClick={()=>navigate(`/hers/measurements/estimate/${estimateId}`)}
               style={{...Btn,color:"#059669",borderColor:"#059669"}}>
               📐 Measurements
