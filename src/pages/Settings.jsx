@@ -105,6 +105,12 @@ export default function Settings() {
   // Trade configuration
   const [offersInsulation, setOffersInsulation] = useState(true);
   const [offersHers, setOffersHers] = useState(true);
+  // Guards saveAll() against running before the initial data fetch
+  // completes - without this, saving while settings are still loading
+  // would delete real company-wide data (materials, pricing, etc.) and
+  // replace it with nothing, since the in-memory state would still be
+  // at its default/empty values.
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
 
   useEffect(()=>{ if(company?.id) load(); },[company?.id]);
 
@@ -217,6 +223,7 @@ export default function Settings() {
       if(th.length) setListThickOpts(th);
       if(rv.length) setListRVals(rv);
     }
+    setSettingsLoaded(true);
   }
 
   function seedOverhead() {
@@ -643,6 +650,10 @@ export default function Settings() {
 
   async function saveAll() {
     if(!company) return;
+    if(!settingsLoaded){
+      alert("Settings are still loading — please wait a moment and try again. (This protects your existing materials/pricing from being overwritten before they've finished loading.)");
+      return;
+    }
     setSaving(true);
     try {
       // save overhead costs
@@ -769,11 +780,12 @@ export default function Settings() {
       }
 
       // ── save two-layer material system ─────────────────────────────────────
-      if(matTypes.length>0){
+      const validTypesCheck = matTypes.filter(t=>t.name?.trim());
+      if(validTypesCheck.length>0){
         // delete existing, then reinsert (simplest approach — no partial updates)
         await supabase.from("material_products").delete().eq("company_id", company.id);
         await supabase.from("material_types").delete().eq("company_id", company.id);
-        const validTypes = matTypes.filter(t=>t.name?.trim());
+        const validTypes = validTypesCheck;
         if(validTypes.length){
           const {data:savedTypes} = await supabase.from("material_types").insert(
             validTypes.map((t,i)=>({
@@ -896,7 +908,7 @@ export default function Settings() {
               background:"#eff6ff", color:"#3b82f6", border:"1px solid #93c5fd"}}>
             🔄 Recalculate All
           </button>
-          <button onClick={saveAll} disabled={saving}
+          <button onClick={saveAll} disabled={saving||!settingsLoaded}
             style={{...BtnG, height:36, fontSize:13, padding:"0 20px"}}>
             {saving ? "Saving…" : saved ? "✅ Saved!" : "Save All"}
           </button>
