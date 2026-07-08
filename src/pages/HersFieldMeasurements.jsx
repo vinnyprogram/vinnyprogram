@@ -793,6 +793,7 @@ export default function HersFieldMeasurements() {
   // silently vanishing.
   function backupKey(){ return `hers_fm_backup_${mode}_${estimateId||invoiceId}_${unitLabel}`; }
   const [buildingUnitCount, setBuildingUnitCount] = useState(1); // multifamily: how many units this building has
+  const [unitNames, setUnitNames] = useState({}); // { "Unit 1": "1A" } - custom display names, keyed by internal id
   const [duplicating, setDuplicating] = useState(false);
 
   const loadData = useCallback(async()=>{
@@ -802,6 +803,7 @@ export default function HersFieldMeasurements() {
       if(!e){ setLoading(false); return; }
       context = { id:null, customer_id:e.customer_id, address:e.address, company_id:e.company_id };
       setBuildingUnitCount(Number(e.unit_count)||1);
+      setUnitNames(e.unit_names||{});
     } else {
       const { data:i } = await supabase.from("hers_invoices").select("*").eq("id",invoiceId).maybeSingle();
       if(!i){ setLoading(false); return; }
@@ -1178,7 +1180,7 @@ export default function HersFieldMeasurements() {
       <div style={{position:"sticky",top:0,zIndex:100,background:C.white,borderBottom:`1px solid ${C.border}`,
           padding:"10px 16px",display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,flexWrap:"wrap"}}>
         <button onClick={()=>navigate(-1)} style={Btn}>← Back</button>
-        <span style={{fontWeight:700,fontSize:14,flex:1,textAlign:"center"}}>📐 Field Measurements{unitLabel?` — ${unitLabel}`:""}</span>
+        <span style={{fontWeight:700,fontSize:14,flex:1,textAlign:"center"}}>📐 Field Measurements{unitLabel?` — ${unitNames[unitLabel]||unitLabel}`:""}</span>
         <div style={{display:"flex",gap:6,flexWrap:"wrap",justifyContent:"flex-end"}}>
           <button onClick={importFromInsulation} disabled={importing}
             style={{...Btn,color:"#7c3aed",borderColor:"#7c3aed",opacity:importing?0.6:1,fontSize:11}}>
@@ -1206,35 +1208,67 @@ export default function HersFieldMeasurements() {
         <div style={{background:"#f8fafc",borderBottom:`1px solid ${C.border}`,
             padding:"8px 16px",display:"flex",gap:6,justifyContent:"center",alignItems:"center",flexWrap:"wrap"}}>
           {Array.from({length:buildingUnitCount}).map((_,i)=>{
-            const label = `Unit ${i+1}`;
-            const isActive = unitLabel===label;
+            const internalId = `Unit ${i+1}`;
+            const displayName = unitNames[internalId] || internalId;
+            const isActive = unitLabel===internalId;
             return (
-              <button key={label}
-                onClick={()=>navigate(`/hers/measurements/estimate/${estimateId}?unit=${encodeURIComponent(label)}`)}
-                style={{padding:"5px 12px",borderRadius:16,fontSize:12,fontWeight:600,cursor:"pointer",
-                  border:`1px solid ${isActive?"#0f172a":C.border}`,
-                  background:isActive?"#0f172a":"#fff",
-                  color:isActive?"#fff":C.muted,whiteSpace:"nowrap"}}>
-                {label}
-              </button>
+              <div key={internalId} style={{display:"flex",alignItems:"center"}}>
+                <button
+                  onClick={()=>navigate(`/hers/measurements/estimate/${estimateId}?unit=${encodeURIComponent(internalId)}`)}
+                  style={{padding:"5px 12px",borderRadius:isActive?"16px 0 0 16px":16,fontSize:12,fontWeight:600,cursor:"pointer",
+                    border:`1px solid ${isActive?"#0f172a":C.border}`,
+                    borderRight:isActive?"none":undefined,
+                    background:isActive?"#0f172a":"#fff",
+                    color:isActive?"#fff":C.muted,whiteSpace:"nowrap"}}>
+                  {displayName}
+                </button>
+                {isActive && (
+                  <button
+                    title="Rename this unit (e.g. 1A, 2C)"
+                    onClick={async()=>{
+                      const newName = prompt(`Name for ${internalId}? (e.g. 1A, 2C — leave blank to reset to "${internalId}")`, displayName);
+                      if(newName===null) return;
+                      const trimmed = newName.trim();
+                      const updated = { ...unitNames };
+                      if(!trimmed || trimmed===internalId) delete updated[internalId];
+                      else updated[internalId] = trimmed;
+                      setUnitNames(updated);
+                      await supabase.from("hers_estimates").update({ unit_names: updated }).eq("id", estimateId);
+                    }}
+                    style={{padding:"5px 8px",borderRadius:"0 16px 16px 0",fontSize:12,cursor:"pointer",
+                      border:"1px solid #0f172a",background:"#0f172a",color:"#fff"}}>
+                    ✏️
+                  </button>
+                )}
+              </div>
             );
           })}
           {unitLabel && (
             <button disabled={duplicating}
               onClick={async()=>{
-                const from = prompt(`Copy measurements from which unit into ${unitLabel}? (e.g. Unit 1)`);
+                const otherNames = Array.from({length:buildingUnitCount}).map((_,i)=>`Unit ${i+1}`)
+                  .filter(id=>id!==unitLabel).map(id=>unitNames[id]||id).join(", ");
+                const from = prompt(`Copy measurements from which unit into ${unitNames[unitLabel]||unitLabel}? (${otherNames})`);
                 if(!from||!from.trim()) return;
+                // Resolve whatever they typed (a custom name or internal id) back to the internal id
+                const typed = from.trim();
+                let fromInternalId = typed;
+                const match = Object.entries(unitNames).find(([id,name])=>name.toLowerCase()===typed.toLowerCase());
+                if(match) fromInternalId = match[0];
+                else if(!Array.from({length:buildingUnitCount}).some((_,i)=>`Unit ${i+1}`===typed)){
+                  alert(`Couldn't find a unit named "${typed}".`); return;
+                }
                 setDuplicating(true);
                 try {
                   const { data:src } = await supabase.from("hers_field_measurements")
-                    .select("*").eq("hers_estimate_id",estimateId).eq("unit_label",from.trim()).maybeSingle();
-                  if(!src){ alert(`${from.trim()} doesn't have any measurements yet - nothing to copy.`); return; }
+                    .select("*").eq("hers_estimate_id",estimateId).eq("unit_label",fromInternalId).maybeSingle();
+                  if(!src){ alert(`${typed} doesn't have any measurements yet - nothing to copy.`); return; }
                   const { id, unit_label, created_at, ...rest } = src;
                   await supabase.from("hers_field_measurements").upsert(
                     { ...rest, hers_estimate_id: estimateId, unit_label: unitLabel },
                     { onConflict: "hers_estimate_id,unit_label" }
                   );
-                  alert(`Copied ${from.trim()} into ${unitLabel}. Adjust anything that's different, then Save.`);
+                  alert(`Copied ${typed} into ${unitNames[unitLabel]||unitLabel}. Adjust anything that's different, then Save.`);
                   loadData();
                 } catch(err){
                   alert("Error duplicating unit: "+(err.message||JSON.stringify(err)));
@@ -1280,7 +1314,7 @@ export default function HersFieldMeasurements() {
           {buildingUnitCount>1 && (
             <div style={{background:unitLabel?"#0f172a":"#dc2626",color:"#fff",fontWeight:800,fontSize:14,
                 padding:"6px 16px",borderRadius:8,whiteSpace:"nowrap"}}>
-              {unitLabel || "⚠ No unit selected"}
+              {unitLabel ? (unitNames[unitLabel]||unitLabel) : "⚠ No unit selected"}
             </div>
           )}
         </div>
@@ -1298,7 +1332,7 @@ export default function HersFieldMeasurements() {
             <EkotropeSummary floors={cfaFloors} areas={areas} bedrooms={bedrooms} />
 
             {/* CFA / Volume */}
-            <FloorsEditor floors={cfaFloors} onChange={setCfaFloors} onCommit={()=>setAutoSaveTick(t=>t+1)} unitLabel={unitLabel} />
+            <FloorsEditor floors={cfaFloors} onChange={setCfaFloors} onCommit={()=>setAutoSaveTick(t=>t+1)} unitLabel={unitLabel?(unitNames[unitLabel]||unitLabel):""} />
           </>
         )}
 
@@ -1347,7 +1381,7 @@ export default function HersFieldMeasurements() {
           <button onClick={()=>addArea(activeFloor)}
             style={{width:"100%",padding:"7px",borderRadius:7,border:`1px dashed ${C.border}`,
               background:C.white,color:C.muted,cursor:"pointer",fontSize:12,fontWeight:600,marginBottom:8,height:"auto"}}>
-            + Add area to {activeFloor}{unitLabel?` (${unitLabel})`:""}
+            + Add area to {activeFloor}{unitLabel?` (${unitNames[unitLabel]||unitLabel})`:""}
           </button>
 
           {/* Areas for active floor */}
@@ -1396,7 +1430,7 @@ export default function HersFieldMeasurements() {
 
         {/* ══════════ WINDOWS TAB ══════════ */}
         {section==="windows" && (
-          <WindowsEditor windows={windows} onChange={setWindows} floorOptions={floors} onCommit={()=>setAutoSaveTick(t=>t+1)} unitLabel={unitLabel} />
+          <WindowsEditor windows={windows} onChange={setWindows} floorOptions={floors} onCommit={()=>setAutoSaveTick(t=>t+1)} unitLabel={unitLabel?(unitNames[unitLabel]||unitLabel):""} />
         )}
 
         {/* ══════════ OVERVIEW TAB (continued) — Notes, Photos, Documents ══════════ */}
