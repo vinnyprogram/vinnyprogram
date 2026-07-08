@@ -376,10 +376,15 @@ export default function CustomerProfile() {
       {/* header */}
       <div style={{background:"#0f172a",padding:"14px 20px",
           display:"flex",alignItems:"center",gap:12}}>
+        <button onClick={()=>navigate(-1)}
+          style={{border:"1px solid #475569",background:"none",color:"#94a3b8",
+            padding:"6px 12px",borderRadius:6,cursor:"pointer",fontSize:12}}>
+          ← Back
+        </button>
         <button onClick={()=>navigate("/crm")}
           style={{border:"1px solid #475569",background:"none",color:"#94a3b8",
             padding:"6px 12px",borderRadius:6,cursor:"pointer",fontSize:12}}>
-          ← CRM
+          CRM
         </button>
         <div style={{flex:1,display:"flex",flexDirection:"column",gap:2}}>
           {editingCustomer ? (
