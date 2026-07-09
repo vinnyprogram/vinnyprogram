@@ -1824,7 +1824,7 @@ export default function ProjectEstimate() {
   async function saveProject({silent=false}={}) {
   if(saving) return;
   if(!selectedLeadId){ if(!silent) alert("Please select or register a customer before saving."); return; }
-  const hasAreas = floors.some(f=>(areas[f]||[]).some(a=>isAreaComplete(a)));
+  const hasAreas = floors.some(f=>(areas[f]||[]).some(a=>a.area_type));
   // Auto-commit any in-progress measurement inputs before saving
   const committedAreas = commitPendingMeasurements(areas);
   // Also update state so UI reflects the committed measurements
@@ -1859,14 +1859,20 @@ export default function ProjectEstimate() {
       lines.push(`Saved: ${new Date().toLocaleString()}`);
       lines.push("");
       floors.forEach(floor=>{
-        const floorAreas = (committedAreas[floor]||[]).filter(a=>a.area_type&&(a.sqft>0||a.measurements?.length>0));
+        // Include ANY area with an area_type set, even if it's still
+        // in progress (materials picked but no measurements entered yet) -
+        // otherwise an in-progress area is silently missing from the one
+        // backup you have of it, right when you'd need it most.
+        const floorAreas = (committedAreas[floor]||[]).filter(a=>a.area_type);
         if(!floorAreas.length) return;
         lines.push(floor.toUpperCase());
         floorAreas.forEach(a=>{
           const mls=(a.mat_lines&&a.mat_lines.length>0)?a.mat_lines:[{material:a.material||"",thickness_in:a.thickness_in||"",r_value:a.r_value||""}];
+          const hasSqft = (a.sqft>0)||(a.measurements?.length>0);
           mls.forEach(ml=>{
             const spec=[ml.material,ml.thickness_in,ml.r_value].filter(Boolean).join(" ");
-            lines.push(`  ${a.area_type} — ${spec} — ${a.sqft||0} ft²${a.is_optional?" (Optional)":""}`);
+            const flag = !hasSqft ? " — ⚠ INCOMPLETE, not yet measured" : "";
+            lines.push(`  ${a.area_type} — ${spec||"(no material chosen yet)"} — ${a.sqft||0} ft²${a.is_optional?" (Optional)":""}${flag}`);
           });
         });
       });
@@ -1895,7 +1901,7 @@ export default function ProjectEstimate() {
       // actually anything to save BEFORE deleting anything.
       const uniqueFloors = [...new Set(floors)];
       const willHaveAnyAreas = uniqueFloors.some(floor=>
-        (committedAreas[floor]||[]).some(a=>a.area_type&&(a.sqft>0||a.measurements?.length>0))
+        (committedAreas[floor]||[]).some(a=>a.area_type)
       );
       // CRITICAL SAFETY CHECK: never delete the existing areas/floors unless
       // we've confirmed there's real data to replace them with. Without this,
@@ -1925,7 +1931,7 @@ export default function ProjectEstimate() {
 
       // re-insert areas — tag each row with its area's temp_id so we can match segments reliably
       let _updateAreaIdx=0;
-      const allAreas=uniqueFloors.flatMap(floor=>(committedAreas[floor]||[]).filter(a=>a.area_type&&(a.sqft>0||a.measurements?.length>0)).flatMap((a)=>{
+      const allAreas=uniqueFloors.flatMap(floor=>(committedAreas[floor]||[]).filter(a=>a.area_type).flatMap((a)=>{
         const i=_updateAreaIdx++;
         const mls=(a.mat_lines&&a.mat_lines.length>0)?a.mat_lines:[{material:a.material||"",thickness_in:a.thickness_in||"",r_value:a.r_value||"",oc:a.oc||""}];
         return mls.map((ml,mi)=>{
@@ -1941,7 +1947,7 @@ export default function ProjectEstimate() {
         (areaRows||[]).forEach(r=>{ orderToId[r.order_index]=r.id; });
         const segs=[];let _si=0;
         uniqueFloors.forEach(floor=>{
-          (committedAreas[floor]||[]).filter(a=>a.area_type&&(a.sqft>0||a.measurements?.length>0)).forEach(a=>{
+          (committedAreas[floor]||[]).filter(a=>a.area_type).forEach(a=>{
             // primary row for this area always has mi===0, i.e. order_index = _si*10
             const primaryId=orderToId[_si*10];_si++;
             if(!primaryId)return;
@@ -1971,7 +1977,7 @@ export default function ProjectEstimate() {
       const {data:floorRows}=await supabase.from("floors").insert(uniqueNewFloors.map((name,i)=>({project_id:proj.id,name,order_index:i+1,company_id:companyId}))).select();
       const floorMap={};(floorRows||[]).forEach(f=>{floorMap[f.name]=f.id;});
       let _newAreaIdx=0;
-      const allAreas=uniqueNewFloors.flatMap(floor=>(committedAreas[floor]||[]).filter(a=>a.area_type&&(a.sqft>0||a.measurements?.length>0)).flatMap((a)=>{
+      const allAreas=uniqueNewFloors.flatMap(floor=>(committedAreas[floor]||[]).filter(a=>a.area_type).flatMap((a)=>{
         const i=_newAreaIdx++;
         const mls=(a.mat_lines&&a.mat_lines.length>0)?a.mat_lines:[{material:a.material||"",thickness_in:a.thickness_in||"",r_value:a.r_value||"",oc:a.oc||""}];
         return mls.map((ml,mi)=>{const mat=materialMap[ml.material];const {qty,unit,unit_price,line_total}=calcAreaForSave(a,ml,mi,mat,variantMap);return {project_id:proj.id,floor_id:floorMap[floor],area_type:a.area_type,material:ml.material,thickness_in:ml.thickness_in||null,r_value:ml.r_value,sqft:a.sqft,qty,unit,unit_price,line_total,order_index:i*10+mi,company_id:companyId,options:mi===0?(a.options||[]):[],paint_sqft:mi===0?Number(a.paint_sqft||0):0,deduct_sqft:mi===0?Number(a.deduct_sqft||0):0,price_override:mi===0?(a.price_override||null):null,phase:mi===0?(a.phase||null):null,is_optional:mi===0?(a.is_optional||false):false,optional_note:mi===0?(a.optional_note||""):""}; });
@@ -1982,10 +1988,10 @@ export default function ProjectEstimate() {
         const orderToId2={};
         (areaRows||[]).forEach(r=>{ orderToId2[r.order_index]=r.id; });
         const segs=[];let _si2=0;
-        uniqueNewFloors.forEach(floor=>{(committedAreas[floor]||[]).filter(a=>a.area_type&&(a.sqft>0||a.measurements?.length>0)).forEach(a=>{const primaryId=orderToId2[_si2*10];_si2++;if(!primaryId)return;(a.measurements||[]).forEach(m=>segs.push({area_id:primaryId,height:m.h,length:m.l,sqft:m.sqft,source:"field",company_id:companyId}));});});
+        uniqueNewFloors.forEach(floor=>{(committedAreas[floor]||[]).filter(a=>a.area_type).forEach(a=>{const primaryId=orderToId2[_si2*10];_si2++;if(!primaryId)return;(a.measurements||[]).forEach(m=>segs.push({area_id:primaryId,height:m.h,length:m.l,sqft:m.sqft,source:"field",company_id:companyId}));});});
         if(segs.length>0)await supabase.from("segments").insert(segs);
       }
-      const allAreasList=floors.flatMap(floor=>(committedAreas[floor]||[]).filter(a=>a.area_type&&(a.sqft>0||a.measurements?.length>0)).flatMap(a=>{const mls=(a.mat_lines&&a.mat_lines.length>0)?a.mat_lines:[{material:a.material||"",thickness_in:a.thickness_in||""}];return mls.map(ml=>({...a,material:ml.material,thickness_in:ml.thickness_in}));}));
+      const allAreasList=floors.flatMap(floor=>(committedAreas[floor]||[]).filter(a=>a.area_type).flatMap(a=>{const mls=(a.mat_lines&&a.mat_lines.length>0)?a.mat_lines:[{material:a.material||"",thickness_in:a.thickness_in||""}];return mls.map(ml=>({...a,material:ml.material,thickness_in:ml.thickness_in}));}));
       const finalLaborCost=laborRoles.reduce((s,r)=>s+Number(r.hours||0)*Number(r.days||1)*Number(r.people||1)*Number(r.rate||0),0);
       // actual conditioned sqft for the job — NOT the dollar total, which was
       // previously passed here by mistake and threw off consumables scaling
