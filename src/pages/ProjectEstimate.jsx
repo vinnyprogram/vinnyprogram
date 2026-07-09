@@ -1889,6 +1889,100 @@ export default function ProjectEstimate() {
      const allComplete = floors.every(f=>(areas[f]||[]).every(a=>!a.area_type||isAreaComplete(a)));
      const {data:currentProj} = await supabase.from("projects").select("pipeline_status").eq("id",targetProjectId).single();
 
+     const uniqueFloors = [...new Set(floors)];
+     const willHaveAnyAreas = uniqueFloors.some(floor=>
+       (committedAreas[floor]||[]).some(a=>a.area_type)
+     );
+     // CRITICAL SAFETY CHECK: refuse to proceed at all unless there's real
+     // data to save. Checked before anything else is touched.
+     if(!willHaveAnyAreas){
+       setSaving(false);
+       alert("Something went wrong: this save would have removed ALL existing measurements for this job with nothing to replace them. Nothing was changed — please reload the page and re-check your data before saving again. If your measurements are missing after reloading, stop and get help before saving.");
+       return;
+     }
+
+     // ARCHITECTURE: insert the NEW floors/areas/segments FIRST, fully
+     // confirmed successful, and only THEN delete the OLD ones - never the
+     // other way around. Previously this deleted old data first and
+     // re-inserted after; if the insert failed partway (for any reason -
+     // a bug, a transient database error, anything), the delete had
+     // already gone through and the old data was simply gone. With this
+     // order, the worst any failure can do is leave old and new data
+     // both present temporarily (annoying, fully recoverable) - it can
+     // never result in zero data.
+     const { data:oldAreaRows, error:oldAreaSelErr } = await supabase.from("areas").select("id").eq("project_id",targetProjectId);
+     if(oldAreaSelErr) throw oldAreaSelErr;
+     const { data:oldFloorRows, error:oldFloorSelErr } = await supabase.from("floors").select("id").eq("project_id",targetProjectId);
+     if(oldFloorSelErr) throw oldFloorSelErr;
+     const oldAreaIds = (oldAreaRows||[]).map(a=>a.id);
+     const oldFloorIds = (oldFloorRows||[]).map(f=>f.id);
+
+     // insert NEW floors — old ones still exist untouched at this point
+     const {data:floorRows, error:floorInsErr} = await supabase.from("floors").insert(
+       uniqueFloors.map((name,i)=>({project_id:targetProjectId,name,order_index:i+1,company_id:companyId}))
+     ).select();
+     if(floorInsErr) throw floorInsErr; // old data still 100% intact
+     const floorMap={};
+     (floorRows||[]).forEach(f=>{floorMap[f.name]=f.id;});
+     const newFloorIds = (floorRows||[]).map(f=>f.id);
+
+     // build and insert NEW areas, referencing the NEW floor ids
+     let _updateAreaIdx=0;
+     const allAreas=uniqueFloors.flatMap(floor=>(committedAreas[floor]||[]).filter(a=>a.area_type).flatMap((a)=>{
+       const i=_updateAreaIdx++;
+       const mls=(a.mat_lines&&a.mat_lines.length>0)?a.mat_lines:[{material:a.material||"",thickness_in:a.thickness_in||"",r_value:a.r_value||"",oc:a.oc||""}];
+       return mls.map((ml,mi)=>{
+         const mat=materialMap[ml.material];
+         const {qty,unit,unit_price,line_total}=calcAreaForSave(a,ml,mi,mat,variantMap);
+         return {project_id:targetProjectId,floor_id:floorMap[floor],area_type:a.area_type,material:ml.material,thickness_in:ml.thickness_in||null,r_value:ml.r_value,sqft:a.sqft,qty,unit,unit_price,line_total,order_index:i*10+mi,company_id:companyId,options:mi===0?(a.options||[]):[],paint_sqft:mi===0?Number(a.paint_sqft||0):0,deduct_sqft:mi===0?Number(a.deduct_sqft||0):0,price_override:mi===0?(a.price_override||null):null,phase:mi===0?(a.phase||null):null,is_optional:mi===0?(a.is_optional||false):false,optional_note:mi===0?(a.optional_note||""):""};
+       });
+     }));
+
+     if(allAreas.length>0){
+       const {data:areaRows, error:areaInsErr}=await supabase.from("areas").insert(allAreas).select();
+       if(areaInsErr){
+         // roll back the new floors we just inserted — old data still untouched
+         await supabase.from("floors").delete().in("id", newFloorIds);
+         throw areaInsErr;
+       }
+       const orderToId={};
+       (areaRows||[]).forEach(r=>{ orderToId[r.order_index]=r.id; });
+       const segs=[];let _si=0;
+       uniqueFloors.forEach(floor=>{
+         (committedAreas[floor]||[]).filter(a=>a.area_type).forEach(a=>{
+           const primaryId=orderToId[_si*10];_si++;
+           if(!primaryId)return;
+           (a.measurements||[]).forEach(m=>segs.push({area_id:primaryId,height:m.h,length:m.l,sqft:m.sqft,source:"field",company_id:companyId}));
+         });
+       });
+       if(segs.length>0){
+         const {error:segInsErr} = await supabase.from("segments").insert(segs);
+         if(segInsErr){
+           // roll back the new areas + floors — old data still untouched
+           await supabase.from("areas").delete().in("id", (areaRows||[]).map(r=>r.id));
+           await supabase.from("floors").delete().in("id", newFloorIds);
+           throw segInsErr;
+         }
+       }
+     }
+
+     // Everything new is confirmed safely in place - only now is it safe
+     // to remove the old rows.
+     if(oldAreaIds.length){
+       const { error:segDelErr } = await supabase.from("segments").delete().in("area_id", oldAreaIds);
+       if(segDelErr) throw segDelErr;
+       const { error:areaDelErr } = await supabase.from("areas").delete().in("id", oldAreaIds);
+       if(areaDelErr) throw areaDelErr;
+     }
+     if(oldFloorIds.length){
+       const { error:floorDelErr } = await supabase.from("floors").delete().in("id", oldFloorIds);
+       if(floorDelErr) throw floorDelErr;
+     }
+
+     // Only now, with the new data confirmed in and the old data cleaned
+     // up, update the project's own fields - including the measurement
+     // snapshot, which should only ever reflect data we've actually
+     // confirmed made it into areas/floors, never an attempt that failed.
      const updateFields = {
         name:projectName||"New Project",
         address:projectAddress||"",
@@ -1902,79 +1996,6 @@ export default function ProjectEstimate() {
       const {error:updErr} = await supabase.from("projects").update(updateFields).eq("id", targetProjectId);
       if(updErr) throw updErr;
 
-      // Dedup floor names first so we can pre-check whether there's
-      // actually anything to save BEFORE deleting anything.
-      const uniqueFloors = [...new Set(floors)];
-      const willHaveAnyAreas = uniqueFloors.some(floor=>
-        (committedAreas[floor]||[]).some(a=>a.area_type)
-      );
-      // CRITICAL SAFETY CHECK: never delete the existing areas/floors unless
-      // we've confirmed there's real data to replace them with. Without this,
-      // any bug/race that leaves committedAreas empty at save time would
-      // silently wipe out everything already saved for this project and
-      // replace it with nothing - a real data-loss incident this guards
-      // against no matter what caused the empty state upstream.
-      if(!willHaveAnyAreas){
-        setSaving(false);
-        alert("Something went wrong: this save would have removed ALL existing measurements for this job with nothing to replace them. Nothing was changed — please reload the page and re-check your data before saving again. If your measurements are missing after reloading, stop and get help before saving.");
-        return;
-      }
-
-      // delete old areas and re-insert. Every step below now checks for
-      // errors explicitly and throws immediately if one occurs - previously
-      // several of these calls didn't check the response at all, so a
-      // database-level failure (not a network failure - those already threw)
-      // would go completely unnoticed and the code would carry on as if it
-      // had succeeded, eventually clearing the local draft on a save that
-      // never actually completed.
-      const { data:existingAreaIds, error:selErr } = await supabase.from("areas").select("id").eq("project_id",targetProjectId);
-      if(selErr) throw selErr;
-      const { error:segDelErr } = await supabase.from("segments").delete().in("area_id", existingAreaIds?.map(a=>a.id)||[]);
-      if(segDelErr) throw segDelErr;
-      const { error:areaDelErr } = await supabase.from("areas").delete().eq("project_id", targetProjectId);
-      if(areaDelErr) throw areaDelErr;
-      const { error:floorDelErr } = await supabase.from("floors").delete().eq("project_id", targetProjectId);
-      if(floorDelErr) throw floorDelErr;
-
-      // re-insert floors — already deduped above for the safety check
-      const {data:floorRows, error:floorInsErr} = await supabase.from("floors").insert(
-        uniqueFloors.map((name,i)=>({project_id:targetProjectId,name,order_index:i+1,company_id:companyId}))
-      ).select();
-      if(floorInsErr) throw floorInsErr;
-      const floorMap={};
-      (floorRows||[]).forEach(f=>{floorMap[f.name]=f.id;});
-
-      // re-insert areas — tag each row with its area's temp_id so we can match segments reliably
-      let _updateAreaIdx=0;
-      const allAreas=uniqueFloors.flatMap(floor=>(committedAreas[floor]||[]).filter(a=>a.area_type).flatMap((a)=>{
-        const i=_updateAreaIdx++;
-        const mls=(a.mat_lines&&a.mat_lines.length>0)?a.mat_lines:[{material:a.material||"",thickness_in:a.thickness_in||"",r_value:a.r_value||"",oc:a.oc||""}];
-        return mls.map((ml,mi)=>{
-          const mat=materialMap[ml.material];
-          const {qty,unit,unit_price,line_total}=calcAreaForSave(a,ml,mi,mat,variantMap);
-          return {project_id:targetProjectId,floor_id:floorMap[floor],area_type:a.area_type,material:ml.material,thickness_in:ml.thickness_in||null,r_value:ml.r_value,sqft:a.sqft,qty,unit,unit_price,line_total,order_index:i*10+mi,company_id:companyId,options:mi===0?(a.options||[]):[],paint_sqft:mi===0?Number(a.paint_sqft||0):0,deduct_sqft:mi===0?Number(a.deduct_sqft||0):0,price_override:mi===0?(a.price_override||null):null,phase:mi===0?(a.phase||null):null,is_optional:mi===0?(a.is_optional||false):false,optional_note:mi===0?(a.optional_note||""):""};
-        });
-      }));
-      if(allAreas.length>0){
-        const {data:areaRows, error:areaInsErr}=await supabase.from("areas").insert(allAreas).select();
-        if(areaInsErr) throw areaInsErr;
-        // Build a map from order_index → DB id so we never rely on insert return order
-        const orderToId={};
-        (areaRows||[]).forEach(r=>{ orderToId[r.order_index]=r.id; });
-        const segs=[];let _si=0;
-        uniqueFloors.forEach(floor=>{
-          (committedAreas[floor]||[]).filter(a=>a.area_type).forEach(a=>{
-            // primary row for this area always has mi===0, i.e. order_index = _si*10
-            const primaryId=orderToId[_si*10];_si++;
-            if(!primaryId)return;
-            (a.measurements||[]).forEach(m=>segs.push({area_id:primaryId,height:m.h,length:m.l,sqft:m.sqft,source:"field",company_id:companyId}));
-          });
-        });
-        if(segs.length>0){
-          const {error:segInsErr} = await supabase.from("segments").insert(segs);
-          if(segInsErr) throw segInsErr;
-        }
-      }
     wasSaved.current = true;
     if(!silent){ setSaved(true); setSavedProjectId(targetProjectId); }
     else { setSavedProjectId(targetProjectId); }
