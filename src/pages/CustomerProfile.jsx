@@ -108,6 +108,8 @@ export default function CustomerProfile() {
   const [uploading, setUploading] = useState(false);
   const [openCost, setOpenCost]   = useState(null);
   const [docs, setDocs]           = useState([]);
+  const [backupFloors, setBackupFloors] = useState([]);
+  const [backupAreas, setBackupAreas] = useState([]);
   const [uploadingDoc, setUploadingDoc] = useState(false);
   const [activeJob, setActiveJob] = useState(null);
   const fileInputRef = useRef();
@@ -373,6 +375,18 @@ export default function CustomerProfile() {
   );
 
   const activeGroup = projects.find(p=>p.address===activeJob);
+
+  useEffect(()=>{
+    async function loadBackup(){
+      const jobId = activeGroup?.jobs?.[0]?.id;
+      if(!jobId){ setBackupFloors([]); setBackupAreas([]); return; }
+      const { data:fl } = await supabase.from("floors").select("*").eq("project_id",jobId).order("order_index");
+      const { data:ar } = await supabase.from("areas").select("*").eq("project_id",jobId).order("order_index");
+      setBackupFloors(fl||[]);
+      setBackupAreas(ar||[]);
+    }
+    loadBackup();
+  },[activeGroup?.jobs?.[0]?.id]);
 
   return (
     <div style={{fontFamily:"Inter,system-ui,sans-serif",background:"#f6f7fb",
@@ -758,6 +772,53 @@ export default function CustomerProfile() {
                   </div>
                 ))}
 
+                {/* measurement backup — always reflects the latest saved data,
+                    independent of quotes/pricing, so it's a durable record
+                    you can use to re-enter data if anything ever goes wrong */}
+                <div style={{background:"white",borderRadius:12,
+                    border:"1px solid #e2e8f0",padding:"14px",
+                    boxShadow:"0 2px 8px rgba(0,0,0,.04)"}}>
+                  <div style={{display:"flex",justifyContent:"space-between",
+                      alignItems:"center",marginBottom:10}}>
+                    <div style={{fontSize:13,fontWeight:700,color:"#0f172a"}}>
+                      📋 Measurement Backup
+                    </div>
+                    <button onClick={()=>window.print()} title="Save as PDF"
+                      style={{border:"none",background:"none",color:"#94a3b8",cursor:"pointer",fontSize:15}}>
+                      🖨️
+                    </button>
+                  </div>
+                  {backupAreas.length===0 ? (
+                    <div style={{fontSize:12,color:"#94a3b8",textAlign:"center",padding:"10px 0"}}>
+                      No measurements saved for this job yet.
+                    </div>
+                  ) : (
+                    <div className="print-backup-only">
+                      {customer && (
+                        <div style={{marginBottom:8,paddingBottom:8,borderBottom:"1px solid #e2e8f0"}}>
+                          <div style={{fontWeight:700}}>{customer.name}</div>
+                          {activeGroup?.address && <div style={{color:"#64748b",fontSize:12}}>{activeGroup.address}</div>}
+                        </div>
+                      )}
+                      {backupFloors.map(floor=>{
+                        const floorAreas = backupAreas.filter(a=>a.floor_id===floor.id && a.area_type && a.sqft>0);
+                        if(!floorAreas.length) return null;
+                        return (
+                          <div key={floor.id} style={{marginBottom:10}}>
+                            <div style={{fontWeight:700,fontSize:12,color:"#0f172a",marginBottom:3}}>{floor.name}</div>
+                            {floorAreas.map((a,i)=>(
+                              <div key={a.id||i} style={{fontSize:11,color:"#374151",padding:"2px 0 2px 10px"}}>
+                                {a.area_type} — {[a.material,a.thickness_in,a.r_value].filter(Boolean).join(" ")} — <b>{fmt(a.sqft)} ft²</b>
+                                {a.is_optional && <span style={{color:"#b45309",marginLeft:6}}>⭐ Optional</span>}
+                              </div>
+                            ))}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
                 {/* photos section */}
                 <div style={{background:"white",borderRadius:12,
                     border:"1px solid #e2e8f0",padding:"14px",
@@ -886,6 +947,17 @@ export default function CustomerProfile() {
           </>
         )}
       </div>
+      <style>{`
+        .print-backup-only { display: block; }
+        @media print {
+          body * { visibility: hidden; }
+          .print-backup-only, .print-backup-only * { visibility: visible; }
+          .print-backup-only {
+            position: absolute; top: 0; left: 0; width: 100%;
+            font-size: 14px;
+          }
+        }
+      `}</style>
     </div>
   );
 }
