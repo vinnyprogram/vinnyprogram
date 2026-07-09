@@ -1031,7 +1031,7 @@ function EstimatePanel({ floors, areas, materialMap, variantMap, crewNotes, proj
         </div>
       )}
       {(()=>{
-       const allAreas=floors.flatMap(floor=>(areas[floor]||[]).filter(a=>a.area_type&&a.material!=="__custom_mat__"&&!a.is_optional).map(a=>({...a,floor})));
+       const allAreas=floors.flatMap(floor=>(areas[floor]||[]).filter(a=>a.area_type&&!a.is_optional).map(a=>({...a,floor})));
         if(!allAreas.length) return <div style={{color:C.faint,fontSize:10,textAlign:"center",padding:"10px 0"}}>No areas yet</div>;
         const hasPhases=allAreas.some(a=>a.phase===1||a.phase===2);
         function buildGroups(list){
@@ -1090,7 +1090,7 @@ function EstimatePanel({ floors, areas, materialMap, variantMap, crewNotes, proj
             }catch(e){ return []; }
           })
         );
-        const optionalAreas=floors.flatMap(floor=>(areas[floor]||[]).filter(a=>a.area_type&&a.sqft&&a.material!=="__custom_mat__"&&a.is_optional).map(a=>({...a,floor})));
+        const optionalAreas=floors.flatMap(floor=>(areas[floor]||[]).filter(a=>a.area_type&&a.is_optional).map(a=>({...a,floor})));
         if(!optionalAreas.length && !allSubOptions.length) return null;
         return (
           <div style={{marginTop:4,marginBottom:8,paddingTop:8,borderTop:`1px dashed ${C.border}`}}>
@@ -1106,7 +1106,10 @@ function EstimatePanel({ floors, areas, materialMap, variantMap, crewNotes, proj
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
                     <div style={{flex:1,paddingRight:4,lineHeight:1.5}}>
                       <div style={{fontWeight:700,fontSize:12,color:C.ink}}>{a.floor.replace(" Floor","")} — {a.area_type}</div>
-                      <div style={{fontSize:10,color:C.muted,lineHeight:1.5}}>{matLabel}{" · "}{fmt(a.sqft)} ft²</div>
+                      <div style={{fontSize:10,color:C.muted,lineHeight:1.5}}>
+                        {matLabel}{" · "}{fmt(a.sqft)} ft²
+                        {!(a.sqft>0)&&<span style={{color:"#b45309",fontWeight:700}}> — ⚠ INCOMPLETE, not yet measured</span>}
+                      </div>
                   {a.optional_note&&<div style={{fontSize:10,color:"#92400e",fontStyle:"italic",marginTop:1}}>📝 {a.optional_note}</div>}
                     </div>
                     {cost>0&&<span style={{fontWeight:700,color:"#f59e0b",fontSize:12,flexShrink:0,paddingTop:2}}>+${fmt(cost)}</span>}
