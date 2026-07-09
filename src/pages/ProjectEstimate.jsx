@@ -1207,6 +1207,14 @@ export default function ProjectEstimate() {
   const isEditing=!!projectId;
   const [isLocked, setIsLocked] = useState(false); // true when pipeline_status is sent
   const [loadedUpdatedAt, setLoadedUpdatedAt] = useState(null); // for conflict detection - the project's updated_at as of when THIS session last loaded/saved it
+  const [debugLog, setDebugLog] = useState([]);
+  const [showDebugLog, setShowDebugLog] = useState(false);
+  function logEvent(msg){
+    setDebugLog(prev=>{
+      const next=[...prev,{t:new Date().toLocaleTimeString(),msg}];
+      return next.length>60?next.slice(next.length-60):next; // keep it from growing forever
+    });
+  }
 
   const [floors, setFloorsRaw]=useState(["Attic","3rd","2nd","1st","Basement"]);
   // Always deduplicate floors — this is the ONLY place floors state is set
@@ -1496,6 +1504,7 @@ export default function ProjectEstimate() {
       if(!proj){setLoadingProject(false);return;}
       setProjectName(proj.name||""); setProjectAddress(proj.address||"");
       setLoadedUpdatedAt(proj.updated_at||null);
+      logEvent(`Project loaded: "${proj.name||proj.address||projectId}" (status: ${proj.pipeline_status||"Draft"}, last updated: ${proj.updated_at||"unknown"})`);
       if(proj.lead_id) setSelectedLeadId(String(proj.lead_id));
       // Lock estimate if quote already sent
       const sentStatuses = ["Quote Ready","Proposal","Negotiation","Accepted","Job Scheduled","Completed","Sent to Office"];
@@ -1828,19 +1837,21 @@ export default function ProjectEstimate() {
   }
 
   async function saveProject({silent=false}={}) {
-  if(saving) return;
-  if(!selectedLeadId){ if(!silent) alert("Please select or register a customer before saving."); return; }
+  logEvent(`Save requested (${silent?"auto/silent":"manual button"})`);
+  if(saving){ logEvent("Save skipped: another save already in progress"); return; }
+  if(!selectedLeadId){ logEvent("Save blocked: no customer selected"); if(!silent) alert("Please select or register a customer before saving."); return; }
   const hasAreas = floors.some(f=>(areas[f]||[]).some(a=>a.area_type));
   // Auto-commit any in-progress measurement inputs before saving
   const committedAreas = commitPendingMeasurements(areas);
   // Also update state so UI reflects the committed measurements
   setAreas(committedAreas);
-  if(!hasAreas){ if(!silent) alert("Add at least one area before saving."); return; }
+  if(!hasAreas){ logEvent("Save blocked: no areas entered yet"); if(!silent) alert("Add at least one area before saving."); return; }
   // Offline: don't even attempt the network round-trip (avoids a raw fetch-error
   // alert and, for brand-new jobs, a failed insert that never gets retried).
   // Everything is already being auto-saved to localStorage as you work; the
   // "online" listener below will call saveProject() again once signal returns.
   if(!navigator.onLine){
+    logEvent("Save deferred: offline - saved locally only, will retry when signal returns");
     saveDraftNow(committedAreas, floors);
     setHasUnsavedChanges(true);
     if(!silent) alert("You're offline — this job is saved on this device and will upload automatically once you're back online.");
@@ -1898,10 +1909,12 @@ export default function ProjectEstimate() {
      // CRITICAL SAFETY CHECK: refuse to proceed at all unless there's real
      // data to save. Checked before anything else is touched.
      if(!willHaveAnyAreas){
+       logEvent("⛔ SAFETY CHECK FAILED: would delete all data with nothing to replace it - save aborted, nothing touched");
        setSaving(false);
        alert("Something went wrong: this save would have removed ALL existing measurements for this job with nothing to replace them. Nothing was changed — please reload the page and re-check your data before saving again. If your measurements are missing after reloading, stop and get help before saving.");
        return;
      }
+     logEvent(`Safety check passed - ${uniqueFloors.length} floor(s) have data to save`);
 
      // CONFLICT CHECK: if another tab/device (e.g. a backgrounded session
      // that never fully closed) has saved this same job more recently than
@@ -1911,10 +1924,12 @@ export default function ProjectEstimate() {
      if(loadedUpdatedAt){
        const { data:latestProj, error:latestErr } = await supabase.from("projects").select("updated_at").eq("id",targetProjectId).maybeSingle();
        if(!latestErr && latestProj?.updated_at && new Date(latestProj.updated_at).getTime() !== new Date(loadedUpdatedAt).getTime()){
+         logEvent(`⛔ CONFLICT DETECTED: server shows ${latestProj.updated_at}, this session expected ${loadedUpdatedAt} - save blocked`);
          setSaving(false);
          alert("This job was updated elsewhere (another tab or device) since you opened it here. To avoid overwriting those newer changes, nothing was saved. Please reload this page to see the latest version before continuing.");
          return;
        }
+       logEvent("Conflict check passed - no newer save from elsewhere");
      }
 
      // ARCHITECTURE: insert the NEW floors/areas/segments FIRST, fully
@@ -2019,6 +2034,7 @@ export default function ProjectEstimate() {
       // this session's OWN next save to be falsely flagged as a conflict
       // with itself.
       setLoadedUpdatedAt(updData?.updated_at || nowIso);
+      logEvent("✅ Save completed successfully (existing project updated)");
 
     wasSaved.current = true;
     if(!silent){ setSaved(true); setSavedProjectId(targetProjectId); }
@@ -2074,7 +2090,7 @@ export default function ProjectEstimate() {
       const allOptions=floors.flatMap(floor=>(areas[floor]||[]).filter(a=>a.area_type&&a.sqft&&(a.options||[]).length>0).map(a=>({area_type:a.area_type,floor,sqft:a.sqft,options:a.options,mat_lines:a.mat_lines})));
       await supabase.from("quotes").insert([{project_id:proj.id,subtotal:pricing.material_cost,tax_rate:0,tax_total:0,grand_total:Math.round(finalPriceWithLabor*100)/100,final_price:Math.round(finalPriceWithLabor*100)/100,material_cost:pricing.material_cost,overhead_cost:pricing.overhead_cost,labor_cost:Math.round(finalLaborCost*100)/100,labor_hours:laborRoles.reduce((s,r)=>s+Number(r.hours||0)*Number(r.days||1)*Number(r.people||1),0),crew_size:laborRoles.filter(r=>Number(r.hours||0)>0).length,labor_rate:laborRoles.find(r=>Number(r.hours||0)>0)?.rate||45,profit_margin_pct:pricing.profit_margin_pct,fuel_cost:Math.round(fuelCostCalc*100)/100,commission_cost:Math.round(commissionCost*100)/100,commission_pct:commissionPct,job_miles:Number(jobMiles||0),sales_rep_id:selectedRep||null,notes:allOptions.length>0?JSON.stringify(allOptions):null,status:"Draft",company_id:companyId}]);
       wasSaved.current = true;
-      if(!silent){ setSaved(true); } setSavedProjectId(proj.id); setLoadedUpdatedAt(proj.updated_at||new Date().toISOString()); clearDraft();
+      if(!silent){ setSaved(true); } setSavedProjectId(proj.id); setLoadedUpdatedAt(proj.updated_at||new Date().toISOString()); logEvent(`✅ New project created successfully (id: ${proj.id})`); clearDraft();
       setHasUnsavedChanges(false);
 
       // If started from "By Drawings", import the drawing draft into the new estimate
@@ -2100,7 +2116,7 @@ export default function ProjectEstimate() {
           }
         }catch(e){ console.warn("Drawing draft import error:",e.message); }
       }
-    }catch(err){console.error(err);setHasUnsavedChanges(true);if(!silent)alert("Error: "+(err.message||JSON.stringify(err)));}
+    }catch(err){console.error(err);logEvent(`❌ SAVE FAILED: ${err.message||JSON.stringify(err)}`);setHasUnsavedChanges(true);if(!silent)alert("Error: "+(err.message||JSON.stringify(err)));}
     finally{if(!silent)setSaving(false);}
   }
 
@@ -2133,10 +2149,54 @@ export default function ProjectEstimate() {
         </button>
         <span style={{fontWeight:700,fontSize:14,flex:1,overflow:"hidden",whiteSpace:"nowrap",textOverflow:"ellipsis"}}>{isEditing?(isLocked?"🔒 View Estimate":"✏️ Edit Estimate"):(projectName||"New Project")}</span>
         <div style={{display:"flex",gap:6}}>
+          <button onClick={()=>setShowDebugLog(true)} title="View activity log - useful for troubleshooting"
+            style={{border:"1px solid #cbd5e1",background:"#fff",color:"#64748b",cursor:"pointer",
+              fontSize:16,padding:"5px 8px",borderRadius:8,flexShrink:0}}>
+            🐛
+          </button>
           {savedProjectId&&(<><button onClick={()=>navigate(`/project/drawings/${savedProjectId}`)} style={{...BtnD,background:"#7c3aed",height:32,fontSize:12,padding:"0 10px",borderRadius:8}}>📐 Drawings</button><button onClick={()=>navigate(`/field-report/${savedProjectId}`)} style={{...BtnD,background:"#3b82f6",height:32,fontSize:12,padding:"0 10px",borderRadius:8}}>📋 Office</button><button onClick={()=>navigate(`/quote-pricing/${savedProjectId}`)} style={{...BtnD,background:"#f97316",height:32,fontSize:12,padding:"0 10px",borderRadius:8}}>📄 Quote</button></>)}
           {!isLocked && <button onClick={saveProject} disabled={saving} style={{...BtnD,fontSize:13,height:32,padding:"0 14px",background:saving?"#64748b":C.ink,borderRadius:8,opacity:!selectedLeadId?0.4:1}}>{saving?"…":"Save"}</button>}
         </div>
       </div>
+
+      {showDebugLog && (
+        <div onClick={()=>setShowDebugLog(false)}
+          style={{position:"fixed",inset:0,background:"rgba(0,0,0,.5)",zIndex:1000,
+            display:"flex",alignItems:"flex-end",justifyContent:"center"}}>
+          <div onClick={e=>e.stopPropagation()}
+            style={{background:"#0f172a",color:"#e2e8f0",width:"100%",maxWidth:600,
+              maxHeight:"70vh",borderRadius:"16px 16px 0 0",display:"flex",flexDirection:"column",
+              fontFamily:"ui-monospace,monospace"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",
+                padding:"12px 16px",borderBottom:"1px solid #334155"}}>
+              <span style={{fontWeight:700,fontSize:14}}>🐛 Activity Log</span>
+              <div style={{display:"flex",gap:8}}>
+                <button onClick={()=>{
+                    const text=debugLog.map(l=>`[${l.t}] ${l.msg}`).join("\n");
+                    navigator.clipboard?.writeText(text);
+                    alert("Copied - paste it in chat");
+                  }}
+                  style={{border:"1px solid #475569",background:"none",color:"#94a3b8",
+                    cursor:"pointer",fontSize:11,padding:"4px 10px",borderRadius:6}}>
+                  Copy
+                </button>
+                <button onClick={()=>setShowDebugLog(false)}
+                  style={{border:"none",background:"none",color:"#94a3b8",cursor:"pointer",fontSize:18}}>
+                  ✕
+                </button>
+              </div>
+            </div>
+            <div style={{overflowY:"auto",padding:"12px 16px",fontSize:11,lineHeight:1.7}}>
+              {debugLog.length===0 && <div style={{color:"#64748b"}}>Nothing logged yet this session.</div>}
+              {debugLog.slice().reverse().map((l,i)=>(
+                <div key={i} style={{marginBottom:2}}>
+                  <span style={{color:"#64748b"}}>[{l.t}]</span> {l.msg}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       <div style={{display:"flex",flex:1,overflow:"hidden"}}>
         <div ref={areaListRef} style={{flex:1,overflowY:"auto",overflowX:"hidden",padding:"8px 12px 200px 12px",minWidth:0,boxSizing:"border-box",width:"100%"}}>
