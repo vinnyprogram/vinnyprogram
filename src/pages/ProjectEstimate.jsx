@@ -1031,7 +1031,7 @@ function EstimatePanel({ floors, areas, materialMap, variantMap, crewNotes, proj
         </div>
       )}
       {(()=>{
-       const allAreas=floors.flatMap(floor=>(areas[floor]||[]).filter(a=>a.area_type&&a.sqft&&a.material!=="__custom_mat__"&&!a.is_optional).map(a=>({...a,floor})));
+       const allAreas=floors.flatMap(floor=>(areas[floor]||[]).filter(a=>a.area_type&&a.material!=="__custom_mat__"&&!a.is_optional).map(a=>({...a,floor})));
         if(!allAreas.length) return <div style={{color:C.faint,fontSize:10,textAlign:"center",padding:"10px 0"}}>No areas yet</div>;
         const hasPhases=allAreas.some(a=>a.phase===1||a.phase===2);
         function buildGroups(list){
@@ -1061,6 +1061,7 @@ function EstimatePanel({ floors, areas, materialMap, variantMap, crewNotes, proj
                     <div style={{fontSize:10,color:C.muted,lineHeight:1.5}}>
                       {thick&&<span>{thick} </span>}{matLabel}{" · "}{fmt(g.totalSqft)} ft²
                       {qty>0&&` → ${fmt(qty)} ${unit?.replace("_"," ")}`}
+                      {g.totalSqft===0&&<span style={{color:"#b45309",fontWeight:700}}> — ⚠ INCOMPLETE, not yet measured</span>}
                     </div>
                     {g.totalPaintSqft>0&&<div style={{fontSize:10,color:"#c2410c"}}>🎨 Paint {fmt(g.totalPaintSqft)} ft²</div>}
                   </div>
