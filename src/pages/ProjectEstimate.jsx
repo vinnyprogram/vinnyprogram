@@ -1207,13 +1207,22 @@ export default function ProjectEstimate() {
   const isEditing=!!projectId;
   const [isLocked, setIsLocked] = useState(false); // true when pipeline_status is sent
   const [loadedUpdatedAt, setLoadedUpdatedAt] = useState(null); // for conflict detection - the project's updated_at as of when THIS session last loaded/saved it
-  const [debugLog, setDebugLog] = useState([]);
+  const DEBUG_LOG_KEY = "insulationpro_debug_log";
+  const [debugLog, setDebugLog] = useState(()=>{
+    try { return JSON.parse(localStorage.getItem(DEBUG_LOG_KEY)||"[]"); } catch(e){ return []; }
+  });
   const [showDebugLog, setShowDebugLog] = useState(false);
   function logEvent(msg){
     setDebugLog(prev=>{
-      const next=[...prev,{t:new Date().toLocaleTimeString(),msg}];
-      return next.length>60?next.slice(next.length-60):next; // keep it from growing forever
+      const next=[...prev,{t:new Date().toLocaleString(),msg}];
+      const trimmed=next.length>200?next.slice(next.length-200):next; // keep it from growing forever
+      try { localStorage.setItem(DEBUG_LOG_KEY, JSON.stringify(trimmed)); } catch(e){}
+      return trimmed;
     });
+  }
+  function clearDebugLog(){
+    setDebugLog([]);
+    try { localStorage.removeItem(DEBUG_LOG_KEY); } catch(e){}
   }
 
   const [floors, setFloorsRaw]=useState(["Attic","3rd","2nd","1st","Basement"]);
@@ -2179,6 +2188,11 @@ export default function ProjectEstimate() {
                   style={{border:"1px solid #475569",background:"none",color:"#94a3b8",
                     cursor:"pointer",fontSize:11,padding:"4px 10px",borderRadius:6}}>
                   Copy
+                </button>
+                <button onClick={()=>{ if(window.confirm("Clear the whole activity log? This can't be undone.")) clearDebugLog(); }}
+                  style={{border:"1px solid #475569",background:"none",color:"#94a3b8",
+                    cursor:"pointer",fontSize:11,padding:"4px 10px",borderRadius:6}}>
+                  Clear
                 </button>
                 <button onClick={()=>setShowDebugLog(false)}
                   style={{border:"none",background:"none",color:"#94a3b8",cursor:"pointer",fontSize:18}}>
