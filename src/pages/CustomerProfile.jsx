@@ -788,11 +788,26 @@ export default function CustomerProfile() {
                       🖨️
                     </button>
                   </div>
-                  {backupAreas.length===0 ? (
-                    <div style={{fontSize:12,color:"#94a3b8",textAlign:"center",padding:"10px 0"}}>
-                      No measurements saved for this job yet.
-                    </div>
-                  ) : (
+                  {(() => {
+                    const snapshot = activeGroup?.jobs?.[0]?.measurement_snapshot;
+                    if(snapshot){
+                      // Independent text snapshot - doesn't depend on the
+                      // areas/floors tables at all, so it's the resilient one.
+                      return (
+                        <div className="print-backup-only" style={{whiteSpace:"pre-wrap",fontSize:12,color:"#374151",fontFamily:"ui-monospace,monospace"}}>
+                          {snapshot}
+                        </div>
+                      );
+                    }
+                    if(backupAreas.length===0){
+                      return (
+                        <div style={{fontSize:12,color:"#94a3b8",textAlign:"center",padding:"10px 0"}}>
+                          No measurements saved for this job yet.
+                        </div>
+                      );
+                    }
+                    // Fallback for older jobs saved before the snapshot field existed
+                    return (
                     <div className="print-backup-only">
                       {customer && (
                         <div style={{marginBottom:8,paddingBottom:8,borderBottom:"1px solid #e2e8f0"}}>
@@ -816,7 +831,8 @@ export default function CustomerProfile() {
                         );
                       })}
                     </div>
-                  )}
+                    );
+                  })()}
                 </div>
 
                 {/* photos section */}

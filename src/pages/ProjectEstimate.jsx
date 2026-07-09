@@ -1846,16 +1846,45 @@ export default function ProjectEstimate() {
     const {data:cd} = await supabase.from("companies").select("id").eq("user_id",user.id).maybeSingle();
     const companyId = cd?.id||null;
 
+    // Independent text snapshot of the current measurements, stored
+    // directly on the project row - NOT dependent on the areas/floors
+    // tables at all, so it survives even if something goes wrong with
+    // those tables later in this same save. Written first (as part of
+    // the very first database write in either path below), before
+    // anything risky happens.
+    function buildMeasurementSnapshot(){
+      const lines = [];
+      lines.push(`${projectName||""}`.trim());
+      lines.push(`${projectAddress||""}`);
+      lines.push(`Saved: ${new Date().toLocaleString()}`);
+      lines.push("");
+      floors.forEach(floor=>{
+        const floorAreas = (committedAreas[floor]||[]).filter(a=>a.area_type&&(a.sqft>0||a.measurements?.length>0));
+        if(!floorAreas.length) return;
+        lines.push(floor.toUpperCase());
+        floorAreas.forEach(a=>{
+          const mls=(a.mat_lines&&a.mat_lines.length>0)?a.mat_lines:[{material:a.material||"",thickness_in:a.thickness_in||"",r_value:a.r_value||""}];
+          mls.forEach(ml=>{
+            const spec=[ml.material,ml.thickness_in,ml.r_value].filter(Boolean).join(" ");
+            lines.push(`  ${a.area_type} — ${spec} — ${a.sqft||0} ft²${a.is_optional?" (Optional)":""}`);
+          });
+        });
+      });
+      return lines.join("\n");
+    }
+
     // ── EDIT MODE: update existing project ──
     const targetProjectId = projectId || savedProjectId;
     if(targetProjectId){
      const allComplete = floors.every(f=>(areas[f]||[]).every(a=>!a.area_type||isAreaComplete(a)));
      const {data:currentProj} = await supabase.from("projects").select("pipeline_status").eq("id",targetProjectId).single();
+
      const updateFields = {
         name:projectName||"New Project",
         address:projectAddress||"",
         lead_id:Number(selectedLeadId)||null,
         crew_notes:JSON.stringify(crewNotes),
+        measurement_snapshot: buildMeasurementSnapshot(),
       };
      if(allComplete && (currentProj?.pipeline_status||"Draft")==="Draft"){
         updateFields.pipeline_status = "Measured";
@@ -1934,6 +1963,7 @@ export default function ProjectEstimate() {
         lead_id:Number(selectedLeadId), name:projectName||"New Project", address:projectAddress||"",
         status:"Active", source:"field", company_id:companyId,
         crew_notes: JSON.stringify(crewNotes),
+        measurement_snapshot: buildMeasurementSnapshot(),
         pipeline_status: allComplete ? "Measured" : "Draft",
       }]).select().single();
       if(pe)throw pe;
