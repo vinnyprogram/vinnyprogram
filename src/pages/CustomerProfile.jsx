@@ -360,20 +360,6 @@ export default function CustomerProfile() {
     setUploadingDoc(false);
   }
 
-  if(loading) return (
-    <div style={{padding:40,textAlign:"center",color:"#64748b",fontFamily:"system-ui"}}>
-      Loading…
-    </div>
-  );
-
-  if(!customer) return (
-    <div style={{padding:40,textAlign:"center",color:"#ef4444",fontFamily:"system-ui"}}>
-      Customer not found.
-      <button onClick={()=>navigate("/crm")}
-        style={{marginLeft:12,cursor:"pointer"}}>← CRM</button>
-    </div>
-  );
-
   const activeGroup = projects.find(p=>p.address===activeJob);
 
   useEffect(()=>{
@@ -387,6 +373,20 @@ export default function CustomerProfile() {
     }
     loadBackup();
   },[activeGroup?.jobs?.[0]?.id]);
+
+  if(loading) return (
+    <div style={{padding:40,textAlign:"center",color:"#64748b",fontFamily:"system-ui"}}>
+      Loading…
+    </div>
+  );
+
+  if(!customer) return (
+    <div style={{padding:40,textAlign:"center",color:"#ef4444",fontFamily:"system-ui"}}>
+      Customer not found.
+      <button onClick={()=>navigate("/crm")}
+        style={{marginLeft:12,cursor:"pointer"}}>← CRM</button>
+    </div>
+  );
 
   return (
     <div style={{fontFamily:"Inter,system-ui,sans-serif",background:"#f6f7fb",

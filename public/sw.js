@@ -14,7 +14,7 @@
 //  - Old cache versions are wiped on activate so this never grows unbounded
 //    or serves assets from a previous deploy.
 
-const CACHE_VERSION = "v3";
+const CACHE_VERSION = "v4";
 const CACHE_NAME = `insulationpro-shell-${CACHE_VERSION}`;
 const SHELL_URL = "/";
 
@@ -41,6 +41,15 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return; // never cache cross-origin (Supabase, etc.)
 
+  // Last-resort synthetic response so respondWith() never receives
+  // undefined (which throws "Failed to convert value to 'Response'")
+  // when there's genuinely nothing cached to fall back to yet - e.g.
+  // the very first ever load, offline, before anything's been cached.
+  const offlineFallback = () => new Response(
+    "Offline and nothing cached yet for this page.",
+    { status: 503, statusText: "Offline", headers: { "Content-Type": "text/plain" } }
+  );
+
   // Navigations: network-first, cache fallback (keeps app fresh, still opens offline)
   if (req.mode === "navigate") {
     event.respondWith(
@@ -50,7 +59,7 @@ self.addEventListener("fetch", (event) => {
           caches.open(CACHE_NAME).then((c) => c.put(SHELL_URL, copy));
           return res;
         })
-        .catch(() => caches.match(SHELL_URL))
+        .catch(() => caches.match(SHELL_URL).then((cached) => cached || offlineFallback()))
     );
     return;
   }
@@ -65,7 +74,7 @@ self.addEventListener("fetch", (event) => {
           caches.open(CACHE_NAME).then((c) => c.put(req, copy));
         }
         return res;
-      }).catch(() => cached);
+      }).catch(() => cached || offlineFallback());
     })
   );
 });
