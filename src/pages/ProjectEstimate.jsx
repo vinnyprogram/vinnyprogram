@@ -2117,7 +2117,13 @@ export default function ProjectEstimate() {
         </div>
 
         <div className="estimate-side-panel" style={{width:220,flexShrink:0,borderLeft:`1px solid ${C.border}`,background:C.white,overflowY:"auto",padding:"10px 10px 20px"}}>
-          <div style={{fontSize:10,fontWeight:800,color:C.faint,textTransform:"uppercase",letterSpacing:0.5,marginBottom:8}}>Estimate</div>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+            <div style={{fontSize:10,fontWeight:800,color:C.faint,textTransform:"uppercase",letterSpacing:0.5}}>Estimate</div>
+            <button onClick={()=>window.print()} title="Save this exactly as it looks right now as a PDF - a backup you can use to re-enter data if anything ever goes wrong"
+              style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:14}}>
+              🖨️
+            </button>
+          </div>
           <EstimatePanel {...panelProps} />
         </div>
       </div>
@@ -2127,13 +2133,36 @@ export default function ProjectEstimate() {
           <span style={{fontSize:10,fontWeight:800,color:C.faint,textTransform:"uppercase",letterSpacing:0.5}}>Estimate</span>
           <div style={{display:"flex",alignItems:"center",gap:8}}>
             <span style={{fontSize:13,fontWeight:800,color:C.green}}>${fmt(projectTotal)}</span>
+            <button onClick={(e)=>{e.stopPropagation();window.print();}} title="Save as backup PDF"
+              style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:14,padding:0}}>
+              🖨️
+            </button>
             <span style={{fontSize:9,color:C.faint}}>{panelOpen?"▼":"▲"}</span>
           </div>
         </div>
         {panelOpen&&(<div style={{maxHeight:"45vh",overflowY:"auto",padding:"8px 12px 24px"}}><EstimatePanel {...panelProps} /></div>)}
       </div>
 
+      {/* Single, always-present print target — a backup snapshot of exactly
+          what's on screen right now, independent of whether it's been saved
+          to the database yet. Hidden on screen, shown only when printing,
+          so the two responsive Estimate panels above never duplicate it. */}
+      <div className="print-backup-only">
+        <div style={{fontSize:16,fontWeight:800,marginBottom:10}}>Field Measurement Backup — {new Date().toLocaleString()}</div>
+        <EstimatePanel {...panelProps} />
+      </div>
+
       <style>{`
+        .print-backup-only { display: none; }
+        @media print {
+          body * { visibility: hidden; }
+          .print-backup-only, .print-backup-only * { visibility: visible; }
+          .print-backup-only {
+            display: block !important;
+            position: absolute; top: 0; left: 0; width: 100%;
+            font-size: 14px;
+          }
+        }
         @media (min-width: 900px) { .estimate-bottom-panel { display: none !important; } }
         @media (max-width: 899px) { .estimate-side-panel { display: none !important; } }
         @media (min-width: 900px) {
