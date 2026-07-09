@@ -1206,6 +1206,7 @@ export default function ProjectEstimate() {
   const addressParam=searchParams.get("address")||"";
   const isEditing=!!projectId;
   const [isLocked, setIsLocked] = useState(false); // true when pipeline_status is sent
+  const [loadedUpdatedAt, setLoadedUpdatedAt] = useState(null); // for conflict detection - the project's updated_at as of when THIS session last loaded/saved it
 
   const [floors, setFloorsRaw]=useState(["Attic","3rd","2nd","1st","Basement"]);
   // Always deduplicate floors — this is the ONLY place floors state is set
@@ -1494,6 +1495,7 @@ export default function ProjectEstimate() {
       const {data:proj}=await supabase.from("projects").select("*").eq("id",projectId).single();
       if(!proj){setLoadingProject(false);return;}
       setProjectName(proj.name||""); setProjectAddress(proj.address||"");
+      setLoadedUpdatedAt(proj.updated_at||null);
       if(proj.lead_id) setSelectedLeadId(String(proj.lead_id));
       // Lock estimate if quote already sent
       const sentStatuses = ["Quote Ready","Proposal","Negotiation","Accepted","Job Scheduled","Completed","Sent to Office"];
@@ -1901,6 +1903,20 @@ export default function ProjectEstimate() {
        return;
      }
 
+     // CONFLICT CHECK: if another tab/device (e.g. a backgrounded session
+     // that never fully closed) has saved this same job more recently than
+     // what THIS session last knew about, refuse to proceed - otherwise
+     // this session's (possibly older/stale) in-memory data would silently
+     // overwrite the newer version, with no way to tell anything was lost.
+     if(loadedUpdatedAt){
+       const { data:latestProj, error:latestErr } = await supabase.from("projects").select("updated_at").eq("id",targetProjectId).maybeSingle();
+       if(!latestErr && latestProj?.updated_at && new Date(latestProj.updated_at).getTime() !== new Date(loadedUpdatedAt).getTime()){
+         setSaving(false);
+         alert("This job was updated elsewhere (another tab or device) since you opened it here. To avoid overwriting those newer changes, nothing was saved. Please reload this page to see the latest version before continuing.");
+         return;
+       }
+     }
+
      // ARCHITECTURE: insert the NEW floors/areas/segments FIRST, fully
      // confirmed successful, and only THEN delete the OLD ones - never the
      // other way around. Previously this deleted old data first and
@@ -1983,18 +1999,21 @@ export default function ProjectEstimate() {
      // up, update the project's own fields - including the measurement
      // snapshot, which should only ever reflect data we've actually
      // confirmed made it into areas/floors, never an attempt that failed.
+     const nowIso = new Date().toISOString();
      const updateFields = {
         name:projectName||"New Project",
         address:projectAddress||"",
         lead_id:Number(selectedLeadId)||null,
         crew_notes:JSON.stringify(crewNotes),
         measurement_snapshot: buildMeasurementSnapshot(),
+        updated_at: nowIso,
       };
      if(allComplete && (currentProj?.pipeline_status||"Draft")==="Draft"){
         updateFields.pipeline_status = "Measured";
       }
       const {error:updErr} = await supabase.from("projects").update(updateFields).eq("id", targetProjectId);
       if(updErr) throw updErr;
+      setLoadedUpdatedAt(nowIso); // this session's new baseline, so its own next save doesn't false-conflict with itself
 
     wasSaved.current = true;
     if(!silent){ setSaved(true); setSavedProjectId(targetProjectId); }
@@ -2050,7 +2069,7 @@ export default function ProjectEstimate() {
       const allOptions=floors.flatMap(floor=>(areas[floor]||[]).filter(a=>a.area_type&&a.sqft&&(a.options||[]).length>0).map(a=>({area_type:a.area_type,floor,sqft:a.sqft,options:a.options,mat_lines:a.mat_lines})));
       await supabase.from("quotes").insert([{project_id:proj.id,subtotal:pricing.material_cost,tax_rate:0,tax_total:0,grand_total:Math.round(finalPriceWithLabor*100)/100,final_price:Math.round(finalPriceWithLabor*100)/100,material_cost:pricing.material_cost,overhead_cost:pricing.overhead_cost,labor_cost:Math.round(finalLaborCost*100)/100,labor_hours:laborRoles.reduce((s,r)=>s+Number(r.hours||0)*Number(r.days||1)*Number(r.people||1),0),crew_size:laborRoles.filter(r=>Number(r.hours||0)>0).length,labor_rate:laborRoles.find(r=>Number(r.hours||0)>0)?.rate||45,profit_margin_pct:pricing.profit_margin_pct,fuel_cost:Math.round(fuelCostCalc*100)/100,commission_cost:Math.round(commissionCost*100)/100,commission_pct:commissionPct,job_miles:Number(jobMiles||0),sales_rep_id:selectedRep||null,notes:allOptions.length>0?JSON.stringify(allOptions):null,status:"Draft",company_id:companyId}]);
       wasSaved.current = true;
-      if(!silent){ setSaved(true); } setSavedProjectId(proj.id); clearDraft();
+      if(!silent){ setSaved(true); } setSavedProjectId(proj.id); setLoadedUpdatedAt(proj.updated_at||new Date().toISOString()); clearDraft();
       setHasUnsavedChanges(false);
 
       // If started from "By Drawings", import the drawing draft into the new estimate
