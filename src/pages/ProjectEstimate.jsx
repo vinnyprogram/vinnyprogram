@@ -1896,7 +1896,8 @@ export default function ProjectEstimate() {
      if(allComplete && (currentProj?.pipeline_status||"Draft")==="Draft"){
         updateFields.pipeline_status = "Measured";
       }
-      await supabase.from("projects").update(updateFields).eq("id", targetProjectId);
+      const {error:updErr} = await supabase.from("projects").update(updateFields).eq("id", targetProjectId);
+      if(updErr) throw updErr;
 
       // Dedup floor names first so we can pre-check whether there's
       // actually anything to save BEFORE deleting anything.
@@ -1916,17 +1917,27 @@ export default function ProjectEstimate() {
         return;
       }
 
-      // delete old areas and re-insert
-      await supabase.from("segments").delete().in("area_id",
-        (await supabase.from("areas").select("id").eq("project_id",targetProjectId)).data?.map(a=>a.id)||[]
-      );
-      await supabase.from("areas").delete().eq("project_id", targetProjectId);
-      await supabase.from("floors").delete().eq("project_id", targetProjectId);
+      // delete old areas and re-insert. Every step below now checks for
+      // errors explicitly and throws immediately if one occurs - previously
+      // several of these calls didn't check the response at all, so a
+      // database-level failure (not a network failure - those already threw)
+      // would go completely unnoticed and the code would carry on as if it
+      // had succeeded, eventually clearing the local draft on a save that
+      // never actually completed.
+      const { data:existingAreaIds, error:selErr } = await supabase.from("areas").select("id").eq("project_id",targetProjectId);
+      if(selErr) throw selErr;
+      const { error:segDelErr } = await supabase.from("segments").delete().in("area_id", existingAreaIds?.map(a=>a.id)||[]);
+      if(segDelErr) throw segDelErr;
+      const { error:areaDelErr } = await supabase.from("areas").delete().eq("project_id", targetProjectId);
+      if(areaDelErr) throw areaDelErr;
+      const { error:floorDelErr } = await supabase.from("floors").delete().eq("project_id", targetProjectId);
+      if(floorDelErr) throw floorDelErr;
 
       // re-insert floors — already deduped above for the safety check
-      const {data:floorRows} = await supabase.from("floors").insert(
+      const {data:floorRows, error:floorInsErr} = await supabase.from("floors").insert(
         uniqueFloors.map((name,i)=>({project_id:targetProjectId,name,order_index:i+1,company_id:companyId}))
       ).select();
+      if(floorInsErr) throw floorInsErr;
       const floorMap={};
       (floorRows||[]).forEach(f=>{floorMap[f.name]=f.id;});
 
@@ -1942,7 +1953,8 @@ export default function ProjectEstimate() {
         });
       }));
       if(allAreas.length>0){
-        const {data:areaRows}=await supabase.from("areas").insert(allAreas).select();
+        const {data:areaRows, error:areaInsErr}=await supabase.from("areas").insert(allAreas).select();
+        if(areaInsErr) throw areaInsErr;
         // Build a map from order_index → DB id so we never rely on insert return order
         const orderToId={};
         (areaRows||[]).forEach(r=>{ orderToId[r.order_index]=r.id; });
@@ -1955,7 +1967,10 @@ export default function ProjectEstimate() {
             (a.measurements||[]).forEach(m=>segs.push({area_id:primaryId,height:m.h,length:m.l,sqft:m.sqft,source:"field",company_id:companyId}));
           });
         });
-        if(segs.length>0) await supabase.from("segments").insert(segs);
+        if(segs.length>0){
+          const {error:segInsErr} = await supabase.from("segments").insert(segs);
+          if(segInsErr) throw segInsErr;
+        }
       }
     wasSaved.current = true;
     if(!silent){ setSaved(true); setSavedProjectId(targetProjectId); }
@@ -2037,7 +2052,7 @@ export default function ProjectEstimate() {
           }
         }catch(e){ console.warn("Drawing draft import error:",e.message); }
       }
-    }catch(err){console.error(err);if(!silent)alert("Error: "+(err.message||JSON.stringify(err)));}
+    }catch(err){console.error(err);setHasUnsavedChanges(true);if(!silent)alert("Error: "+(err.message||JSON.stringify(err)));}
     finally{if(!silent)setSaving(false);}
   }
 
