@@ -2011,9 +2011,14 @@ export default function ProjectEstimate() {
      if(allComplete && (currentProj?.pipeline_status||"Draft")==="Draft"){
         updateFields.pipeline_status = "Measured";
       }
-      const {error:updErr} = await supabase.from("projects").update(updateFields).eq("id", targetProjectId);
+      const {data:updData, error:updErr} = await supabase.from("projects").update(updateFields).eq("id", targetProjectId).select("updated_at").maybeSingle();
       if(updErr) throw updErr;
-      setLoadedUpdatedAt(nowIso); // this session's new baseline, so its own next save doesn't false-conflict with itself
+      // Use whatever the database actually recorded, not our own guessed
+      // timestamp - if a database trigger stamps its own updated_at value
+      // (a common pattern), our guess would never quite match it, causing
+      // this session's OWN next save to be falsely flagged as a conflict
+      // with itself.
+      setLoadedUpdatedAt(updData?.updated_at || nowIso);
 
     wasSaved.current = true;
     if(!silent){ setSaved(true); setSavedProjectId(targetProjectId); }
