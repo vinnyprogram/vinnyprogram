@@ -1510,6 +1510,12 @@ export default function ProjectEstimate() {
       if(!projectId) return;
       async function loadProject(){
       setLoadingProject(true);
+      // Suppress the autosave/unsaved-changes effects while we populate
+      // state from the database below - otherwise loading a project's
+      // existing data looks identical (to those effects) to a user
+      // editing it, triggering an unnecessary phantom save moments after
+      // simply opening the page to look at it.
+      initialLoadDone.current = false;
       const {data:proj}=await supabase.from("projects").select("*").eq("id",projectId).single();
       if(!proj){setLoadingProject(false);return;}
       setProjectName(proj.name||""); setProjectAddress(proj.address||"");
@@ -1573,6 +1579,15 @@ export default function ProjectEstimate() {
     }
     loadProject();
   },[projectId]);
+
+  // Re-arm the autosave/unsaved-changes effects only once loading has
+  // fully finished and React has processed the resulting render - placed
+  // AFTER those effects so, for the same render where loading completes,
+  // they still see initialLoadDone as false (correctly suppressed) before
+  // this flips it back for any real edit afterward.
+  useEffect(()=>{
+    if(!loadingProject) initialLoadDone.current = true;
+  },[loadingProject]);
 
   useEffect(()=>{
     if(!isEditing&&selectedLeadId&&!draftRestored&&!resumeMode&&!savedProjectId){
