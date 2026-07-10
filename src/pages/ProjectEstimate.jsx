@@ -1269,6 +1269,7 @@ export default function ProjectEstimate() {
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const initialLoadDone = useRef(false);
   const wasSaved = useRef(false);
+  const savingRef = useRef(false); // real lock against overlapping saves - unlike the `saving` state, this applies to SILENT saves too, and updates synchronously (no React batching delay) so two saves firing close together can't both slip past the check
   const autoSaveTimer = useRef(null);
   const areaListRef = useRef(null);
 
@@ -1845,9 +1846,18 @@ export default function ProjectEstimate() {
     return result;
   }
 
-  async function saveProject({silent=false}={}) {
+  async function saveProject(opts={}) {
+    if(savingRef.current){ logEvent("Save skipped: another save already in progress"); return; }
+    savingRef.current = true;
+    try {
+      await saveProjectInner(opts);
+    } finally {
+      savingRef.current = false;
+    }
+  }
+
+  async function saveProjectInner({silent=false}={}) {
   logEvent(`Save requested (${silent?"auto/silent":"manual button"})`);
-  if(saving){ logEvent("Save skipped: another save already in progress"); return; }
   if(!selectedLeadId){ logEvent("Save blocked: no customer selected"); if(!silent) alert("Please select or register a customer before saving."); return; }
   const hasAreas = floors.some(f=>(areas[f]||[]).some(a=>a.area_type));
   // Auto-commit any in-progress measurement inputs before saving
@@ -1933,9 +1943,15 @@ export default function ProjectEstimate() {
      if(loadedUpdatedAt){
        const { data:latestProj, error:latestErr } = await supabase.from("projects").select("updated_at").eq("id",targetProjectId).maybeSingle();
        if(!latestErr && latestProj?.updated_at && new Date(latestProj.updated_at).getTime() !== new Date(loadedUpdatedAt).getTime()){
-         logEvent(`⛔ CONFLICT DETECTED: server shows ${latestProj.updated_at}, this session expected ${loadedUpdatedAt} - save blocked`);
+         logEvent(`⛔ CONFLICT DETECTED (${silent?"silent autosave":"manual save"}): server shows ${latestProj.updated_at}, this session expected ${loadedUpdatedAt} - save blocked`);
          setSaving(false);
-         alert("This job was updated elsewhere (another tab or device) since you opened it here. To avoid overwriting those newer changes, nothing was saved. Please reload this page to see the latest version before continuing.");
+         setHasUnsavedChanges(true);
+         // Only interrupt the user with a popup for an explicit Save button
+         // click - a silent background autosave hitting this should never
+         // pop a blocking alert, or it can repeat every time the
+         // background timer retries, locking up the screen with alerts
+         // the user can't get ahead of.
+         if(!silent) alert("This job was updated elsewhere (another tab or device) since you opened it here. To avoid overwriting those newer changes, nothing was saved. Please reload this page to see the latest version before continuing.");
          return;
        }
        logEvent("Conflict check passed - no newer save from elsewhere");
