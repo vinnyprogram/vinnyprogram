@@ -1828,12 +1828,14 @@ export default function ProjectEstimate() {
   // Prevents data loss when user saves without committing pending inputs
   function commitPendingMeasurements(areasState){
     const result={};
+    let changed=false;
     Object.entries(areasState).forEach(([floor,floorAreas])=>{
       result[floor]=(floorAreas||[]).map(area=>{
         const h=parseFloat(area.mh)||0;
         const l=parseFloat(area.ml)||0;
         const q=parseFloat(area.mq)||1;
         if(h&&l){
+          changed=true;
           const rowSqft=Math.round(h*l*q*100)/100;
           const meas=[...(area.measurements||[]),{h,l,q,sqft:rowSqft}];
           const d=parseFloat(area.deduct_sqft)||0;
@@ -1843,7 +1845,7 @@ export default function ProjectEstimate() {
         return area;
       });
     });
-    return result;
+    return changed ? result : areasState; // return the SAME reference when nothing changed, so setAreas(...) below is a no-op and doesn't retrigger the autosave effect
   }
 
   async function saveProject(opts={}) {
