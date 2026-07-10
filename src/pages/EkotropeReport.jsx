@@ -62,12 +62,15 @@ function UnitReport({ fm, label }){
   // Sort each orientation's windows by floor - standard top-down building
   // order first (Attic, 3rd, 2nd, 1st, Basement, Crawlspace), falling back
   // to entry order for any custom floor names not in that list.
-  const STANDARD_FLOOR_ORDER = ["Attic","3rd","2nd","1st","Basement","Crawlspace"];
+  // Normalized (trimmed + lowercased) matching so a stray space or
+  // different case in the stored floor name doesn't silently break the sort.
+  const norm = (s) => (s||"").trim().toLowerCase();
+  const STANDARD_FLOOR_ORDER = ["attic","3rd","2nd","1st","basement","crawlspace"];
   const floorOrder = [...STANDARD_FLOOR_ORDER];
-  cfaFloors.forEach(f=>{ if(f.label && !floorOrder.includes(f.label)) floorOrder.push(f.label); });
+  cfaFloors.forEach(f=>{ const n=norm(f.label); if(n && !floorOrder.includes(n)) floorOrder.push(n); });
   Object.values(windowsByOrientation).forEach(wins=>{
     wins.sort((a,b)=>{
-      const ai = floorOrder.indexOf(a.floor), bi = floorOrder.indexOf(b.floor);
+      const ai = floorOrder.indexOf(norm(a.floor)), bi = floorOrder.indexOf(norm(b.floor));
       if(ai===-1 && bi===-1) return 0;
       if(ai===-1) return 1;
       if(bi===-1) return -1;
