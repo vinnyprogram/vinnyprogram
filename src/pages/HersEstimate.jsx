@@ -1,8 +1,12 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
+import { logEvent as sharedLogEvent } from "../utils/debugLog";
+import DebugLogButton from "../components/DebugLogButton";
 import AddressInput from "./AddressInput";
 import { AdjustmentRow, PaymentScheduleEditor } from "./PricingOptions";
+
+function hersEstLog(msg){ sharedLogEvent(msg, "HERS Estimate"); }
 
 const C = {
   bg: "#f4f5f7", white: "#fff", ink: "#0f172a",
@@ -457,9 +461,10 @@ export default function HersEstimate() {
 
   async function saveEstimate(){
     if(saving) return;
-    if(!selectedLeadId){ alert("Please select a customer first."); return; }
+    hersEstLog(`Save requested (${isEditing?"update":"new estimate"})`);
+    if(!selectedLeadId){ hersEstLog("Save blocked: no customer selected"); alert("Please select a customer first."); return; }
     const validItems = lineItems.filter(it=>it.service_name && Number(it.price)>=0);
-    if(!validItems.length){ alert("Add at least one line item."); return; }
+    if(!validItems.length){ hersEstLog("Save blocked: no line items"); alert("Add at least one line item."); return; }
     setSaving(true);
     try {
       const payload = {
@@ -499,15 +504,18 @@ export default function HersEstimate() {
       while(newLabels.length < targetCount) newLabels.push(`Unit ${newLabels.length+1}`);
       payload.unit_labels = newLabels;
       if(isEditing){
-        await supabase.from("hers_estimates").update(payload).eq("id", estimateId);
+        const { error:updErr } = await supabase.from("hers_estimates").update(payload).eq("id", estimateId);
+        if(updErr) throw updErr;
       } else {
         const { data, error } = await supabase.from("hers_estimates").insert([payload]).select().single();
         if(error) throw error;
         navigate(`/hers/${data.id}`, { replace:true });
       }
+      hersEstLog("✅ Save completed successfully");
       setSaved(true);
       setTimeout(()=>setSaved(false),2500);
     } catch(err){
+      hersEstLog(`❌ SAVE FAILED: ${err.message||JSON.stringify(err)}`);
       alert("Error saving: "+(err.message||JSON.stringify(err)));
     }
     setSaving(false);
@@ -642,6 +650,7 @@ export default function HersEstimate() {
           🏠 HERS Rating {isEditing?"Estimate":"— New Estimate"}
         </span>
         <div style={{display:"flex",gap:6,flexWrap:"wrap",justifyContent:"flex-end",flex:"1 1 auto"}}>
+          <DebugLogButton />
           {selectedLead && (
             <button onClick={emailToCustomer} style={{...Btn,color:"#2563eb",borderColor:"#2563eb"}}>
               📧 Email

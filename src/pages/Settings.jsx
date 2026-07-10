@@ -3,6 +3,10 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
+import { logEvent as sharedLogEvent } from "../utils/debugLog";
+import DebugLogButton from "../components/DebugLogButton";
+
+function settingsLog(msg){ sharedLogEvent(msg, "Settings"); }
 
 const OVERHEAD_CATEGORIES = [
   "Overhead & Administration",
@@ -224,6 +228,7 @@ export default function Settings() {
       if(rv.length) setListRVals(rv);
     }
     setSettingsLoaded(true);
+    settingsLog("Settings finished loading - safe to save now");
   }
 
   function seedOverhead() {
@@ -650,7 +655,9 @@ export default function Settings() {
 
   async function saveAll() {
     if(!company) return;
+    settingsLog("Save All requested");
     if(!settingsLoaded){
+      settingsLog("⛔ Save blocked: settings still loading");
       alert("Settings are still loading — please wait a moment and try again. (This protects your existing materials/pricing from being overwritten before they've finished loading.)");
       return;
     }
@@ -865,9 +872,11 @@ export default function Settings() {
       if(listInserts.length>0) await supabase.from("cost_settings").insert(listInserts);
 
       setSaved(true);
+      settingsLog("✅ Save All completed successfully");
       setTimeout(()=>setSaved(false), 2000);
       await load();
     } catch(err) {
+      settingsLog(`❌ SAVE FAILED: ${err.message}`);
       alert("Error: " + err.message);
     }
     setSaving(false);
@@ -903,6 +912,7 @@ export default function Settings() {
           Cost Settings
         </span>
         <div style={{display:"flex",gap:8}}>
+          <DebugLogButton />
           <button onClick={recalculateAll} disabled={saving}
             style={{...Btn, height:36, fontSize:12, padding:"0 14px",
               background:"#eff6ff", color:"#3b82f6", border:"1px solid #93c5fd"}}>

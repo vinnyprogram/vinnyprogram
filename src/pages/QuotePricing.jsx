@@ -1,6 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
+import { logEvent as sharedLogEvent } from "../utils/debugLog";
+import DebugLogButton from "../components/DebugLogButton";
+
+function quoteLog(msg){ sharedLogEvent(msg, "Quote Pricing"); }
 
 function fmt(n){ return Number(n||0).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2}); }
 function fmt0(n){ return Number(n||0).toLocaleString("en-US",{maximumFractionDigits:0}); }
@@ -470,6 +474,7 @@ export default function QuotePricing() {
   // ── Core save function — called both by auto-save and by the Generate button ──
   const saveQuote = useCallback(async ({navigate:doNavigate=false}={})=>{
     if(!projectId) return;
+    quoteLog(`Save requested (${doNavigate?"Generate Quote button":"auto/silent"})`);
     const matCst = liveMaterialCost ?? Number(quote?.material_cost||0);
     const ohCst  = liveOverheadCost ?? Number(quote?.overhead_cost||0);
     const basC   = matCst + ohCst;
@@ -530,9 +535,11 @@ export default function QuotePricing() {
           .eq("id", projectId);
       }
       setAutoSaved(true);
+      quoteLog("✅ Save completed successfully");
       setTimeout(()=>setAutoSaved(false), 2500);
       if(doNavigate) navigate(`/quote/${projectId}`);
     } catch(err){
+      quoteLog(`❌ SAVE FAILED: ${err.message}`);
       if(doNavigate) alert("Error: "+err.message);
       else console.warn("Auto-save error:", err.message);
     }
@@ -583,6 +590,7 @@ export default function QuotePricing() {
         <div style={{fontSize:11,color:autoSaved?"#34d399":"#475569",fontWeight:600,minWidth:60,textAlign:"right"}}>
           {autoSaved?"✓ Saved":""}
         </div>
+        <DebugLogButton />
         <button onClick={saveAndGoToQuote} disabled={saving}
           style={{border:"none",background:"#059669",color:"white",padding:"10px 20px",borderRadius:8,cursor:"pointer",fontSize:13,fontWeight:700,whiteSpace:"nowrap"}}>
           {saving?"Saving…":"📄 Generate Quote"}

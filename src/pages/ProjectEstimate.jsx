@@ -2,6 +2,8 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import { useSearchParams, useNavigate, useParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { enqueue, flushQueue } from "../utils/offlineQueue";
+import { logEvent as sharedLogEvent } from "../utils/debugLog";
+import DebugLogButton from "../components/DebugLogButton";
 import AddressInput from "./AddressInput";
 
 const C = {
@@ -1207,23 +1209,7 @@ export default function ProjectEstimate() {
   const isEditing=!!projectId;
   const [isLocked, setIsLocked] = useState(false); // true when pipeline_status is sent
   const [loadedUpdatedAt, setLoadedUpdatedAt] = useState(null); // for conflict detection - the project's updated_at as of when THIS session last loaded/saved it
-  const DEBUG_LOG_KEY = "insulationpro_debug_log";
-  const [debugLog, setDebugLog] = useState(()=>{
-    try { return JSON.parse(localStorage.getItem(DEBUG_LOG_KEY)||"[]"); } catch(e){ return []; }
-  });
-  const [showDebugLog, setShowDebugLog] = useState(false);
-  function logEvent(msg){
-    setDebugLog(prev=>{
-      const next=[...prev,{t:new Date().toLocaleString(),msg}];
-      const trimmed=next.length>200?next.slice(next.length-200):next; // keep it from growing forever
-      try { localStorage.setItem(DEBUG_LOG_KEY, JSON.stringify(trimmed)); } catch(e){}
-      return trimmed;
-    });
-  }
-  function clearDebugLog(){
-    setDebugLog([]);
-    try { localStorage.removeItem(DEBUG_LOG_KEY); } catch(e){}
-  }
+  function logEvent(msg){ sharedLogEvent(msg, "Estimate"); }
 
   const [floors, setFloorsRaw]=useState(["Attic","3rd","2nd","1st","Basement"]);
   // Always deduplicate floors — this is the ONLY place floors state is set
@@ -2188,59 +2174,11 @@ export default function ProjectEstimate() {
         </button>
         <span style={{fontWeight:700,fontSize:14,flex:1,overflow:"hidden",whiteSpace:"nowrap",textOverflow:"ellipsis"}}>{isEditing?(isLocked?"🔒 View Estimate":"✏️ Edit Estimate"):(projectName||"New Project")}</span>
         <div style={{display:"flex",gap:6}}>
-          <button onClick={()=>setShowDebugLog(true)} title="View activity log - useful for troubleshooting"
-            style={{border:"1px solid #cbd5e1",background:"#fff",color:"#64748b",cursor:"pointer",
-              fontSize:16,padding:"5px 8px",borderRadius:8,flexShrink:0}}>
-            🐛
-          </button>
+          <DebugLogButton />
           {savedProjectId&&(<><button onClick={()=>navigate(`/project/drawings/${savedProjectId}`)} style={{...BtnD,background:"#7c3aed",height:32,fontSize:12,padding:"0 10px",borderRadius:8}}>📐 Drawings</button><button onClick={()=>navigate(`/field-report/${savedProjectId}`)} style={{...BtnD,background:"#3b82f6",height:32,fontSize:12,padding:"0 10px",borderRadius:8}}>📋 Office</button><button onClick={()=>navigate(`/quote-pricing/${savedProjectId}`)} style={{...BtnD,background:"#f97316",height:32,fontSize:12,padding:"0 10px",borderRadius:8}}>📄 Quote</button></>)}
           {!isLocked && <button onClick={saveProject} disabled={saving} style={{...BtnD,fontSize:13,height:32,padding:"0 14px",background:saving?"#64748b":C.ink,borderRadius:8,opacity:!selectedLeadId?0.4:1}}>{saving?"…":"Save"}</button>}
         </div>
       </div>
-
-      {showDebugLog && (
-        <div onClick={()=>setShowDebugLog(false)}
-          style={{position:"fixed",inset:0,background:"rgba(0,0,0,.5)",zIndex:1000,
-            display:"flex",alignItems:"flex-end",justifyContent:"center"}}>
-          <div onClick={e=>e.stopPropagation()}
-            style={{background:"#0f172a",color:"#e2e8f0",width:"100%",maxWidth:600,
-              maxHeight:"70vh",borderRadius:"16px 16px 0 0",display:"flex",flexDirection:"column",
-              fontFamily:"ui-monospace,monospace"}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",
-                padding:"12px 16px",borderBottom:"1px solid #334155"}}>
-              <span style={{fontWeight:700,fontSize:14}}>🐛 Activity Log</span>
-              <div style={{display:"flex",gap:8}}>
-                <button onClick={()=>{
-                    const text=debugLog.map(l=>`[${l.t}] ${l.msg}`).join("\n");
-                    navigator.clipboard?.writeText(text);
-                    alert("Copied - paste it in chat");
-                  }}
-                  style={{border:"1px solid #475569",background:"none",color:"#94a3b8",
-                    cursor:"pointer",fontSize:11,padding:"4px 10px",borderRadius:6}}>
-                  Copy
-                </button>
-                <button onClick={()=>{ if(window.confirm("Clear the whole activity log? This can't be undone.")) clearDebugLog(); }}
-                  style={{border:"1px solid #475569",background:"none",color:"#94a3b8",
-                    cursor:"pointer",fontSize:11,padding:"4px 10px",borderRadius:6}}>
-                  Clear
-                </button>
-                <button onClick={()=>setShowDebugLog(false)}
-                  style={{border:"none",background:"none",color:"#94a3b8",cursor:"pointer",fontSize:18}}>
-                  ✕
-                </button>
-              </div>
-            </div>
-            <div style={{overflowY:"auto",padding:"12px 16px",fontSize:11,lineHeight:1.7}}>
-              {debugLog.length===0 && <div style={{color:"#64748b"}}>Nothing logged yet this session.</div>}
-              {debugLog.slice().reverse().map((l,i)=>(
-                <div key={i} style={{marginBottom:2}}>
-                  <span style={{color:"#64748b"}}>[{l.t}]</span> {l.msg}
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
 
       <div style={{display:"flex",flex:1,overflow:"hidden"}}>
         <div ref={areaListRef} style={{flex:1,overflowY:"auto",overflowX:"hidden",padding:"8px 12px 200px 12px",minWidth:0,boxSizing:"border-box",width:"100%"}}>

@@ -1,6 +1,10 @@
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
+import { logEvent as sharedLogEvent } from "../utils/debugLog";
+import DebugLogButton from "../components/DebugLogButton";
+
+function hersLog(msg){ sharedLogEvent(msg, "HERS Measurements"); }
 
 // ── Same constants as insulation estimate ──
 const DEFAULT_FLOORS = ["Floor","3rd","2nd","1st","Basement","Crawlspace"];
@@ -819,6 +823,7 @@ export default function HersFieldMeasurements() {
       ? supabase.from("hers_field_measurements").select("*").eq("hers_estimate_id",estimateId).eq("unit_label",unitLabel)
       : supabase.from("hers_field_measurements").select("*").eq("hers_invoice_id",invoiceId).eq("unit_label",unitLabel);
     const { data:fm } = await fmQuery.maybeSingle();
+    hersLog(`Page loaded (unit: ${unitLabel||"(single)"}, server data: ${fm?"found":"none yet"})`);
 
     // Recover from a local backup if it's newer than what made it to the
     // server - means a previous save got cut off (app closed/backgrounded
@@ -830,6 +835,7 @@ export default function HersFieldMeasurements() {
         const backup = JSON.parse(raw);
         if(!fm || new Date(backup.updated_at) > new Date(fm.updated_at||0)){
           recovered = backup;
+          hersLog(`⚠️ Recovered a local backup newer than the server - a previous save had not completed. Retrying save automatically.`);
         } else {
           localStorage.removeItem(backupKey()); // backup is stale, server already has it
         }
@@ -934,6 +940,7 @@ export default function HersFieldMeasurements() {
 
   async function save(){
     if(saving) return;
+    hersLog(`Save requested (unit: ${unitLabel||"(single)"})`);
     setSaving(true);
     try {
       // Save everything exactly as entered, including half-finished
@@ -981,6 +988,7 @@ export default function HersFieldMeasurements() {
         if(error) throw error;
       }
       try { localStorage.removeItem(backupKey()); } catch(e){} // made it to the server - backup no longer needed
+      hersLog(`✅ Save completed successfully (unit: ${unitLabel||"(single)"})`);
 
       const incompleteAreas = floors.reduce((s,f)=>s+(areas[f]||[]).filter(a=>!(a.area_type&&a.sqft>0)).length,0);
       const incompleteWindows = windows.filter(w=>!(Number(w.width)>0&&Number(w.height)>0&&w.top_to_overhang!=="")).length;
@@ -990,7 +998,7 @@ export default function HersFieldMeasurements() {
           : null
       );
       setSaved(true); setTimeout(()=>{ setSaved(false); setSkipNote(null); },3500);
-    } catch(err){ alert("Error saving: "+(err.message||JSON.stringify(err))); }
+    } catch(err){ hersLog(`❌ SAVE FAILED: ${err.message||JSON.stringify(err)}`); alert("Error saving: "+(err.message||JSON.stringify(err))); }
     setSaving(false);
   }
 
@@ -1189,6 +1197,7 @@ export default function HersFieldMeasurements() {
         <button onClick={()=>navigate(-1)} style={Btn}>← Back</button>
         <span style={{fontWeight:700,fontSize:14,flex:1,textAlign:"center"}}>📐 Field Measurements{unitLabel?` — ${unitLabel}`:""}</span>
         <div style={{display:"flex",gap:6,flexWrap:"wrap",justifyContent:"flex-end"}}>
+          <DebugLogButton />
           <button onClick={importFromInsulation} disabled={importing}
             style={{...Btn,color:"#7c3aed",borderColor:"#7c3aed",opacity:importing?0.6:1,fontSize:11}}>
             {importing?"…":"⬇ From Insulation"}
