@@ -77,10 +77,11 @@ export default function JobStart() {
   useEffect(()=>{
     if(!query.trim()){ setResults([]); return; }
     const q = query.toLowerCase();
+    const qDigits = q.replace(/\D/g,"");
     setResults(
       leads.filter(l=>
         (l.name||"").toLowerCase().includes(q)||
-        (l.phone||"").replace(/\D/g,"").includes(q.replace(/\D/g,""))
+        (qDigits.length>0 && (l.phone||"").replace(/\D/g,"").includes(qDigits))
       ).slice(0,8)
     );
   },[query, leads]);
