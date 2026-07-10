@@ -1366,12 +1366,9 @@ export default function ProjectEstimate() {
   useEffect(()=>{ if(pendingFloor){setActiveFloor(pendingFloor);setPendingFloor(null);} },[pendingFloor]);
 
   useEffect(()=>{
-    if(!initialLoadDone.current){
-      initialLoadDone.current = true;
-      return;
-    }
+    if(!initialLoadDone.current) return; // still loading (or hasn't been re-armed yet) - don't flag unsaved changes
     setHasUnsavedChanges(true);
-  },[areas, projectName, projectAddress, crewNotes, floors]); 
+  },[areas, projectName, projectAddress, crewNotes, floors]);
 
   useEffect(()=>{
   function handler(e){
