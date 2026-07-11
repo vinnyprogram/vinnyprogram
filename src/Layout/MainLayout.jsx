@@ -8,10 +8,12 @@ export default function MainLayout() {
   const { company, signOut } = useAuth();
   const [estimateOpen, setEstimateOpen] = useState(false);
   const [hersOpen, setHersOpen] = useState(false);
+  const [boardPlasterOpen, setBoardPlasterOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
 
   const offersInsulation = company?.offers_insulation !== false;
   const offersHers       = company?.offers_hers       !== false;
+  const offersBoardPlaster = company?.offers_board_plaster === true;
 
   const isActive = (path) =>
     location.pathname === path ||
@@ -212,6 +214,39 @@ export default function MainLayout() {
                   onMouseEnter={e=>e.currentTarget.style.background="#374151"}
                   onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
                   <span>🧾</span> Search Invoices
+                </Link>
+
+              </div>
+            )}
+          </div>}
+
+          {/* Board & Plaster module — only shown when offers_board_plaster is enabled */}
+          {offersBoardPlaster && <div>
+            <button
+              onClick={()=>setBoardPlasterOpen(p=>!p)}
+              style={{
+                background: boardPlasterOpen||isActive("/board-plaster") ? "#1f2937" : "none",
+                border:"none", cursor:"pointer",
+                color: isActive("/board-plaster") ? "#fff" : "#94a3b8",
+                fontSize:15,
+                fontWeight: isActive("/board-plaster") ? 700 : 400,
+                padding:"10px 12px", width:"100%", textAlign:"left", borderRadius:8,
+                display:"flex", justifyContent:"space-between", alignItems:"center",
+              }}>
+              <span>🧱 Board &amp; Plaster</span>
+              <span style={{ fontSize:10, opacity:0.5 }}>{boardPlasterOpen?"▲":"▼"}</span>
+            </button>
+
+            {boardPlasterOpen && (
+              <div style={{ marginLeft:12, marginTop:2,
+                  display:"flex", flexDirection:"column", gap:1 }}>
+
+                <Link to="/board-plaster/new"
+                  onClick={()=>{ setBoardPlasterOpen(false); setMenuOpen(false); }}
+                  style={subLink}
+                  onMouseEnter={e=>e.currentTarget.style.background="#374151"}
+                  onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                  <span>+</span> New Estimate
                 </Link>
 
               </div>

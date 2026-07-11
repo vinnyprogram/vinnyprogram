@@ -45,7 +45,7 @@ const BtnG = {
 function fmt(n){ return Number(n||0).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2}); }
 
 export default function Settings() {
-  const { company } = useAuth();
+  const { company, user, loadCompany } = useAuth();
   const navigate = useNavigate();
   const [tab, setTab] = useState("overhead");
   const [saving, setSaving] = useState(false);
@@ -877,6 +877,7 @@ export default function Settings() {
       settingsLog("✅ Save All completed successfully");
       setTimeout(()=>setSaved(false), 2000);
       await load();
+      if(user?.id && loadCompany) await loadCompany(user.id); // refresh cached company settings app-wide (e.g. trade toggles) without needing a logout/login
     } catch(err) {
       settingsLog(`❌ SAVE FAILED: ${err.message}`);
       alert("Error: " + err.message);
