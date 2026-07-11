@@ -109,6 +109,7 @@ export default function Settings() {
   // Trade configuration
   const [offersInsulation, setOffersInsulation] = useState(true);
   const [offersHers, setOffersHers] = useState(true);
+  const [offersBoardPlaster, setOffersBoardPlaster] = useState(false);
   // Guards saveAll() against running before the initial data fetch
   // completes - without this, saving while settings are still loading
   // would delete real company-wide data (materials, pricing, etc.) and
@@ -208,10 +209,11 @@ export default function Settings() {
 
     // load trade configuration
     const { data:co } = await supabase.from("companies")
-      .select("offers_insulation,offers_hers").eq("id",company.id).maybeSingle();
+      .select("offers_insulation,offers_hers,offers_board_plaster").eq("id",company.id).maybeSingle();
     if(co){
       setOffersInsulation(co.offers_insulation !== false); // default true
       setOffersHers(co.offers_hers !== false);             // default true
+      setOffersBoardPlaster(co.offers_board_plaster === true); // default false
     }
 
     // load configurable lists (area types, thickness, R-values)
@@ -858,7 +860,7 @@ export default function Settings() {
 
       // save trade configuration
       await supabase.from("companies")
-        .update({ offers_insulation: offersInsulation, offers_hers: offersHers })
+        .update({ offers_insulation: offersInsulation, offers_hers: offersHers, offers_board_plaster: offersBoardPlaster })
         .eq("id", company.id);
 
       // save configurable lists
@@ -981,7 +983,22 @@ export default function Settings() {
                 </div>
               </label>
 
-              {!offersInsulation && !offersHers && (
+              <label style={{display:"flex",alignItems:"flex-start",gap:14,padding:"14px 16px",
+                  border:`1px solid ${C.border}`,borderRadius:8,marginTop:10,cursor:"pointer",
+                  background:offersBoardPlaster?"#f0fdf4":"#fafafa"}}>
+                <input type="checkbox" checked={offersBoardPlaster}
+                  onChange={e=>setOffersBoardPlaster(e.target.checked)}
+                  style={{width:18,height:18,marginTop:1,accentColor:C.green,flexShrink:0}} />
+                <div>
+                  <div style={{fontWeight:700,fontSize:14,color:C.ink}}>🧱 Board &amp; Plaster</div>
+                  <div style={{fontSize:12,color:C.muted,marginTop:2}}>
+                    Board installation and plaster estimates - can import wall/ceiling measurements
+                    directly from an existing insulation estimate.
+                  </div>
+                </div>
+              </label>
+
+              {!offersInsulation && !offersHers && !offersBoardPlaster && (
                 <div style={{marginTop:12,padding:"10px 14px",background:"#fef2f2",border:"1px solid #fecaca",
                     borderRadius:8,fontSize:12,color:"#dc2626"}}>
                   ⚠️ At least one trade must be enabled.

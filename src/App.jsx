@@ -16,6 +16,7 @@ import QuotePricing from "./pages/QuotePricing";
 import EstimateDrawings from "./pages/EstimateDrawings";
 import ResetPassword from "./pages/ResetPassword";
 import HersEstimate from "./pages/HersEstimate";
+import BoardPlasterEstimate from "./pages/BoardPlasterEstimate";
 import HersSearch from "./pages/HersSearch";
 import HersInvoice from "./pages/HersInvoice";
 import HersInvoiceSearch from "./pages/HersInvoiceSearch";
@@ -103,6 +104,8 @@ function ProtectedApp() {
         <Route path="/hers/measurements/estimate/:estimateId" element={<HersFieldMeasurements />} />
         <Route path="/hers/new" element={<HersEstimate />} />
         <Route path="/hers/:id" element={<HersEstimate />} />
+        <Route path="/board-plaster/new" element={<BoardPlasterEstimate />} />
+        <Route path="/board-plaster/:id" element={<BoardPlasterEstimate />} />
       </Route>
 
       {/* Print reports — outside MainLayout so they print without sidebar clipping */}

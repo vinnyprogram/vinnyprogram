@@ -24,6 +24,7 @@ export default function JobStart() {
   // Trade prefs: use company settings if column exists, otherwise detect from data loaded later
   const [offersInsulation, setOffersInsulation] = useState(null); // null = loading
   const [offersHers, setOffersHers] = useState(null);
+  const [offersBoardPlaster, setOffersBoardPlaster] = useState(false);
 
   const [query, setQuery]       = useState("");
   const [leads, setLeads]       = useState([]);
@@ -43,6 +44,7 @@ export default function JobStart() {
   const [insulationJobs, setInsulationJobs] = useState([]);
   const [hersEstimates, setHersEstimates]   = useState([]);
   const [hersInvoices, setHersInvoices]     = useState([]);
+  const [boardPlasterEstimates, setBoardPlasterEstimates] = useState([]);
 
   useEffect(()=>{
     supabase.from("customers").select("id,name,phone,company_name,address")
@@ -58,6 +60,7 @@ export default function JobStart() {
       if(company.offers_insulation !== undefined && company.offers_insulation !== null){
         setOffersInsulation(company.offers_insulation !== false);
         setOffersHers(company.offers_hers !== false);
+        setOffersBoardPlaster(company.offers_board_plaster === true);
         return;
       }
       // Migration not yet run — detect from actual data in the database
@@ -88,17 +91,20 @@ export default function JobStart() {
 
   const loadLinks = useCallback(async(cust)=>{
     setLoadingLinks(true);
-    const [r1,r2,r3] = await Promise.all([
+    const [r1,r2,r3,r4] = await Promise.all([
       supabase.from("projects").select("id,name,address,pipeline_status,created_at")
         .eq("lead_id",cust.id).order("created_at",{ascending:false}).limit(10),
       supabase.from("hers_estimates").select("id,address,status,created_at")
         .eq("customer_id",cust.id).order("created_at",{ascending:false}).limit(10),
       supabase.from("hers_invoices").select("id,address,status,grand_total,created_at")
         .eq("customer_id",cust.id).order("created_at",{ascending:false}).limit(10),
+      supabase.from("board_plaster_estimates").select("id,address,status,created_at")
+        .eq("customer_id",cust.id).order("created_at",{ascending:false}).limit(10),
     ]);
     setInsulationJobs(r1.data||[]);
     setHersEstimates(r2.data||[]);
     setHersInvoices(r3.data||[]);
+    setBoardPlasterEstimates(r4.data||[]);
     setLoadingLinks(false);
   },[]);
 
@@ -164,6 +170,14 @@ export default function JobStart() {
     if(selected) p.set("leadId", String(selected.id));
     if(address) p.set("address", address);
     navigate(`/hers/new?${p.toString()}`);
+  }
+
+  function launchBoardPlaster(estimateId){
+    if(estimateId){ navigate(`/board-plaster/${estimateId}`); return; }
+    const p = new URLSearchParams();
+    if(selected) p.set("leadId", String(selected.id));
+    if(address) p.set("address", address);
+    navigate(`/board-plaster/new?${p.toString()}`);
   }
 
   return (
@@ -349,7 +363,7 @@ export default function JobStart() {
             </div>
 
             <div style={{display:"grid",
-                gridTemplateColumns: offersInsulation && offersHers ? "1fr 1fr" : "1fr",
+                gridTemplateColumns: [offersInsulation,offersHers,offersBoardPlaster].filter(Boolean).length>=2 ? "1fr 1fr" : "1fr",
                 gap:12}}>
 
               {/* Insulation — only if enabled */}
@@ -410,6 +424,39 @@ export default function JobStart() {
                     ))
                   }
                   <button onClick={()=>launchHersEstimate(null)}
+                    style={{border:"1.5px dashed #e2e8f0",background:"transparent",
+                      borderRadius:8,padding:"8px",cursor:"pointer",
+                      fontSize:12,fontWeight:700,color:C.muted}}>
+                    + New Estimate
+                  </button>
+                </div>
+              )}
+
+              {/* Board & Plaster — only if enabled */}
+              {offersBoardPlaster && (
+                <div style={{border:`2px solid ${C.border}`,borderRadius:10,padding:"14px",
+                    display:"flex",flexDirection:"column",gap:8}}>
+                  <div style={{display:"flex",alignItems:"center",gap:8}}>
+                    <span style={{fontSize:22}}>🧱</span>
+                    <div>
+                      <div style={{fontWeight:700,fontSize:13,color:C.ink}}>Board &amp; Plaster</div>
+                      <div style={{fontSize:11,color:C.muted}}>Estimate + proposal</div>
+                    </div>
+                  </div>
+                  {loadingLinks ? <div style={{fontSize:11,color:C.faint}}>Loading…</div>
+                    : boardPlasterEstimates.map(e=>(
+                      <button key={e.id} onClick={()=>launchBoardPlaster(e.id)}
+                        style={{border:`1px solid ${C.border}`,background:"#f8fafc",
+                          borderRadius:6,padding:"6px 10px",cursor:"pointer",textAlign:"left",fontSize:11}}>
+                        <span style={{fontWeight:600,color:C.ink,display:"block",
+                            overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                          {e.address||"Board & Plaster Estimate"}
+                        </span>
+                        <span style={{color:C.muted}}>{e.status||"Draft"} · {new Date(e.created_at).toLocaleDateString("en-US",{month:"short",day:"numeric"})}</span>
+                      </button>
+                    ))
+                  }
+                  <button onClick={()=>launchBoardPlaster(null)}
                     style={{border:"1.5px dashed #e2e8f0",background:"transparent",
                       borderRadius:8,padding:"8px",cursor:"pointer",
                       fontSize:12,fontWeight:700,color:C.muted}}>
