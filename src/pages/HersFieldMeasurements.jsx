@@ -1046,7 +1046,38 @@ export default function HersFieldMeasurements() {
   // ── Push to insulation ──
   async function pushToInsulation(){
     if(!invoice?.customer_id) return;
-    const allAreas = Object.values(areas).flat().filter(a=>a.area_type&&a.sqft>0);
+
+    // Multifamily: insulation works at the BUILDING level, not per-unit -
+    // pull every unit's measurements and sum matching floor+area_type+
+    // material combos together, rather than only pushing whichever unit
+    // happens to be open in memory right now.
+    let buildingAreas = areas;
+    if(mode==="estimate" && unitLabels.length>1){
+      const fmRows = await Promise.all(unitLabels.map(ul=>
+        supabase.from("hers_field_measurements").select("areas").eq("hers_estimate_id",estimateId).eq("unit_label",ul).maybeSingle()
+      ));
+      const combined = {};
+      fmRows.forEach(({data:fm})=>{
+        const savedAreas = Array.isArray(fm?.areas) ? fm.areas : (typeof fm?.areas==="string" ? JSON.parse(fm.areas||"[]") : []);
+        let flatByFloor = {};
+        if(savedAreas.length && savedAreas[0]?.floor_name){
+          savedAreas.forEach(f=>{ flatByFloor[f.floor_name] = (f.areas||[]); });
+        } else {
+          flatByFloor["Other"] = savedAreas;
+        }
+        Object.entries(flatByFloor).forEach(([floorName,floorAreas])=>{
+          if(!combined[floorName]) combined[floorName]=[];
+          floorAreas.filter(a=>a.area_type&&a.sqft>0).forEach(a=>{
+            const existing = combined[floorName].find(x=>x.area_type===a.area_type && x.material===(a.material||"") && x.thickness_in===(a.thickness_in||"") && x.r_value===(a.r_value||""));
+            if(existing){ existing.sqft += Number(a.sqft); }
+            else { combined[floorName].push({ area_type:a.area_type, sqft:Number(a.sqft), material:a.material||"", thickness_in:a.thickness_in||"", r_value:a.r_value||"" }); }
+          });
+        });
+      });
+      buildingAreas = combined;
+    }
+
+    const allAreas = Object.values(buildingAreas).flat().filter(a=>a.area_type&&a.sqft>0);
     if(!allAreas.length){ alert("No completed areas to push."); return; }
     if(!window.confirm("Push measurements to the insulation estimate?\n\nIf no insulation estimate exists for this customer, a new one will be created.")) return;
     setPushing(true);
@@ -1074,7 +1105,7 @@ export default function HersFieldMeasurements() {
 
       // Get the floor names from HERS measurement areas
       const hersFloorNames = [...new Set(
-        Object.entries(areas).flatMap(([floorName, floorAreas]) =>
+        Object.entries(buildingAreas).flatMap(([floorName, floorAreas]) =>
           floorAreas.filter(a=>a.area_type&&a.sqft>0).map(()=>floorName)
         )
       )];
@@ -1106,7 +1137,7 @@ export default function HersFieldMeasurements() {
       let updated=0, created=0;
 
       // Push each floor's areas with correct floor mapping
-      for(const [floorName, floorAreas] of Object.entries(areas)){
+      for(const [floorName, floorAreas] of Object.entries(buildingAreas)){
         const floorId = floorNameToId[floorName];
         if(!floorId) continue;
 
@@ -1135,7 +1166,7 @@ export default function HersFieldMeasurements() {
         }
       }
 
-      alert(`✅ Pushed to insulation estimate — ${updated} updated, ${created} created across ${hersFloorNames.length} floor(s).\n\nGo to Insulation Estimates to open it.`);
+      alert(`✅ Pushed to insulation estimate — ${updated} updated, ${created} created across ${hersFloorNames.length} floor(s)${mode==="estimate"&&unitLabels.length>1?` (building total across ${unitLabels.length} units)`:""}.\n\nGo to Insulation Estimates to open it.`);
     } catch(err){ alert("Push error: "+(err.message||JSON.stringify(err))); }
     setPushing(false);
   }
@@ -1143,10 +1174,44 @@ export default function HersFieldMeasurements() {
   async function pushToBoardPlaster(){
     if(!invoice?.customer_id) return;
     const RELEVANT = ["Exterior Wall","Interior Walls","Demising Wall","Ceiling","Fire Blocking"];
-    const pushAreas = Object.entries(areas).flatMap(([floorName,floorAreas])=>
-      floorAreas.filter(a=>a.area_type && RELEVANT.includes(a.area_type) && a.sqft>0)
-        .map(a=>({ id:uid(), floor:floorName, area_type:a.area_type, sqft:a.sqft, thickness:'1/2"', thicknessOther:"", finish:"Smooth skim coat" }))
-    );
+    const defaultThickness = (t)=> t==="Demising Wall" ? '5/8"' : '1/2"';
+
+    let pushAreas = [];
+    if(mode==="estimate" && unitLabels.length>1){
+      // Multifamily: don't just push whichever unit happens to be open in
+      // memory right now - pull every unit's measurements and sum matching
+      // floor+area_type combos into the BUILDING's total. Insulation and
+      // Board & Plaster work at the building level, not per-unit.
+      const fmRows = await Promise.all(unitLabels.map(ul=>
+        supabase.from("hers_field_measurements").select("areas").eq("hers_estimate_id",estimateId).eq("unit_label",ul).maybeSingle()
+      ));
+      const totals = {};
+      fmRows.forEach(({data:fm})=>{
+        const savedAreas = Array.isArray(fm?.areas) ? fm.areas : (typeof fm?.areas==="string" ? JSON.parse(fm.areas||"[]") : []);
+        let flatAreas = [];
+        if(savedAreas.length && savedAreas[0]?.floor_name){
+          flatAreas = savedAreas.flatMap(f=>(f.areas||[]).map(a=>({...a,floor:f.floor_name})));
+        } else {
+          flatAreas = savedAreas.map(a=>({...a,floor:a.floor||"Other"}));
+        }
+        flatAreas.filter(a=>a.area_type && RELEVANT.includes(a.area_type) && a.sqft>0)
+          .forEach(a=>{
+            const key = `${a.floor||"Other"}||${a.area_type}`;
+            totals[key] = (totals[key]||0) + Number(a.sqft);
+          });
+      });
+      pushAreas = Object.entries(totals).map(([key,sqft])=>{
+        const [floor,area_type] = key.split("||");
+        return { id:uid(), floor, area_type, sqft:Math.round(sqft*100)/100, thickness:defaultThickness(area_type), thicknessOther:"", finish:"Smooth skim coat" };
+      });
+    } else {
+      // Single-family: current in-memory state for the one unit is enough
+      pushAreas = Object.entries(areas).flatMap(([floorName,floorAreas])=>
+        floorAreas.filter(a=>a.area_type && RELEVANT.includes(a.area_type) && a.sqft>0)
+          .map(a=>({ id:uid(), floor:floorName, area_type:a.area_type, sqft:a.sqft, thickness:defaultThickness(a.area_type), thicknessOther:"", finish:"Smooth skim coat" }))
+      );
+    }
+
     if(!pushAreas.length){ alert("No wall/ceiling/fire-blocking areas to push."); return; }
     if(!window.confirm(`Push ${pushAreas.length} area(s) to Board & Plaster?\n\nIf a Board & Plaster estimate already exists for this customer/address, its measurements will be replaced with these. If none exists, a new one will be created.`)) return;
     setPushing(true);

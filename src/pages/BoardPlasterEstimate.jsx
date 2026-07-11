@@ -38,6 +38,13 @@ const FINISH_OPTIONS = ["Smooth skim coat", "Level 4 finish", "Texture/orange pe
 // Which insulation area types are relevant to board & plaster (skip
 // Attic/Roof Rafter/Rim Joist/Concrete Wall - those are insulation-only).
 const RELEVANT_AREA_TYPES = ["Exterior Wall", "Interior Walls", "Demising Wall", "Ceiling", "Fire Blocking"];
+// Demising walls (the wall between two units) commonly need fire-rated
+// 5/8" board (often two layers per code) rather than the standard 1/2"
+// used for exterior/interior walls and ceilings - default accordingly,
+// though it's still just a starting point the user can change per area.
+function defaultThickness(areaType){
+  return areaType==="Demising Wall" ? '5/8"' : '1/2"';
+}
 
 function fmt(n){ return Number(n||0).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2}); }
 function uid(){ return Math.random().toString(36).slice(2)+Date.now().toString(36); }
@@ -193,27 +200,48 @@ export default function BoardPlasterEstimate(){
           })
           .map(a=>({
             id: uid(), floor: floorMap[a.floor_id]||"Other", area_type: a.area_type, sqft: a.sqft,
-            thickness: '1/2"', thicknessOther: "", finish: FINISH_OPTIONS[0],
+            thickness: defaultThickness(a.area_type), thicknessOther: "", finish: FINISH_OPTIONS[0],
           }));
         sourceLabel = cand.name||cand.address;
       } else {
         // HERS - areas live as JSON on hers_field_measurements, one object
         // per area (not split into multiple rows), so no dedup needed here.
-        const { data:fm } = await supabase.from("hers_field_measurements")
-          .select("*").eq("hers_estimate_id",cand.id).eq("unit_label","").maybeSingle();
-        const savedAreas = Array.isArray(fm?.areas) ? fm.areas : (typeof fm?.areas==="string" ? JSON.parse(fm.areas||"[]") : []);
-        let flatAreas = [];
-        if(savedAreas.length && savedAreas[0]?.floor_name){
-          flatAreas = savedAreas.flatMap(f=>(f.areas||[]).map(a=>({...a,floor:f.floor_name})));
-        } else {
-          flatAreas = savedAreas.map(a=>({...a,floor:a.floor||"Other"}));
-        }
-        imported = flatAreas
-          .filter(a=>a.area_type && RELEVANT_AREA_TYPES.includes(a.area_type) && a.sqft>0)
-          .map(a=>({
-            id: uid(), floor: a.floor||"Other", area_type: a.area_type, sqft: a.sqft,
-            thickness: '1/2"', thicknessOther: "", finish: FINISH_OPTIONS[0],
-          }));
+        // Multifamily HERS estimates have measurements split per unit
+        // (Unit 1, Unit 2, ...), never under the empty "single unit" label.
+        // Insulation and Board & Plaster don't care about individual units -
+        // they need the BUILDING'S total per floor+area_type. Check if this
+        // estimate has multiple units and, if so, pull every unit's data and
+        // sum matching floor+area_type combinations together.
+        const { data:estRow } = await supabase.from("hers_estimates").select("unit_labels").eq("id",cand.id).maybeSingle();
+        const unitLabels = estRow?.unit_labels?.length ? estRow.unit_labels : [""];
+
+        const fmRows = await Promise.all(unitLabels.map(ul=>
+          supabase.from("hers_field_measurements").select("areas").eq("hers_estimate_id",cand.id).eq("unit_label",ul).maybeSingle()
+        ));
+
+        const totals = {}; // key: floor||area_type -> summed sqft
+        fmRows.forEach(({data:fm})=>{
+          const savedAreas = Array.isArray(fm?.areas) ? fm.areas : (typeof fm?.areas==="string" ? JSON.parse(fm.areas||"[]") : []);
+          let flatAreas = [];
+          if(savedAreas.length && savedAreas[0]?.floor_name){
+            flatAreas = savedAreas.flatMap(f=>(f.areas||[]).map(a=>({...a,floor:f.floor_name})));
+          } else {
+            flatAreas = savedAreas.map(a=>({...a,floor:a.floor||"Other"}));
+          }
+          flatAreas.filter(a=>a.area_type && RELEVANT_AREA_TYPES.includes(a.area_type) && a.sqft>0)
+            .forEach(a=>{
+              const key = `${a.floor||"Other"}||${a.area_type}`;
+              totals[key] = (totals[key]||0) + Number(a.sqft);
+            });
+        });
+
+        imported = Object.entries(totals).map(([key,sqft])=>{
+          const [floor,area_type] = key.split("||");
+          return {
+            id: uid(), floor, area_type, sqft: Math.round(sqft*100)/100,
+            thickness: defaultThickness(area_type), thicknessOther: "", finish: FINISH_OPTIONS[0],
+          };
+        });
         sourceLabel = cand.address||"HERS estimate";
       }
 
@@ -233,7 +261,17 @@ export default function BoardPlasterEstimate(){
     setAreas(p=>[...p,{ id: uid(), floor:"", area_type:"Exterior Wall", sqft:"", thickness:'1/2"', thicknessOther:"", finish: FINISH_OPTIONS[0] }]);
   }
   function updateArea(id, field, value){
-    setAreas(p=>p.map(a=>a.id===id?{...a,[field]:value}:a));
+    setAreas(p=>p.map(a=>{
+      if(a.id!==id) return a;
+      const updated = {...a,[field]:value};
+      // Nudge the thickness toward the sensible default when the area type
+      // changes (e.g. switching to Demising Wall suggests 5/8") - but only
+      // if they haven't already picked something different themselves.
+      if(field==="area_type" && a.thickness===defaultThickness(a.area_type)){
+        updated.thickness = defaultThickness(value);
+      }
+      return updated;
+    }));
   }
   function removeArea(id){
     if(!window.confirm("Remove this area?")) return;
