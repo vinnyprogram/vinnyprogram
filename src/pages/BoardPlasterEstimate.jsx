@@ -130,23 +130,33 @@ export default function BoardPlasterEstimate(){
     setCustMode("selected");
   }
 
-  // ── Import from Insulation ──
-  // A customer's address can have MULTIPLE insulation project versions
-  // (Draft, Measured, Accepted, Superseded, etc.) - never guess which one,
-  // always show a picker so the right one gets used.
+  // ── Import Measurements (from Insulation OR HERS Rater) ──
+  // Whichever trade visits the site first usually takes the real wall/
+  // ceiling measurements - could be Insulation, could be HERS. Check both
+  // sources and let the user pick from whatever actually exists, rather
+  // than assuming Insulation is always the source.
   async function importFromInsulation(){
     if(!selectedLeadId){ alert("Select a customer first."); return; }
     setImporting(true);
-    bpLog("Import from Insulation requested - fetching available versions");
+    bpLog("Import Measurements requested - checking Insulation and HERS");
     try {
-      const { data:projs } = await supabase.from("projects")
-        .select("id,name,address,pipeline_status,created_at")
-        .eq("lead_id", Number(selectedLeadId)).order("created_at",{ascending:false}).limit(20);
-      if(!projs?.length){ alert("No insulation project found for this customer."); setImporting(false); return; }
-      if(projs.length===1){
-        await doImportFrom(projs[0]);
+      const [projRes, hersRes] = await Promise.all([
+        supabase.from("projects")
+          .select("id,name,address,pipeline_status,created_at")
+          .eq("lead_id", Number(selectedLeadId)).order("created_at",{ascending:false}).limit(20),
+        supabase.from("hers_estimates")
+          .select("id,address,status,created_at")
+          .eq("customer_id", Number(selectedLeadId)).order("created_at",{ascending:false}).limit(20),
+      ]);
+      const candidates = [
+        ...(projRes.data||[]).map(p=>({ source:"insulation", id:p.id, address:p.address, name:p.name, status:p.pipeline_status||"Draft", created_at:p.created_at })),
+        ...(hersRes.data||[]).map(h=>({ source:"hers", id:h.id, address:h.address, name:h.address, status:h.status||"Draft", created_at:h.created_at })),
+      ];
+      if(!candidates.length){ alert("No insulation or HERS project found for this customer."); setImporting(false); return; }
+      if(candidates.length===1){
+        await doImportFrom(candidates[0]);
       } else {
-        setImportCandidates(projs);
+        setImportCandidates(candidates);
       }
     } catch(err){
       bpLog(`❌ Import failed: ${err.message}`);
@@ -155,46 +165,63 @@ export default function BoardPlasterEstimate(){
     setImporting(false);
   }
 
-  async function doImportFrom(proj){
+  async function doImportFrom(cand){
     setImporting(true);
-    bpLog(`Importing from insulation project: ${proj.address||proj.name} (${proj.pipeline_status||"Draft"}, id: ${proj.id})`);
+    bpLog(`Importing from ${cand.source==="hers"?"HERS":"Insulation"}: ${cand.address||cand.name} (${cand.status}, id: ${cand.id})`);
     try {
-      const { data:projFloors } = await supabase.from("floors").select("*").eq("project_id",proj.id).order("order_index");
-      const { data:projAreas } = await supabase.from("areas").select("*").eq("project_id",proj.id).order("order_index");
-      const floorMap = {};
-      (projFloors||[]).forEach(f=>{ floorMap[f.id]=f.name; });
+      let imported = [];
+      let sourceLabel = "";
 
-      const rawAreas = (projAreas||[])
-        .filter(a=>a.area_type && RELEVANT_AREA_TYPES.includes(a.area_type) && a.sqft>0);
-      // Combo materials (e.g. Open Cell + another layer on the same wall)
-      // are stored as multiple rows sharing the SAME floor, area_type, and
-      // full sqft (insulation tracks each material line separately, but
-      // they all describe the same physical wall). Board & Plaster doesn't
-      // care about insulation's material breakdown - dedupe down to one
-      // entry per unique floor+area_type+sqft combination so the same wall
-      // doesn't get imported once per material line it happens to have.
-      const seen = new Set();
-      const imported = rawAreas.filter(a=>{
-          const key = `${a.floor_id}||${a.area_type}||${a.sqft}`;
-          if(seen.has(key)) return false;
-          seen.add(key);
-          return true;
-        })
-        .map(a=>({
-          id: uid(),
-          floor: floorMap[a.floor_id]||"Other",
-          area_type: a.area_type,
-          sqft: a.sqft,
-          thickness: '1/2"',
-          thicknessOther: "",
-          finish: FINISH_OPTIONS[0],
-        }));
+      if(cand.source==="insulation"){
+        const { data:projFloors } = await supabase.from("floors").select("*").eq("project_id",cand.id).order("order_index");
+        const { data:projAreas } = await supabase.from("areas").select("*").eq("project_id",cand.id).order("order_index");
+        const floorMap = {};
+        (projFloors||[]).forEach(f=>{ floorMap[f.id]=f.name; });
 
-      if(!imported.length){ alert(`No wall/ceiling areas found on "${proj.name||proj.address}" to import.`); setImporting(false); setImportCandidates(null); return; }
+        const rawAreas = (projAreas||[])
+          .filter(a=>a.area_type && RELEVANT_AREA_TYPES.includes(a.area_type) && a.sqft>0);
+        // Combo materials (e.g. Open Cell + another layer on the same wall)
+        // are stored as multiple rows sharing the SAME floor, area_type, and
+        // full sqft. Dedupe down to one entry per unique combination so the
+        // same wall doesn't get imported once per material line it has.
+        const seen = new Set();
+        imported = rawAreas.filter(a=>{
+            const key = `${a.floor_id}||${a.area_type}||${a.sqft}`;
+            if(seen.has(key)) return false;
+            seen.add(key);
+            return true;
+          })
+          .map(a=>({
+            id: uid(), floor: floorMap[a.floor_id]||"Other", area_type: a.area_type, sqft: a.sqft,
+            thickness: '1/2"', thicknessOther: "", finish: FINISH_OPTIONS[0],
+          }));
+        sourceLabel = cand.name||cand.address;
+      } else {
+        // HERS - areas live as JSON on hers_field_measurements, one object
+        // per area (not split into multiple rows), so no dedup needed here.
+        const { data:fm } = await supabase.from("hers_field_measurements")
+          .select("*").eq("hers_estimate_id",cand.id).eq("unit_label","").maybeSingle();
+        const savedAreas = Array.isArray(fm?.areas) ? fm.areas : (typeof fm?.areas==="string" ? JSON.parse(fm.areas||"[]") : []);
+        let flatAreas = [];
+        if(savedAreas.length && savedAreas[0]?.floor_name){
+          flatAreas = savedAreas.flatMap(f=>(f.areas||[]).map(a=>({...a,floor:f.floor_name})));
+        } else {
+          flatAreas = savedAreas.map(a=>({...a,floor:a.floor||"Other"}));
+        }
+        imported = flatAreas
+          .filter(a=>a.area_type && RELEVANT_AREA_TYPES.includes(a.area_type) && a.sqft>0)
+          .map(a=>({
+            id: uid(), floor: a.floor||"Other", area_type: a.area_type, sqft: a.sqft,
+            thickness: '1/2"', thicknessOther: "", finish: FINISH_OPTIONS[0],
+          }));
+        sourceLabel = cand.address||"HERS estimate";
+      }
+
+      if(!imported.length){ alert(`No wall/ceiling areas found on "${sourceLabel}" to import.`); setImporting(false); setImportCandidates(null); return; }
       setAreas(prev=>[...prev, ...imported]);
-      if(!address) setAddress(proj.address||"");
+      if(!address) setAddress(cand.address||"");
       setImportCandidates(null);
-      alert(`✅ Imported ${imported.length} area(s) from "${proj.name||proj.address}" (${proj.pipeline_status||"Draft"}). Review board thickness/finish for each below.`);
+      alert(`✅ Imported ${imported.length} area(s) from ${cand.source==="hers"?"HERS":"Insulation"} — "${sourceLabel}" (${cand.status}). Review board thickness/finish for each below.`);
     } catch(err){
       bpLog(`❌ Import failed: ${err.message}`);
       alert("Import error: "+(err.message||JSON.stringify(err)));
@@ -361,7 +388,7 @@ export default function BoardPlasterEstimate(){
             </div>
             <button onClick={importFromInsulation} disabled={importing || !selectedLeadId}
               style={{...Btn,color:"#7c3aed",borderColor:"#7c3aed",fontSize:11,opacity:(!selectedLeadId||importing)?0.5:1}}>
-              {importing?"Importing…":"📥 Import from Insulation"}
+              {importing?"Checking…":"📥 Import Measurements"}
             </button>
           </div>
 
@@ -517,17 +544,24 @@ export default function BoardPlasterEstimate(){
           <div onClick={e=>e.stopPropagation()}
             style={{background:C.white,borderRadius:12,padding:"18px 20px",width:"100%",maxWidth:420,
               maxHeight:"80vh",overflowY:"auto"}}>
-            <div style={{fontWeight:700,fontSize:15,marginBottom:4}}>Which insulation job?</div>
+            <div style={{fontWeight:700,fontSize:15,marginBottom:4}}>Which job to import from?</div>
             <div style={{fontSize:12,color:C.muted,marginBottom:14}}>
-              This customer has {importCandidates.length} insulation projects/versions. Pick the one to import from.
+              Found {importCandidates.length} measured job(s) for this customer, across Insulation and HERS. Pick the one to import from.
             </div>
-            {importCandidates.map(p=>(
-              <button key={p.id} onClick={()=>doImportFrom(p)}
+            {importCandidates.map((p,i)=>(
+              <button key={p.source+p.id} onClick={()=>doImportFrom(p)}
                 style={{display:"block",width:"100%",textAlign:"left",padding:"10px 12px",marginBottom:6,
                   border:`1px solid ${C.border}`,borderRadius:8,background:C.white,cursor:"pointer"}}>
-                <div style={{fontWeight:600,fontSize:13}}>{p.address||p.name||"Untitled"}</div>
-                <div style={{fontSize:11,color:C.muted,marginTop:2}}>
-                  {p.pipeline_status||"Draft"} · {new Date(p.created_at).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}
+                <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:2}}>
+                  <span style={{fontSize:9,fontWeight:800,padding:"2px 6px",borderRadius:4,
+                      background:p.source==="hers"?"#fef3c7":"#f0fdf4",
+                      color:p.source==="hers"?"#92400e":"#166534"}}>
+                    {p.source==="hers"?"⭐ HERS":"🏠 INSULATION"}
+                  </span>
+                  <span style={{fontWeight:600,fontSize:13}}>{p.address||p.name||"Untitled"}</span>
+                </div>
+                <div style={{fontSize:11,color:C.muted}}>
+                  {p.status} · {new Date(p.created_at).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}
                 </div>
               </button>
             ))}
