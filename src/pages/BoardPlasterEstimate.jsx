@@ -68,6 +68,7 @@ export default function BoardPlasterEstimate(){
   // measurements
   const [areas, setAreas] = useState([]); // [{id, floor, area_type, sqft, thickness, finish}]
   const [importing, setImporting] = useState(false);
+  const [importCandidates, setImportCandidates] = useState(null); // null = not showing picker; array = showing it
 
   // line items
   const [lineItems, setLineItems] = useState([{ id: uid(), service_name:"", price:"", qty:"1" }]);
@@ -130,16 +131,34 @@ export default function BoardPlasterEstimate(){
   }
 
   // ── Import from Insulation ──
+  // A customer's address can have MULTIPLE insulation project versions
+  // (Draft, Measured, Accepted, Superseded, etc.) - never guess which one,
+  // always show a picker so the right one gets used.
   async function importFromInsulation(){
     if(!selectedLeadId){ alert("Select a customer first."); return; }
-    if(!window.confirm("Import wall/ceiling measurements from the insulation project for this customer?")) return;
     setImporting(true);
-    bpLog("Import from Insulation requested");
+    bpLog("Import from Insulation requested - fetching available versions");
     try {
-      const { data:projs } = await supabase.from("projects").select("id,name,address")
-        .eq("lead_id", Number(selectedLeadId)).order("created_at",{ascending:false}).limit(5);
+      const { data:projs } = await supabase.from("projects")
+        .select("id,name,address,pipeline_status,created_at")
+        .eq("lead_id", Number(selectedLeadId)).order("created_at",{ascending:false}).limit(20);
       if(!projs?.length){ alert("No insulation project found for this customer."); setImporting(false); return; }
-      const proj = projs.find(p=>(p.address||"").toLowerCase().includes((address||"").split(",")[0].toLowerCase()))||projs[0];
+      if(projs.length===1){
+        await doImportFrom(projs[0]);
+      } else {
+        setImportCandidates(projs);
+      }
+    } catch(err){
+      bpLog(`❌ Import failed: ${err.message}`);
+      alert("Import error: "+(err.message||JSON.stringify(err)));
+    }
+    setImporting(false);
+  }
+
+  async function doImportFrom(proj){
+    setImporting(true);
+    bpLog(`Importing from insulation project: ${proj.address||proj.name} (${proj.pipeline_status||"Draft"}, id: ${proj.id})`);
+    try {
       const { data:projFloors } = await supabase.from("floors").select("*").eq("project_id",proj.id).order("order_index");
       const { data:projAreas } = await supabase.from("areas").select("*").eq("project_id",proj.id).order("order_index");
       const floorMap = {};
@@ -157,10 +176,11 @@ export default function BoardPlasterEstimate(){
           finish: FINISH_OPTIONS[0],
         }));
 
-      if(!imported.length){ alert(`No wall/ceiling areas found on "${proj.name||proj.address}" to import.`); setImporting(false); return; }
+      if(!imported.length){ alert(`No wall/ceiling areas found on "${proj.name||proj.address}" to import.`); setImporting(false); setImportCandidates(null); return; }
       setAreas(prev=>[...prev, ...imported]);
       if(!address) setAddress(proj.address||"");
-      alert(`✅ Imported ${imported.length} area(s) from "${proj.name||proj.address}". Review board thickness/finish for each below.`);
+      setImportCandidates(null);
+      alert(`✅ Imported ${imported.length} area(s) from "${proj.name||proj.address}" (${proj.pipeline_status||"Draft"}). Review board thickness/finish for each below.`);
     } catch(err){
       bpLog(`❌ Import failed: ${err.message}`);
       alert("Import error: "+(err.message||JSON.stringify(err)));
@@ -475,6 +495,32 @@ export default function BoardPlasterEstimate(){
         </div>
 
       </div>
+
+      {importCandidates && (
+        <div onClick={()=>setImportCandidates(null)}
+          style={{position:"fixed",inset:0,background:"rgba(0,0,0,.5)",zIndex:1000,
+            display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+          <div onClick={e=>e.stopPropagation()}
+            style={{background:C.white,borderRadius:12,padding:"18px 20px",width:"100%",maxWidth:420,
+              maxHeight:"80vh",overflowY:"auto"}}>
+            <div style={{fontWeight:700,fontSize:15,marginBottom:4}}>Which insulation job?</div>
+            <div style={{fontSize:12,color:C.muted,marginBottom:14}}>
+              This customer has {importCandidates.length} insulation projects/versions. Pick the one to import from.
+            </div>
+            {importCandidates.map(p=>(
+              <button key={p.id} onClick={()=>doImportFrom(p)}
+                style={{display:"block",width:"100%",textAlign:"left",padding:"10px 12px",marginBottom:6,
+                  border:`1px solid ${C.border}`,borderRadius:8,background:C.white,cursor:"pointer"}}>
+                <div style={{fontWeight:600,fontSize:13}}>{p.address||p.name||"Untitled"}</div>
+                <div style={{fontSize:11,color:C.muted,marginTop:2}}>
+                  {p.pipeline_status||"Draft"} · {new Date(p.created_at).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}
+                </div>
+              </button>
+            ))}
+            <button onClick={()=>setImportCandidates(null)} style={{...Btn,width:"100%",justifyContent:"center",marginTop:4}}>Cancel</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
