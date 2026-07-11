@@ -200,7 +200,7 @@ export default function BoardPlasterEstimate(){
           })
           .map(a=>({
             id: uid(), floor: floorMap[a.floor_id]||"Other", area_type: a.area_type, sqft: a.sqft,
-            thickness: defaultThickness(a.area_type), thicknessOther: "", layers: 1, finish: FINISH_OPTIONS[0],
+            thickness: defaultThickness(a.area_type), thicknessOther: "", layers: 1, measurements: [], mh:"", ml:"", mq:"1", finish: FINISH_OPTIONS[0],
           }));
         sourceLabel = cand.name||cand.address;
       } else {
@@ -239,7 +239,7 @@ export default function BoardPlasterEstimate(){
           const [floor,area_type] = key.split("||");
           return {
             id: uid(), floor, area_type, sqft: Math.round(sqft*100)/100,
-            thickness: defaultThickness(area_type), thicknessOther: "", layers: 1, finish: FINISH_OPTIONS[0],
+            thickness: defaultThickness(area_type), thicknessOther: "", layers: 1, measurements: [], mh:"", ml:"", mq:"1", finish: FINISH_OPTIONS[0],
           };
         });
         sourceLabel = cand.address||"HERS estimate";
@@ -258,7 +258,7 @@ export default function BoardPlasterEstimate(){
   }
 
   function addArea(){
-    setAreas(p=>[...p,{ id: uid(), floor:"", area_type:"Exterior Wall", sqft:"", thickness:'1/2"', thicknessOther:"", layers:1, finish: FINISH_OPTIONS[0] }]);
+    setAreas(p=>[...p,{ id: uid(), floor:"", area_type:"Exterior Wall", sqft:"", thickness:'1/2"', thicknessOther:"", layers:1, measurements:[], mh:"", ml:"", mq:"1", finish: FINISH_OPTIONS[0] }]);
   }
   function updateArea(id, field, value){
     setAreas(p=>p.map(a=>{
@@ -276,6 +276,35 @@ export default function BoardPlasterEstimate(){
   function removeArea(id){
     if(!window.confirm("Remove this area?")) return;
     setAreas(p=>p.filter(a=>a.id!==id));
+  }
+
+  // On-site measuring: an area can be built up from multiple H×L segments
+  // (same workflow as Insulation) rather than typing one combined sqft.
+  function commitMeasurement(id){
+    setAreas(p=>p.map(a=>{
+      if(a.id!==id) return a;
+      const h=parseFloat(a.mh)||0, l=parseFloat(a.ml)||0, q=parseFloat(a.mq)||1;
+      if(!h||!l) return a; // nothing to commit
+      const rowSqft = Math.round(h*l*q*100)/100;
+      // If this area already has a total sqft (e.g. from an import) but no
+      // measurement breakdown yet, preserve that as a baseline segment
+      // first - otherwise adding a new on-site measurement would silently
+      // discard the imported total instead of adding to it.
+      const existingMeas = (a.measurements||[]).length===0 && Number(a.sqft)>0
+        ? [{h:"imported",l:"",q:1,sqft:Number(a.sqft)}]
+        : (a.measurements||[]);
+      const meas = [...existingMeas, {h,l,q,sqft:rowSqft}];
+      const total = Math.round(meas.reduce((s,m)=>s+m.sqft,0)*100)/100;
+      return {...a, measurements:meas, sqft:total, mh:"", ml:"", mq:"1"};
+    }));
+  }
+  function delMeasurement(id, idx){
+    setAreas(p=>p.map(a=>{
+      if(a.id!==id) return a;
+      const meas = (a.measurements||[]).filter((_,i)=>i!==idx);
+      const total = Math.round(meas.reduce((s,m)=>s+m.sqft,0)*100)/100;
+      return {...a, measurements:meas, sqft:total};
+    }));
   }
 
   // group areas by floor for display
@@ -454,10 +483,41 @@ export default function BoardPlasterEstimate(){
                         style={{...I,flex:1,height:28,fontSize:11}}>
                         {RELEVANT_AREA_TYPES.map(t=><option key={t} value={t}>{t}</option>)}
                       </select>
-                      <input type="number" placeholder="sqft" value={a.sqft} onChange={e=>updateArea(a.id,"sqft",e.target.value)}
-                        style={{...I,width:70,height:28,fontSize:11,textAlign:"right"}} />
                       <button onClick={()=>removeArea(a.id)} style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:15}}>✕</button>
                     </div>
+
+                    {/* On-site measuring: add one or more H×L segments; total sqft is computed automatically */}
+                    <div style={{display:"flex",alignItems:"center",gap:4,marginBottom:6}}>
+                      <input placeholder="H" inputMode="decimal" value={a.mh||""}
+                        onChange={e=>updateArea(a.id,"mh",e.target.value)}
+                        onBlur={()=>commitMeasurement(a.id)} onKeyDown={e=>e.key==="Enter"&&commitMeasurement(a.id)}
+                        style={{...I,flex:1,height:28,fontSize:11,textAlign:"center"}} />
+                      <span style={{fontSize:10,color:C.faint}}>×</span>
+                      <input placeholder="L" inputMode="decimal" value={a.ml||""}
+                        onChange={e=>updateArea(a.id,"ml",e.target.value)}
+                        onBlur={()=>commitMeasurement(a.id)} onKeyDown={e=>e.key==="Enter"&&commitMeasurement(a.id)}
+                        style={{...I,flex:1,height:28,fontSize:11,textAlign:"center"}} />
+                      <span style={{fontSize:10,color:C.faint}}>×</span>
+                      <input placeholder="Qty" inputMode="decimal" value={a.mq||"1"}
+                        onChange={e=>updateArea(a.id,"mq",e.target.value)}
+                        onBlur={()=>commitMeasurement(a.id)} onKeyDown={e=>e.key==="Enter"&&commitMeasurement(a.id)}
+                        style={{...I,width:44,flexShrink:0,height:28,fontSize:11,textAlign:"center"}} />
+                      <span style={{fontSize:11,fontWeight:700,color:C.green,whiteSpace:"nowrap",marginLeft:2}}>
+                        {fmt(a.sqft||0)} ft²
+                      </span>
+                    </div>
+                    {(a.measurements||[]).length>0 && (
+                      <div style={{display:"flex",flexWrap:"wrap",gap:3,marginBottom:6}}>
+                        {a.measurements.map((m,mi)=>(
+                          <span key={mi} style={{display:"inline-flex",alignItems:"center",gap:2,
+                              background:"#f0fdf4",borderRadius:4,padding:"2px 6px",fontSize:10,color:C.muted}}>
+                            {m.h==="imported" ? "Imported total" : `${m.h}×${m.l}${m.q>1?`×${m.q}`:""}`}&nbsp;<b style={{color:C.ink}}>{fmt(m.sqft)}</b>
+                            <button onClick={()=>delMeasurement(a.id,mi)}
+                              style={{border:"none",background:"none",cursor:"pointer",color:C.faint,fontSize:11,padding:0,lineHeight:1}}>✕</button>
+                          </span>
+                        ))}
+                      </div>
+                    )}
                     <div style={{display:"flex",gap:6}}>
                       <select value={a.thickness} onChange={e=>updateArea(a.id,"thickness",e.target.value)}
                         style={{...I,flex:1,height:28,fontSize:11}}>
