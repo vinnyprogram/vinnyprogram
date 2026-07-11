@@ -200,7 +200,7 @@ export default function BoardPlasterEstimate(){
           })
           .map(a=>({
             id: uid(), floor: floorMap[a.floor_id]||"Other", area_type: a.area_type, sqft: a.sqft,
-            thickness: defaultThickness(a.area_type), thicknessOther: "", finish: FINISH_OPTIONS[0],
+            thickness: defaultThickness(a.area_type), thicknessOther: "", layers: 1, finish: FINISH_OPTIONS[0],
           }));
         sourceLabel = cand.name||cand.address;
       } else {
@@ -239,7 +239,7 @@ export default function BoardPlasterEstimate(){
           const [floor,area_type] = key.split("||");
           return {
             id: uid(), floor, area_type, sqft: Math.round(sqft*100)/100,
-            thickness: defaultThickness(area_type), thicknessOther: "", finish: FINISH_OPTIONS[0],
+            thickness: defaultThickness(area_type), thicknessOther: "", layers: 1, finish: FINISH_OPTIONS[0],
           };
         });
         sourceLabel = cand.address||"HERS estimate";
@@ -258,7 +258,7 @@ export default function BoardPlasterEstimate(){
   }
 
   function addArea(){
-    setAreas(p=>[...p,{ id: uid(), floor:"", area_type:"Exterior Wall", sqft:"", thickness:'1/2"', thicknessOther:"", finish: FINISH_OPTIONS[0] }]);
+    setAreas(p=>[...p,{ id: uid(), floor:"", area_type:"Exterior Wall", sqft:"", thickness:'1/2"', thicknessOther:"", layers:1, finish: FINISH_OPTIONS[0] }]);
   }
   function updateArea(id, field, value){
     setAreas(p=>p.map(a=>{
@@ -467,6 +467,12 @@ export default function BoardPlasterEstimate(){
                         <input placeholder="Custom size" value={a.thicknessOther||""} onChange={e=>updateArea(a.id,"thicknessOther",e.target.value)}
                           style={{...I,flex:1,height:28,fontSize:11}} />
                       )}
+                      <select value={a.layers||1} onChange={e=>updateArea(a.id,"layers",Number(e.target.value))}
+                        title="Number of board layers" style={{...I,width:80,flexShrink:0,height:28,fontSize:11}}>
+                        <option value={1}>1 layer</option>
+                        <option value={2}>2 layers</option>
+                        <option value={3}>3 layers</option>
+                      </select>
                       <select value={a.finish} onChange={e=>updateArea(a.id,"finish",e.target.value)}
                         style={{...I,flex:2,height:28,fontSize:11}}>
                         {FINISH_OPTIONS.map(f=><option key={f} value={f}>{f}</option>)}

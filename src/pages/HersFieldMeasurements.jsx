@@ -1202,13 +1202,13 @@ export default function HersFieldMeasurements() {
       });
       pushAreas = Object.entries(totals).map(([key,sqft])=>{
         const [floor,area_type] = key.split("||");
-        return { id:uid(), floor, area_type, sqft:Math.round(sqft*100)/100, thickness:defaultThickness(area_type), thicknessOther:"", finish:"Smooth skim coat" };
+        return { id:uid(), floor, area_type, sqft:Math.round(sqft*100)/100, thickness:defaultThickness(area_type), thicknessOther:"", layers:1, finish:"Smooth skim coat" };
       });
     } else {
       // Single-family: current in-memory state for the one unit is enough
       pushAreas = Object.entries(areas).flatMap(([floorName,floorAreas])=>
         floorAreas.filter(a=>a.area_type && RELEVANT.includes(a.area_type) && a.sqft>0)
-          .map(a=>({ id:uid(), floor:floorName, area_type:a.area_type, sqft:a.sqft, thickness:defaultThickness(a.area_type), thicknessOther:"", finish:"Smooth skim coat" }))
+          .map(a=>({ id:uid(), floor:floorName, area_type:a.area_type, sqft:a.sqft, thickness:defaultThickness(a.area_type), thicknessOther:"", layers:1, finish:"Smooth skim coat" }))
       );
     }
 
