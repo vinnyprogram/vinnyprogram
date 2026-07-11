@@ -4,6 +4,7 @@ import { supabase } from "../lib/supabase";
 import { enqueue, flushQueue } from "../utils/offlineQueue";
 import { logEvent as sharedLogEvent } from "../utils/debugLog";
 import DebugLogButton from "../components/DebugLogButton";
+import { useAuth } from "../context/AuthContext";
 import AddressInput from "./AddressInput";
 
 const C = {
@@ -1199,6 +1200,8 @@ function getAreaTotalCost(area, materialMap, variantMap) {
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 export default function ProjectEstimate() {
+  const { company } = useAuth();
+  const offersBoardPlaster = company?.offers_board_plaster === true;
   const [searchParams]=useSearchParams();
   const navigate=useNavigate();
   const {id:projectId}=useParams();
@@ -2145,6 +2148,55 @@ export default function ProjectEstimate() {
     finally{if(!silent)setSaving(false);}
   }
 
+  async function pushToBoardPlaster(){
+    if(!selectedLeadId) return;
+    const RELEVANT = ["Exterior Wall","Interior Walls","Demising Wall","Ceiling","Fire Blocking"];
+    const rawAreas = floors.flatMap(floor=>(areas[floor]||[])
+      .filter(a=>a.area_type && RELEVANT.includes(a.area_type) && a.sqft>0)
+      .map(a=>({floor,area_type:a.area_type,sqft:a.sqft})));
+    // Combo materials share the same floor+area_type+sqft across multiple
+    // rows (one per material line on that wall) - dedupe to one entry per
+    // physical wall, same as the Board & Plaster import does.
+    const seen = new Set();
+    const pushAreas = rawAreas.filter(a=>{
+        const key = `${a.floor}||${a.area_type}||${a.sqft}`;
+        if(seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .map(a=>({ id:Date.now()+Math.random(), floor:a.floor, area_type:a.area_type, sqft:a.sqft, thickness:'1/2"', thicknessOther:"", finish:"Smooth skim coat" }));
+
+    if(!pushAreas.length){ alert("No wall/ceiling/fire-blocking areas to push."); return; }
+    if(!window.confirm(`Push ${pushAreas.length} area(s) to Board & Plaster?\n\nIf a Board & Plaster estimate already exists for this customer/address, its measurements will be replaced with these. If none exists, a new one will be created.`)) return;
+    try {
+      const {data:{user}} = await supabase.auth.getUser();
+      const {data:cd} = await supabase.from("companies").select("id").eq("user_id",user.id).maybeSingle();
+      const companyIdForPush = cd?.id||null;
+
+      const { data:existing } = await supabase.from("board_plaster_estimates")
+        .select("id,address").eq("customer_id",Number(selectedLeadId)).order("created_at",{ascending:false}).limit(5);
+      let target = (existing||[]).find(e=>(e.address||"").toLowerCase().includes((projectAddress||"").split(",")[0].toLowerCase()))||(existing||[])[0];
+
+      if(target){
+        const { error } = await supabase.from("board_plaster_estimates")
+          .update({ areas: pushAreas, address: projectAddress||target.address, updated_at:new Date().toISOString() })
+          .eq("id", target.id);
+        if(error) throw error;
+      } else {
+        const { data:created, error } = await supabase.from("board_plaster_estimates").insert([{
+          company_id: companyIdForPush, customer_id: Number(selectedLeadId),
+          address: projectAddress||"", status:"Draft", areas: pushAreas, line_items:[], payment_schedule:[],
+        }]).select().single();
+        if(error) throw error;
+        target = created;
+      }
+      alert(`✅ Pushed to Board & Plaster.`);
+      navigate(`/board-plaster/${target.id}`);
+    } catch(err){
+      alert("Error pushing: "+(err.message||JSON.stringify(err)));
+    }
+  }
+
   useEffect(()=>{if(saved){const t=setTimeout(()=>setSaved(false),3000);return()=>clearTimeout(t);}},[saved]);
 
   const currentAreas=areas[activeFloor]||[];
@@ -2157,7 +2209,7 @@ export default function ProjectEstimate() {
       {saved&&(
         <div style={{position:"fixed",top:12,left:"50%",transform:"translateX(-50%)",zIndex:300,display:"flex",alignItems:"center",gap:10,background:"#059669",color:"#fff",padding:"8px 16px",borderRadius:20,fontSize:12,fontWeight:700,boxShadow:"0 4px 16px rgba(0,0,0,.15)"}}>
           <span>✅ Saved!</span>
-          {savedProjectId&&(<><button onClick={()=>navigate(`/project/drawings/${savedProjectId}`)} style={{background:"#7c3aed",color:"white",border:"none",borderRadius:12,padding:"3px 10px",fontSize:11,fontWeight:700,cursor:"pointer"}}>📐 Drawings</button><button onClick={()=>navigate(`/field-report/${savedProjectId}`)} style={{background:"#3b82f6",color:"white",border:"none",borderRadius:12,padding:"3px 10px",fontSize:11,fontWeight:700,cursor:"pointer"}}>📋 Office Report</button><button onClick={()=>navigate(`/quote/${savedProjectId}`)} style={{background:"white",color:"#059669",border:"none",borderRadius:12,padding:"3px 10px",fontSize:11,fontWeight:700,cursor:"pointer"}}>📄 Quote</button></>)}
+          {savedProjectId&&(<><button onClick={()=>navigate(`/project/drawings/${savedProjectId}`)} style={{background:"#7c3aed",color:"white",border:"none",borderRadius:12,padding:"3px 10px",fontSize:11,fontWeight:700,cursor:"pointer"}}>📐 Drawings</button><button onClick={()=>navigate(`/field-report/${savedProjectId}`)} style={{background:"#3b82f6",color:"white",border:"none",borderRadius:12,padding:"3px 10px",fontSize:11,fontWeight:700,cursor:"pointer"}}>📋 Office Report</button><button onClick={()=>navigate(`/quote/${savedProjectId}`)} style={{background:"white",color:"#059669",border:"none",borderRadius:12,padding:"3px 10px",fontSize:11,fontWeight:700,cursor:"pointer"}}>📄 Quote</button>{offersBoardPlaster && <button onClick={pushToBoardPlaster} style={{background:"white",color:"#b45309",border:"none",borderRadius:12,padding:"3px 10px",fontSize:11,fontWeight:700,cursor:"pointer"}}>🧱 To Board &amp; Plaster</button>}</>)}
         </div>
       )}
       {isLocked && (
@@ -2175,7 +2227,7 @@ export default function ProjectEstimate() {
         <span style={{fontWeight:700,fontSize:14,flex:1,overflow:"hidden",whiteSpace:"nowrap",textOverflow:"ellipsis"}}>{isEditing?(isLocked?"🔒 View Estimate":"✏️ Edit Estimate"):(projectName||"New Project")}</span>
         <div style={{display:"flex",gap:6}}>
           <DebugLogButton />
-          {savedProjectId&&(<><button onClick={()=>navigate(`/project/drawings/${savedProjectId}`)} style={{...BtnD,background:"#7c3aed",height:32,fontSize:12,padding:"0 10px",borderRadius:8}}>📐 Drawings</button><button onClick={()=>navigate(`/field-report/${savedProjectId}`)} style={{...BtnD,background:"#3b82f6",height:32,fontSize:12,padding:"0 10px",borderRadius:8}}>📋 Office</button><button onClick={()=>navigate(`/quote-pricing/${savedProjectId}`)} style={{...BtnD,background:"#f97316",height:32,fontSize:12,padding:"0 10px",borderRadius:8}}>📄 Quote</button></>)}
+          {savedProjectId&&(<><button onClick={()=>navigate(`/project/drawings/${savedProjectId}`)} style={{...BtnD,background:"#7c3aed",height:32,fontSize:12,padding:"0 10px",borderRadius:8}}>📐 Drawings</button><button onClick={()=>navigate(`/field-report/${savedProjectId}`)} style={{...BtnD,background:"#3b82f6",height:32,fontSize:12,padding:"0 10px",borderRadius:8}}>📋 Office</button><button onClick={()=>navigate(`/quote-pricing/${savedProjectId}`)} style={{...BtnD,background:"#f97316",height:32,fontSize:12,padding:"0 10px",borderRadius:8}}>📄 Quote</button>{offersBoardPlaster && <button onClick={pushToBoardPlaster} style={{...BtnD,background:"#b45309",height:32,fontSize:12,padding:"0 10px",borderRadius:8}}>🧱 To Board &amp; Plaster</button>}</>)}
           {!isLocked && <button onClick={saveProject} disabled={saving} style={{...BtnD,fontSize:13,height:32,padding:"0 14px",background:saving?"#64748b":C.ink,borderRadius:8,opacity:!selectedLeadId?0.4:1}}>{saving?"…":"Save"}</button>}
         </div>
       </div>

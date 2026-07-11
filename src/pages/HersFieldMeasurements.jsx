@@ -3,6 +3,7 @@ import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { logEvent as sharedLogEvent } from "../utils/debugLog";
 import DebugLogButton from "../components/DebugLogButton";
+import { useAuth } from "../context/AuthContext";
 
 function hersLog(msg){ sharedLogEvent(msg, "HERS Measurements"); }
 
@@ -750,6 +751,8 @@ function WindowsEditor({ windows, onChange, onCommit, floorOptions, unitLabel })
 
 // ══════════════════════════════════════════════
 export default function HersFieldMeasurements() {
+  const { company } = useAuth();
+  const offersBoardPlaster = company?.offers_board_plaster === true;
   const navigate   = useNavigate();
   const { invoiceId, estimateId } = useParams();
   const mode = estimateId ? "estimate" : "invoice";
@@ -1137,6 +1140,45 @@ export default function HersFieldMeasurements() {
     setPushing(false);
   }
 
+  async function pushToBoardPlaster(){
+    if(!invoice?.customer_id) return;
+    const RELEVANT = ["Exterior Wall","Interior Walls","Demising Wall","Ceiling","Fire Blocking"];
+    const pushAreas = Object.entries(areas).flatMap(([floorName,floorAreas])=>
+      floorAreas.filter(a=>a.area_type && RELEVANT.includes(a.area_type) && a.sqft>0)
+        .map(a=>({ id:uid(), floor:floorName, area_type:a.area_type, sqft:a.sqft, thickness:'1/2"', thicknessOther:"", finish:"Smooth skim coat" }))
+    );
+    if(!pushAreas.length){ alert("No wall/ceiling/fire-blocking areas to push."); return; }
+    if(!window.confirm(`Push ${pushAreas.length} area(s) to Board & Plaster?\n\nIf a Board & Plaster estimate already exists for this customer/address, its measurements will be replaced with these. If none exists, a new one will be created.`)) return;
+    setPushing(true);
+    hersLog(`Push to Board & Plaster requested (${pushAreas.length} areas)`);
+    try {
+      const { data:existing } = await supabase.from("board_plaster_estimates")
+        .select("id,address").eq("customer_id",invoice.customer_id).order("created_at",{ascending:false}).limit(5);
+      let target = (existing||[]).find(e=>(e.address||"").toLowerCase().includes((invoice.address||"").split(",")[0].toLowerCase()))||(existing||[])[0];
+
+      if(target){
+        const { error } = await supabase.from("board_plaster_estimates")
+          .update({ areas: pushAreas, address: invoice.address||target.address, updated_at:new Date().toISOString() })
+          .eq("id", target.id);
+        if(error) throw error;
+      } else {
+        const { data:created, error } = await supabase.from("board_plaster_estimates").insert([{
+          company_id: invoice.company_id, customer_id: invoice.customer_id,
+          address: invoice.address||"", status:"Draft", areas: pushAreas, line_items:[], payment_schedule:[],
+        }]).select().single();
+        if(error) throw error;
+        target = created;
+      }
+      hersLog("✅ Push to Board & Plaster completed");
+      alert(`✅ Pushed to Board & Plaster.`);
+      navigate(`/board-plaster/${target.id}`);
+    } catch(err){
+      hersLog(`❌ Push to Board & Plaster failed: ${err.message}`);
+      alert("Error pushing: "+(err.message||JSON.stringify(err)));
+    }
+    setPushing(false);
+  }
+
   async function uploadPhotos(files){
     if(!files?.length) return;
     setUploading(true);
@@ -1205,6 +1247,10 @@ export default function HersFieldMeasurements() {
           <button onClick={pushToInsulation} disabled={pushing}
             style={{...Btn,color:"#0369a1",borderColor:"#0369a1",opacity:pushing?0.6:1,fontSize:11}}>
             {pushing?"…":"⬆ To Insulation"}
+          </button>
+          <button onClick={pushToBoardPlaster} disabled={pushing}
+            style={{...Btn,color:"#b45309",borderColor:"#b45309",opacity:pushing?0.6:1,fontSize:11,display:offersBoardPlaster?"inline-flex":"none"}}>
+            {pushing?"…":"🧱 To Board & Plaster"}
           </button>
           <button onClick={()=>{
               const unitQuery = unitLabel ? `?unit=${encodeURIComponent(unitLabel)}` : "";
