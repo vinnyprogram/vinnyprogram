@@ -164,8 +164,22 @@ export default function BoardPlasterEstimate(){
       const floorMap = {};
       (projFloors||[]).forEach(f=>{ floorMap[f.id]=f.name; });
 
-      const imported = (projAreas||[])
-        .filter(a=>a.area_type && RELEVANT_AREA_TYPES.includes(a.area_type) && a.sqft>0)
+      const rawAreas = (projAreas||[])
+        .filter(a=>a.area_type && RELEVANT_AREA_TYPES.includes(a.area_type) && a.sqft>0);
+      // Combo materials (e.g. Open Cell + another layer on the same wall)
+      // are stored as multiple rows sharing the SAME floor, area_type, and
+      // full sqft (insulation tracks each material line separately, but
+      // they all describe the same physical wall). Board & Plaster doesn't
+      // care about insulation's material breakdown - dedupe down to one
+      // entry per unique floor+area_type+sqft combination so the same wall
+      // doesn't get imported once per material line it happens to have.
+      const seen = new Set();
+      const imported = rawAreas.filter(a=>{
+          const key = `${a.floor_id}||${a.area_type}||${a.sqft}`;
+          if(seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        })
         .map(a=>({
           id: uid(),
           floor: floorMap[a.floor_id]||"Other",
