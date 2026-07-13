@@ -17,6 +17,7 @@ import EstimateDrawings from "./pages/EstimateDrawings";
 import ResetPassword from "./pages/ResetPassword";
 import HersEstimate from "./pages/HersEstimate";
 import BoardPlasterEstimate from "./pages/BoardPlasterEstimate";
+import BoardPlasterSearch from "./pages/BoardPlasterSearch";
 import HersSearch from "./pages/HersSearch";
 import HersInvoice from "./pages/HersInvoice";
 import HersInvoiceSearch from "./pages/HersInvoiceSearch";
@@ -105,6 +106,7 @@ function ProtectedApp() {
         <Route path="/hers/new" element={<HersEstimate />} />
         <Route path="/hers/:id" element={<HersEstimate />} />
         <Route path="/board-plaster/new" element={<BoardPlasterEstimate />} />
+        <Route path="/board-plaster/search" element={<BoardPlasterSearch />} />
         <Route path="/board-plaster/:id" element={<BoardPlasterEstimate />} />
       </Route>
 
