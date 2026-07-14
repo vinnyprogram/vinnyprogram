@@ -2158,20 +2158,22 @@ export default function ProjectEstimate() {
     // the user delete whatever doesn't apply to plaster on the other side
     // (e.g. Rim Joist is sometimes needed, sometimes not).
     const RELEVANT = ["Roof Rafter w/ Strapping","Roof Rafter behind knee walls","Floor","Exterior Wall","Demising Wall","Rim Joist","Concrete Wall","Ceiling","Interior Walls","Fire Blocking","Other"];
-    const rawAreas = floors.flatMap(floor=>(areas[floor]||[])
+    // Each in-memory area is already one physical wall/ceiling (combo
+    // materials live as mat_lines INSIDE one area object, not as separate
+    // area objects) - so no dedup is needed here, unlike importing from the
+    // database where each combo material line becomes its own row. Carry
+    // the real H×L measurements array straight across instead of just the
+    // flat total, so the breakdown shows up on the Board & Plaster side
+    // too, not just one opaque number.
+    const pushAreas = floors.flatMap(floor=>(areas[floor]||[])
       .filter(a=>a.area_type && RELEVANT.includes(a.area_type) && a.sqft>0)
-      .map(a=>({floor,area_type:a.area_type,sqft:a.sqft})));
-    // Combo materials share the same floor+area_type+sqft across multiple
-    // rows (one per material line on that wall) - dedupe to one entry per
-    // physical wall, same as the Board & Plaster import does.
-    const seen = new Set();
-    const pushAreas = rawAreas.filter(a=>{
-        const key = `${a.floor}||${a.area_type}||${a.sqft}`;
-        if(seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      })
-      .map(a=>({ id:Date.now()+Math.random(), floor:a.floor, area_type:a.area_type, sqft:a.sqft, thickness:'1/2"', thicknessOther:"", finish:"Smooth skim coat" }));
+      .map(a=>({
+        id:Date.now()+Math.random(), floor, area_type:a.area_type, sqft:a.sqft,
+        thickness:'1/2"', thicknessOther:"", layers:1,
+        measurements:(a.measurements||[]).map(m=>({h:m.h,l:m.l,q:m.q||1,sqft:m.sqft,note:""})),
+        mh:"", ml:"", mq:"1", deduct:a.deduct_sqft||"", note:"",
+        finish:"Smooth skim coat",
+      })));
 
     if(!pushAreas.length){ alert("No wall/ceiling/fire-blocking areas to push."); return; }
     if(!window.confirm(`Push ${pushAreas.length} area(s) to Board & Plaster?\n\nIf a Board & Plaster estimate already exists for this customer/address, its measurements will be replaced with these. If none exists, a new one will be created.`)) return;

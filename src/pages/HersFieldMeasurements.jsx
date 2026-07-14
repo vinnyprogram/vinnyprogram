@@ -1181,13 +1181,16 @@ export default function HersFieldMeasurements() {
     let pushAreas = [];
     if(mode==="estimate" && unitLabels.length>1){
       // Multifamily: don't just push whichever unit happens to be open in
-      // memory right now - pull every unit's measurements and sum matching
-      // floor+area_type combos into the BUILDING's total. Insulation and
-      // Board & Plaster work at the building level, not per-unit.
+      // memory right now - pull every unit's measurements and combine
+      // matching floor+area_type combos into the BUILDING's total.
+      // Insulation and Board & Plaster work at the building level, not
+      // per-unit. Each unit's individual H×L segments are concatenated
+      // together (not just summed into one opaque number), so the
+      // combined area still has a real measurement breakdown.
       const fmRows = await Promise.all(unitLabels.map(ul=>
         supabase.from("hers_field_measurements").select("areas").eq("hers_estimate_id",estimateId).eq("unit_label",ul).maybeSingle()
       ));
-      const totals = {};
+      const combined = {}; // key -> {sqft, measurements}
       fmRows.forEach(({data:fm})=>{
         const savedAreas = Array.isArray(fm?.areas) ? fm.areas : (typeof fm?.areas==="string" ? JSON.parse(fm.areas||"[]") : []);
         let flatAreas = [];
@@ -1199,18 +1202,21 @@ export default function HersFieldMeasurements() {
         flatAreas.filter(a=>a.area_type && RELEVANT.includes(a.area_type) && a.sqft>0)
           .forEach(a=>{
             const key = `${a.floor||"Other"}||${a.area_type}`;
-            totals[key] = (totals[key]||0) + Number(a.sqft);
+            if(!combined[key]) combined[key] = { sqft:0, measurements:[] };
+            combined[key].sqft += Number(a.sqft);
+            combined[key].measurements.push(...(a.measurements||[]).map(m=>({h:m.h,l:m.l,q:m.q||1,sqft:m.sqft,note:""})));
           });
       });
-      pushAreas = Object.entries(totals).map(([key,sqft])=>{
+      pushAreas = Object.entries(combined).map(([key,val])=>{
         const [floor,area_type] = key.split("||");
-        return { id:uid(), floor, area_type, sqft:Math.round(sqft*100)/100, thickness:defaultThickness(area_type), thicknessOther:"", layers:1, finish:"Smooth skim coat" };
+        return { id:uid(), floor, area_type, sqft:Math.round(val.sqft*100)/100, thickness:defaultThickness(area_type), thicknessOther:"", layers:1, measurements:val.measurements, mh:"",ml:"",mq:"1", deduct:"", note:"", finish:"Smooth skim coat" };
       });
     } else {
       // Single-family: current in-memory state for the one unit is enough
       pushAreas = Object.entries(areas).flatMap(([floorName,floorAreas])=>
         floorAreas.filter(a=>a.area_type && RELEVANT.includes(a.area_type) && a.sqft>0)
-          .map(a=>({ id:uid(), floor:floorName, area_type:a.area_type, sqft:a.sqft, thickness:defaultThickness(a.area_type), thicknessOther:"", layers:1, finish:"Smooth skim coat" }))
+          .map(a=>({ id:uid(), floor:floorName, area_type:a.area_type, sqft:a.sqft, thickness:defaultThickness(a.area_type), thicknessOther:"", layers:1,
+            measurements:(a.measurements||[]).map(m=>({h:m.h,l:m.l,q:m.q||1,sqft:m.sqft,note:""})), mh:"",ml:"",mq:"1", deduct:a.deduct_sqft||"", note:"", finish:"Smooth skim coat" }))
       );
     }
 

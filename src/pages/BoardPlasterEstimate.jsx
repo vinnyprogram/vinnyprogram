@@ -266,7 +266,8 @@ export default function BoardPlasterEstimate(){
       }
 
       if(!imported.length){ alert(`No wall/ceiling areas found on "${sourceLabel}" to import.`); setImporting(false); setImportCandidates(null); return; }
-      setAreas(prev=>[...prev, ...imported]);
+      const shouldReplace = areas.length===0 || window.confirm(`You already have ${areas.length} area(s) on this estimate. Replace them with the ${imported.length} freshly imported area(s)?\n\nTap Cancel to add the imported areas alongside your existing ones instead (may create duplicates if you're re-importing the same job).`);
+      if(shouldReplace){ setAreas(imported); } else { setAreas(prev=>[...prev, ...imported]); }
       if(cand.address) setAddress(cand.address); // always take the source job's address - it's the correct one for whatever you're importing from
       setImportCandidates(null);
       alert(`✅ Imported ${imported.length} area(s) from ${cand.source==="hers"?"HERS":"Insulation"} — "${sourceLabel}" (${cand.status}). Review board thickness/finish for each below.`);
