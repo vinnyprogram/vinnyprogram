@@ -622,16 +622,18 @@ export default function BoardPlasterEstimate(){
                     </div>
                     <div style={{padding:"10px 12px"}}>
 
-                    {/* On-site measuring: add one or more H×L segments; total sqft is computed automatically */}
+                    {/* On-site measuring: add one or more H×L segments; total sqft is computed automatically.
+                        Commit only fires when leaving the Qty field (or hitting Enter anywhere) - not on
+                        H or L individually, so tabbing H -> L -> Qty lets you actually set Qty before it commits. */}
                     <div style={{display:"flex",alignItems:"center",gap:4,marginBottom:6}}>
                       <input placeholder="H" inputMode="decimal" value={a.mh||""}
                         onChange={e=>updateArea(a.id,"mh",e.target.value)}
-                        onBlur={()=>commitMeasurement(a.id)} onKeyDown={e=>e.key==="Enter"&&commitMeasurement(a.id)}
+                        onKeyDown={e=>e.key==="Enter"&&commitMeasurement(a.id)}
                         style={{...I,flex:1,height:28,fontSize:11,textAlign:"center"}} />
                       <span style={{fontSize:10,color:C.faint}}>×</span>
                       <input placeholder="L" inputMode="decimal" value={a.ml||""}
                         onChange={e=>updateArea(a.id,"ml",e.target.value)}
-                        onBlur={()=>commitMeasurement(a.id)} onKeyDown={e=>e.key==="Enter"&&commitMeasurement(a.id)}
+                        onKeyDown={e=>e.key==="Enter"&&commitMeasurement(a.id)}
                         style={{...I,flex:1,height:28,fontSize:11,textAlign:"center"}} />
                       <span style={{fontSize:10,color:C.faint}}>×</span>
                       <input placeholder="Qty" inputMode="decimal" value={a.mq||"1"}
