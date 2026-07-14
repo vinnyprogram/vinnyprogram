@@ -619,13 +619,28 @@ export default function BoardPlasterEstimate(){
                   <div key={a.id} style={{border:`1.5px solid #cbd5e1`,borderRadius:10,padding:0,
                       marginBottom:14,background:C.white,boxShadow:"0 1px 4px rgba(0,0,0,.06)",overflow:"hidden"}}>
                     <div onClick={()=>updateArea(a.id,"_expanded",!expanded)}
-                      style={{display:"flex",gap:6,alignItems:"center",padding:"8px 10px",background:"#f1f5f9",
+                      style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap",padding:"8px 10px",background:"#f1f5f9",
                         borderBottom:expanded?"1px solid #e2e8f0":"none",cursor:"pointer"}}>
                       {expanded ? (
-                        <select value={a.area_type} onClick={e=>e.stopPropagation()} onChange={e=>updateArea(a.id,"area_type",e.target.value)}
-                          style={{...I,width:130,flexShrink:0,height:28,fontSize:11,fontWeight:700}}>
-                          {RELEVANT_AREA_TYPES.map(t=><option key={t} value={t}>{t}</option>)}
-                        </select>
+                        <>
+                          <select value={a.area_type} onClick={e=>e.stopPropagation()} onChange={e=>updateArea(a.id,"area_type",e.target.value)}
+                            style={{...I,width:110,flexShrink:0,height:26,fontSize:10,fontWeight:700,padding:"0 4px"}}>
+                            {RELEVANT_AREA_TYPES.map(t=><option key={t} value={t}>{t}</option>)}
+                          </select>
+                          <select value={a.thickness} onClick={e=>e.stopPropagation()} onChange={e=>updateArea(a.id,"thickness",e.target.value)}
+                            style={{...I,width:52,flexShrink:0,height:26,fontSize:10,padding:"0 2px"}}>
+                            {THICKNESS_OPTIONS.map(t=><option key={t} value={t}>{t}</option>)}
+                          </select>
+                          {a.thickness==="Other" && (
+                            <input placeholder="size" value={a.thicknessOther||""} onClick={e=>e.stopPropagation()}
+                              onChange={e=>updateArea(a.id,"thicknessOther",e.target.value)}
+                              style={{...I,width:44,flexShrink:0,height:26,fontSize:10,padding:"0 4px"}} />
+                          )}
+                          <select value={a.finish} onClick={e=>e.stopPropagation()} onChange={e=>updateArea(a.id,"finish",e.target.value)}
+                            style={{...I,flex:1,minWidth:0,height:26,fontSize:10,padding:"0 4px"}}>
+                            {FINISH_OPTIONS.map(f=><option key={f} value={f}>{f}</option>)}
+                          </select>
+                        </>
                       ) : (
                         <div style={{flex:1,minWidth:0}}>
                           <div style={{fontWeight:700,fontSize:12,color:"#0f172a"}}>{a.area_type}</div>
@@ -691,22 +706,8 @@ export default function BoardPlasterEstimate(){
                     <input placeholder="Note for this area (e.g. include rim joist, exclude closet)" value={a.note||""}
                       onChange={e=>updateArea(a.id,"note",e.target.value)}
                       style={{...I,width:"100%",height:26,fontSize:11,marginBottom:6}} />
-                    <div style={{display:"flex",gap:6}}>
-                      <select value={a.thickness} onChange={e=>updateArea(a.id,"thickness",e.target.value)}
-                        style={{...I,flex:1,height:28,fontSize:11}}>
-                        {THICKNESS_OPTIONS.map(t=><option key={t} value={t}>{t}</option>)}
-                      </select>
-                      {a.thickness==="Other" && (
-                        <input placeholder="Custom size" value={a.thicknessOther||""} onChange={e=>updateArea(a.id,"thicknessOther",e.target.value)}
-                          style={{...I,flex:1,height:28,fontSize:11}} />
-                      )}
-                      <select value={a.finish} onChange={e=>updateArea(a.id,"finish",e.target.value)}
-                        style={{...I,flex:2,height:28,fontSize:11}}>
-                        {FINISH_OPTIONS.map(f=><option key={f} value={f}>{f}</option>)}
-                      </select>
-                    </div>
                     <button onClick={()=>updateArea(a.id,"_expanded",false)}
-                      style={{...Btn,width:"100%",justifyContent:"center",marginTop:8,color:"#059669",borderColor:"#059669"}}>
+                      style={{...Btn,width:"100%",justifyContent:"center",marginTop:2,color:"#059669",borderColor:"#059669"}}>
                       ✓ Done
                     </button>
                     </div>
