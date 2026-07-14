@@ -56,6 +56,60 @@ function defaultThickness(areaType){
 function fmt(n){ return Number(n||0).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2}); }
 function uid(){ return Math.random().toString(36).slice(2)+Date.now().toString(36); }
 
+// Standard top-down building order for floor names, matching Insulation -
+// any custom floor name (Garage, etc.) not in this list falls to the end.
+const FLOOR_ORDER = ["Attic","3rd","2nd","1st","Basement","Crawlspace"];
+
+// Pure visual double-check panel: groups areas by identical spec (area
+// type + thickness + finish) across ALL floors, merging floor names for
+// matching specs - e.g. "2nd, 1st, Basement - Exterior Wall 1/2" - same
+// pattern as Insulation's Estimate panel. Not used for pricing at all.
+function SummaryPanel({ areas }){
+  const groups = {};
+  const order = [];
+  areas.filter(a=>a.area_type && Number(a.sqft)>0).forEach(a=>{
+    const thick = a.thickness==="Other" ? (a.thicknessOther||"Other") : a.thickness;
+    const key = `${a.area_type}||${thick}||${a.finish}||${a.layers||1}`;
+    if(!groups[key]){ groups[key] = { area_type:a.area_type, thick, finish:a.finish, layers:a.layers||1, floors:[], sqft:0 }; order.push(key); }
+    if(!groups[key].floors.includes(a.floor)) groups[key].floors.push(a.floor);
+    groups[key].sqft += Number(a.sqft);
+  });
+  const rows = order.map(k=>groups[k]);
+  const grandTotal = rows.reduce((s,g)=>s+g.sqft,0);
+
+  function floorLabel(floors){
+    return [...floors].sort((a,b)=>{
+      const ai=FLOOR_ORDER.indexOf(a), bi=FLOOR_ORDER.indexOf(b);
+      if(ai===-1&&bi===-1) return 0;
+      if(ai===-1) return 1;
+      if(bi===-1) return -1;
+      return ai-bi;
+    }).join(", ");
+  }
+
+  if(rows.length===0){
+    return <div style={{fontSize:12,color:"#94a3b8",textAlign:"center",padding:"20px 10px"}}>No measurements yet.</div>;
+  }
+  return (
+    <div>
+      {rows.map((g,i)=>(
+        <div key={i} style={{marginBottom:10,paddingBottom:10,borderBottom:i<rows.length-1?"1px solid #e2e8f0":"none"}}>
+          <div style={{fontSize:11,fontWeight:700,color:"#0f172a"}}>{floorLabel(g.floors)}</div>
+          <div style={{fontSize:11,color:"#374151"}}>{g.area_type}</div>
+          <div style={{fontSize:10,color:"#64748b"}}>
+            {g.thick}{g.layers>1?` ×${g.layers} layers`:""} · {g.finish}
+          </div>
+          <div style={{fontSize:12,fontWeight:700,color:"#059669",marginTop:2}}>{fmt(g.sqft)} ft²</div>
+        </div>
+      ))}
+      <div style={{display:"flex",justifyContent:"space-between",paddingTop:6,borderTop:"2px solid #0f172a"}}>
+        <span style={{fontSize:12,fontWeight:700}}>Total</span>
+        <span style={{fontSize:13,fontWeight:800,color:"#059669"}}>{fmt(grandTotal)} ft²</span>
+      </div>
+    </div>
+  );
+}
+
 export default function BoardPlasterEstimate(){
   const navigate = useNavigate();
   const { id: estimateId } = useParams();
@@ -68,6 +122,7 @@ export default function BoardPlasterEstimate(){
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [companyId, setCompanyId] = useState(null);
+  const [bottomPanelOpen, setBottomPanelOpen] = useState(false);
 
   // customer
   const [leads, setLeads] = useState([]);
@@ -415,7 +470,8 @@ export default function BoardPlasterEstimate(){
         </div>
       </div>
 
-      <div style={{maxWidth:720,margin:"0 auto",padding:"14px 12px"}}>
+      <div style={{display:"flex",flex:1}}>
+      <div style={{flex:1,maxWidth:720,margin:"0 auto",padding:"14px 12px",minWidth:0}}>
 
         {/* Customer */}
         <div style={CARD}>
@@ -688,6 +744,41 @@ export default function BoardPlasterEstimate(){
         </div>
 
       </div>
+
+      <div className="bp-side-panel" style={{width:220,flexShrink:0,borderLeft:`1px solid ${C.border}`,background:C.white,overflowY:"auto",padding:"10px 10px 20px"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+          <div style={{fontSize:10,fontWeight:800,color:C.faint,textTransform:"uppercase",letterSpacing:0.5}}>Summary</div>
+          <button onClick={()=>window.print()} title="Print/Save as PDF - for double-checking measurements only, not used for pricing"
+            style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:14}}>🖨️</button>
+        </div>
+        <div className="print-backup-only">
+          <SummaryPanel areas={areas} />
+        </div>
+      </div>
+      </div>
+
+      <div className="bp-bottom-panel" style={{position:"fixed",bottom:0,left:0,right:0,zIndex:200,background:C.white,borderTop:`2px solid ${C.border}`,boxShadow:"0 -2px 12px rgba(0,0,0,.08)"}}>
+        <div onClick={()=>setBottomPanelOpen(p=>!p)} style={{padding:"10px 14px",display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}>
+          <span style={{fontSize:10,fontWeight:800,color:C.faint,textTransform:"uppercase",letterSpacing:0.5}}>Summary</span>
+          <div style={{display:"flex",alignItems:"center",gap:8}}>
+            <button onClick={(e)=>{e.stopPropagation();window.print();}} title="Print/Save as PDF"
+              style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:14,padding:0}}>🖨️</button>
+            <span style={{fontSize:9,color:C.faint}}>{bottomPanelOpen?"▼":"▲"}</span>
+          </div>
+        </div>
+        {bottomPanelOpen && (<div style={{maxHeight:"45vh",overflowY:"auto",padding:"8px 14px 24px"}}><SummaryPanel areas={areas} /></div>)}
+      </div>
+
+      <style>{`
+        .print-backup-only { display: block; }
+        @media print {
+          body * { visibility: hidden; }
+          .print-backup-only, .print-backup-only * { visibility: visible; }
+          .print-backup-only { position: absolute; top: 0; left: 0; width: 100%; font-size: 14px; }
+        }
+        @media (min-width: 900px) { .bp-bottom-panel { display: none !important; } }
+        @media (max-width: 899px) { .bp-side-panel { display: none !important; } }
+      `}</style>
 
       {importCandidates && (
         <div onClick={()=>setImportCandidates(null)}
