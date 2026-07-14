@@ -355,7 +355,8 @@ export default function BoardPlasterEstimate(){
   }
 
   function addArea(){
-    setAreas(p=>[...p,{ id: uid(), floor:activeFloor, area_type:"Exterior Wall", sqft:"", thickness:'1/2"', thicknessOther:"", layers:1, measurements:[], mh:"", ml:"", mq:"1", deduct:"", note:"", finish: FINISH_OPTIONS[0], _expanded:true }]);
+    const newArea = { id: uid(), floor:activeFloor, area_type:"Exterior Wall", sqft:"", thickness:'1/2"', thicknessOther:"", layers:1, measurements:[], mh:"", ml:"", mq:"1", deduct:"", note:"", finish: FINISH_OPTIONS[0], _expanded:true };
+    setAreas(p=>[newArea, ...p.map(a=>a.floor===activeFloor?{...a,_expanded:false}:a)]);
   }
   function updateArea(id, field, value){
     setAreas(p=>p.map(a=>{
@@ -613,12 +614,15 @@ export default function BoardPlasterEstimate(){
                 )}
 
                 {floorAreas.map(a=>{
-                  const expanded = a._expanded!==false; // default expanded for new/incomplete areas
+                  const expanded = a._expanded===true; // collapsed by default (matching Insulation) - only expanded when explicitly opened to edit
                   const thickLabel = a.thickness==="Other" ? (a.thicknessOther||"Other") : a.thickness;
                   return (
                   <div key={a.id} style={{border:`1.5px solid #cbd5e1`,borderRadius:10,padding:0,
                       marginBottom:14,background:C.white,boxShadow:"0 1px 4px rgba(0,0,0,.06)",overflow:"hidden"}}>
-                    <div onClick={()=>updateArea(a.id,"_expanded",!expanded)}
+                    <div onClick={()=>{
+                        if(expanded){ updateArea(a.id,"_expanded",false); return; }
+                        setAreas(p=>p.map(x=>x.floor===a.floor?{...x,_expanded:x.id===a.id}:x));
+                      }}
                       style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap",padding:"8px 10px",background:"#f1f5f9",
                         borderBottom:expanded?"1px solid #e2e8f0":"none",cursor:"pointer"}}>
                       {expanded ? (
