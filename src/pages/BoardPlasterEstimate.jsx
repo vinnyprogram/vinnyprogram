@@ -639,11 +639,11 @@ export default function BoardPlasterEstimate(){
                       {expanded ? (
                         <>
                           <select value={a.area_type} onClick={e=>e.stopPropagation()} onChange={e=>updateArea(a.id,"area_type",e.target.value)}
-                            style={{...I,width:110,flexShrink:0,height:26,fontSize:10,fontWeight:700,padding:"0 4px"}}>
+                            style={{...I,width:220,flexShrink:0,height:26,fontSize:10,fontWeight:700,padding:"0 4px"}}>
                             {RELEVANT_AREA_TYPES.map(t=><option key={t} value={t}>{t}</option>)}
                           </select>
                           <select value={a.thickness} onClick={e=>e.stopPropagation()} onChange={e=>updateArea(a.id,"thickness",e.target.value)}
-                            style={{...I,width:52,flexShrink:0,height:26,fontSize:10,padding:"0 2px"}}>
+                            style={{...I,width:64,flexShrink:0,height:26,fontSize:10,padding:"0 2px"}}>
                             {THICKNESS_OPTIONS.map(t=><option key={t} value={t}>{t}</option>)}
                           </select>
                           {a.thickness==="Other" && (
@@ -653,7 +653,7 @@ export default function BoardPlasterEstimate(){
                           )}
                           <button onClick={(e)=>{e.stopPropagation();updateArea(a.id,"_expanded",false);}}
                             style={{border:"1px solid #059669",background:"#f0fdf4",color:"#059669",cursor:"pointer",
-                              fontSize:10,fontWeight:700,padding:"4px 8px",borderRadius:6,marginLeft:"auto"}}>
+                              fontSize:10,fontWeight:700,padding:"4px 8px",borderRadius:6,marginLeft:"auto",marginRight:12}}>
                             ✓ Done
                           </button>
                         </>
