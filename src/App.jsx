@@ -33,9 +33,9 @@ function Dashboard() {
     <div style={{display:"flex",alignItems:"center",justifyContent:"center",
       height:"100%",minHeight:"80vh",fontFamily:"Inter,system-ui,sans-serif"}}>
       <div style={{textAlign:"center",color:"#94a3b8"}}>
-        <div style={{fontSize:48,marginBottom:16}}>🏠</div>
-        <div style={{fontSize:22,fontWeight:700,color:"#0f172a",marginBottom:8}}>
-          NEX
+        <img src="/icon-512.png" alt="CUB" style={{width:72,height:72,marginBottom:16}} />
+       <div style={{fontSize:22,fontWeight:700,color:"#0f172a",marginBottom:8}}>
+          CUB
         </div>
       </div>
     </div>
