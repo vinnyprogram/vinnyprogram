@@ -35,7 +35,7 @@ function Dashboard() {
       <div style={{textAlign:"center",color:"#94a3b8"}}>
         <div style={{fontSize:48,marginBottom:16}}>🏠</div>
         <div style={{fontSize:22,fontWeight:700,color:"#0f172a",marginBottom:8}}>
-          InsulationPro
+          NEX
         </div>
         <div style={{fontSize:14}}>Select an option from the menu</div>
       </div>
