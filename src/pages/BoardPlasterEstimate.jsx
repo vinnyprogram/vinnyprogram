@@ -59,6 +59,15 @@ function uid(){ return Math.random().toString(36).slice(2)+Date.now().toString(3
 // Standard top-down building order for floor names, matching Insulation -
 // any custom floor name (Garage, etc.) not in this list falls to the end.
 const FLOOR_ORDER = ["Attic","3rd","2nd","1st","Basement","Crawlspace"];
+function sortFloors(names){
+  return [...names].sort((a,b)=>{
+    const ai=FLOOR_ORDER.indexOf(a), bi=FLOOR_ORDER.indexOf(b);
+    if(ai===-1&&bi===-1) return 0;
+    if(ai===-1) return 1;
+    if(bi===-1) return -1;
+    return ai-bi;
+  });
+}
 
 // Pure visual double-check panel: groups areas by identical spec (area
 // type + thickness + finish) across ALL floors, merging floor names for
@@ -136,6 +145,8 @@ export default function BoardPlasterEstimate(){
 
   // measurements
   const [areas, setAreas] = useState([]); // [{id, floor, area_type, sqft, thickness, finish}]
+  const [floorNames, setFloorNames] = useState([]); // which floor tabs exist, independent of whether they have areas yet
+  const [activeFloor, setActiveFloor] = useState("");
   const [importing, setImporting] = useState(false);
   const [importCandidates, setImportCandidates] = useState(null); // null = not showing picker; array = showing it
 
@@ -172,13 +183,20 @@ export default function BoardPlasterEstimate(){
           setSelectedLeadId(String(est.customer_id||""));
           setAddress(est.address||"");
           setAreas(est.areas||[]);
+          const existingFloors = [...new Set((est.areas||[]).map(a=>a.floor).filter(Boolean))];
+          setFloorNames(sortFloors(existingFloors.length?existingFloors:["Attic"]));
+          setActiveFloor(sortFloors(existingFloors)[0] || "Attic");
           setLineItems(est.line_items?.length?est.line_items:[{ id: uid(), service_name:"", price:"", qty:"1" }]);
           setNotes(est.notes||"");
           setStatus(est.status||"Draft");
           setTaxRate(String(est.tax_rate||0));
           if(est.payment_schedule?.length){ setScheduleOpen(true); setPaymentSchedule(est.payment_schedule); }
           if(est.customer_id) setCustMode("selected");
+        } else {
+          setFloorNames(["Attic"]); setActiveFloor("Attic");
         }
+      } else {
+        setFloorNames(["Attic"]); setActiveFloor("Attic");
       }
       setLoading(false);
     }
@@ -323,6 +341,9 @@ export default function BoardPlasterEstimate(){
       if(!imported.length){ alert(`No wall/ceiling areas found on "${sourceLabel}" to import.`); setImporting(false); setImportCandidates(null); return; }
       const shouldReplace = areas.length===0 || window.confirm(`You already have ${areas.length} area(s) on this estimate. Replace them with the ${imported.length} freshly imported area(s)?\n\nTap Cancel to add the imported areas alongside your existing ones instead (may create duplicates if you're re-importing the same job).`);
       if(shouldReplace){ setAreas(imported); } else { setAreas(prev=>[...prev, ...imported]); }
+      const importedFloors = [...new Set(imported.map(a=>a.floor).filter(Boolean))];
+      setFloorNames(prev=>sortFloors([...new Set([...prev, ...importedFloors])]));
+      if(importedFloors.length) setActiveFloor(sortFloors(importedFloors)[0]);
       if(cand.address) setAddress(cand.address); // always take the source job's address - it's the correct one for whatever you're importing from
       setImportCandidates(null);
       alert(`✅ Imported ${imported.length} area(s) from ${cand.source==="hers"?"HERS":"Insulation"} — "${sourceLabel}" (${cand.status}). Review board thickness/finish for each below.`);
@@ -334,7 +355,7 @@ export default function BoardPlasterEstimate(){
   }
 
   function addArea(){
-    setAreas(p=>[...p,{ id: uid(), floor:"", area_type:"Exterior Wall", sqft:"", thickness:'1/2"', thicknessOther:"", layers:1, measurements:[], mh:"", ml:"", mq:"1", deduct:"", note:"", finish: FINISH_OPTIONS[0] }]);
+    setAreas(p=>[...p,{ id: uid(), floor:activeFloor, area_type:"Exterior Wall", sqft:"", thickness:'1/2"', thicknessOther:"", layers:1, measurements:[], mh:"", ml:"", mq:"1", deduct:"", note:"", finish: FINISH_OPTIONS[0] }]);
   }
   function updateArea(id, field, value){
     setAreas(p=>p.map(a=>{
@@ -394,9 +415,7 @@ export default function BoardPlasterEstimate(){
     }));
   }
 
-  // group areas by floor for display
-  const floorGroups = [];
-  { const gm={}; areas.forEach(a=>{ const key=a.floor||"(no floor)"; if(!gm[key]){ gm[key]={floor:key,rows:[]}; floorGroups.push(gm[key]); } gm[key].rows.push(a); }); }
+  // (floor-by-floor grouping now handled via floor tabs + activeFloor filtering below)
 
   function addLine(){ setLineItems(p=>[...p,{ id: uid(), service_name:"", price:"", qty:"1" }]); }
   function updateLine(idx, field, value){ setLineItems(p=>p.map((it,i)=>i===idx?{...it,[field]:value}:it)); }
@@ -547,27 +566,54 @@ export default function BoardPlasterEstimate(){
             </button>
           </div>
 
-          {floorGroups.length===0 && (
-            <div style={{fontSize:12,color:C.faint,textAlign:"center",padding:"10px 0"}}>
-              No areas yet — import from an existing insulation estimate, or add one manually below.
-            </div>
-          )}
+          {/* Floor tabs - same pattern as Insulation: pick a floor, only that floor's areas show below */}
+          <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:12}}>
+            {floorNames.map(fn=>{
+              const hasAreas = areas.some(a=>a.floor===fn);
+              return (
+                <button key={fn} onClick={()=>setActiveFloor(fn)}
+                  style={{border:`1.5px solid ${activeFloor===fn?"#059669":hasAreas?"#86efac":C.border}`,
+                    background:activeFloor===fn?"#059669":hasAreas?"#f0fdf4":C.white,
+                    color:activeFloor===fn?"#fff":hasAreas?"#059669":C.muted,
+                    borderRadius:20,padding:"5px 12px",fontSize:12,fontWeight:700,cursor:"pointer"}}>
+                  {fn}{hasAreas && activeFloor!==fn ? " ✓" : ""}
+                </button>
+              );
+            })}
+            <button onClick={()=>{
+                const name = window.prompt("New floor name (e.g. 2nd, Garage, Attic):");
+                if(!name || !name.trim()) return;
+                const trimmed = name.trim();
+                if(floorNames.includes(trimmed)){ setActiveFloor(trimmed); return; }
+                setFloorNames(prev=>sortFloors([...prev, trimmed]));
+                setActiveFloor(trimmed);
+              }}
+              style={{border:`1.5px dashed ${C.border}`,background:"transparent",color:C.muted,
+                borderRadius:20,padding:"5px 12px",fontSize:12,fontWeight:700,cursor:"pointer"}}>
+              + Floor
+            </button>
+          </div>
 
-          {floorGroups.map((g,gi)=>{
-            const groupSqft = g.rows.reduce((s,a)=>s+(Number(a.sqft)||0),0);
+          {(() => {
+            const floorAreas = areas.filter(a=>a.floor===activeFloor);
+            const floorTotal = floorAreas.reduce((s,a)=>s+(Number(a.sqft)||0),0);
             return (
-              <div key={g.floor} style={{marginBottom:gi<floorGroups.length-1?14:0,paddingBottom:gi<floorGroups.length-1?12:0,
-                  borderBottom:gi<floorGroups.length-1?`1px solid ${C.border}`:"none"}}>
-                <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
-                  <span style={{fontWeight:700,fontSize:13}}>{g.floor}</span>
-                  <span style={{fontSize:12,color:C.muted}}>{fmt(groupSqft)} ft² total</span>
+              <>
+                <div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}>
+                  <span style={{fontWeight:700,fontSize:13}}>+ Add area to {activeFloor}</span>
+                  <span style={{fontSize:12,color:C.muted}}>{fmt(floorTotal)} ft² total</span>
                 </div>
-                {g.rows.map(a=>(
+
+                {floorAreas.length===0 && (
+                  <div style={{fontSize:12,color:C.faint,textAlign:"center",padding:"10px 0"}}>
+                    No areas on {activeFloor} yet — import from an existing insulation estimate, or add one below.
+                  </div>
+                )}
+
+                {floorAreas.map(a=>(
                   <div key={a.id} style={{border:`1.5px solid #cbd5e1`,borderRadius:10,padding:0,
                       marginBottom:14,background:C.white,boxShadow:"0 1px 4px rgba(0,0,0,.06)",overflow:"hidden"}}>
                     <div style={{display:"flex",gap:6,padding:"8px 10px",background:"#f1f5f9",borderBottom:"1px solid #e2e8f0"}}>
-                      <input placeholder="Floor" value={a.floor} onChange={e=>updateArea(a.id,"floor",e.target.value)}
-                        style={{...I,flex:1,height:28,fontSize:11,fontWeight:700}} />
                       <select value={a.area_type} onChange={e=>updateArea(a.id,"area_type",e.target.value)}
                         style={{...I,flex:1,height:28,fontSize:11,fontWeight:700}}>
                         {RELEVANT_AREA_TYPES.map(t=><option key={t} value={t}>{t}</option>)}
@@ -644,9 +690,9 @@ export default function BoardPlasterEstimate(){
                     </div>
                   </div>
                 ))}
-              </div>
+              </>
             );
-          })}
+          })()}
 
           <button onClick={addArea} style={{...Btn,width:"100%",justifyContent:"center"}}>+ Add Area</button>
         </div>
