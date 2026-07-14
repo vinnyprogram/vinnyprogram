@@ -182,7 +182,7 @@ export default function BoardPlasterEstimate(){
         if(est){
           setSelectedLeadId(String(est.customer_id||""));
           setAddress(est.address||"");
-          setAreas(est.areas||[]);
+          setAreas((est.areas||[]).map(a=>({...a,_expanded:false})));
           const existingFloors = [...new Set((est.areas||[]).map(a=>a.floor).filter(Boolean))];
           setFloorNames(sortFloors(existingFloors.length?existingFloors:["Attic"]));
           setActiveFloor(sortFloors(existingFloors)[0] || "Attic");
