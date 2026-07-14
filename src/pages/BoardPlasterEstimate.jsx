@@ -507,16 +507,18 @@ export default function BoardPlasterEstimate(){
                   <span style={{fontSize:12,color:C.muted}}>{fmt(groupSqft)} ft² total</span>
                 </div>
                 {g.rows.map(a=>(
-                  <div key={a.id} style={{border:`1px solid ${C.border}`,borderRadius:8,padding:"8px 10px",marginBottom:8}}>
-                    <div style={{display:"flex",gap:6,marginBottom:6}}>
+                  <div key={a.id} style={{border:`1.5px solid #cbd5e1`,borderRadius:10,padding:0,
+                      marginBottom:14,background:C.white,boxShadow:"0 1px 4px rgba(0,0,0,.06)",overflow:"hidden"}}>
+                    <div style={{display:"flex",gap:6,padding:"8px 10px",background:"#f1f5f9",borderBottom:"1px solid #e2e8f0"}}>
                       <input placeholder="Floor" value={a.floor} onChange={e=>updateArea(a.id,"floor",e.target.value)}
-                        style={{...I,flex:1,height:28,fontSize:11}} />
+                        style={{...I,flex:1,height:28,fontSize:11,fontWeight:700}} />
                       <select value={a.area_type} onChange={e=>updateArea(a.id,"area_type",e.target.value)}
-                        style={{...I,flex:1,height:28,fontSize:11}}>
+                        style={{...I,flex:1,height:28,fontSize:11,fontWeight:700}}>
                         {RELEVANT_AREA_TYPES.map(t=><option key={t} value={t}>{t}</option>)}
                       </select>
                       <button onClick={()=>removeArea(a.id)} style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:15}}>✕</button>
                     </div>
+                    <div style={{padding:"10px 12px"}}>
 
                     {/* On-site measuring: add one or more H×L segments; total sqft is computed automatically */}
                     <div style={{display:"flex",alignItems:"center",gap:4,marginBottom:6}}>
@@ -582,6 +584,7 @@ export default function BoardPlasterEstimate(){
                         style={{...I,flex:2,height:28,fontSize:11}}>
                         {FINISH_OPTIONS.map(f=><option key={f} value={f}>{f}</option>)}
                       </select>
+                    </div>
                     </div>
                   </div>
                 ))}
