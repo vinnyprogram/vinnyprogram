@@ -409,10 +409,21 @@ export default function BoardPlasterEstimate(){
   function updateDeduct(id, value){
     setAreas(p=>p.map(a=>{
       if(a.id!==id) return a;
-      const d = parseFloat(value)||0;
-      const raw = (a.measurements||[]).reduce((s,m)=>s+m.sqft,0);
-      const total = (a.measurements||[]).length>0 ? Math.max(0,Math.round((raw-d)*100)/100) : a.sqft;
-      return {...a, deduct:value, sqft: (a.measurements||[]).length>0 ? total : a.sqft};
+      const newD = parseFloat(value)||0;
+      const hasMeasurements = (a.measurements||[]).length>0;
+      // For areas with real measurements, the un-deducted baseline is
+      // always just their sum (stable, unaffected by any previous
+      // deduction). For areas without measurements (e.g. some imports
+      // that only ever had a flat total), reconstruct the un-deducted
+      // baseline from the current sqft + whatever deduct was already
+      // applied - otherwise deducting had no effect at all for those,
+      // and re-deducting repeatedly would double-subtract if done naively.
+      const oldD = parseFloat(a.deduct)||0;
+      const raw = hasMeasurements
+        ? a.measurements.reduce((s,m)=>s+m.sqft,0)
+        : (Number(a.sqft)||0) + oldD;
+      const newSqft = Math.max(0, Math.round((raw-newD)*100)/100);
+      return {...a, deduct:value, sqft:newSqft};
     }));
   }
 
@@ -640,10 +651,11 @@ export default function BoardPlasterEstimate(){
                               onChange={e=>updateArea(a.id,"thicknessOther",e.target.value)}
                               style={{...I,width:44,flexShrink:0,height:26,fontSize:10,padding:"0 4px"}} />
                           )}
-                          <select value={a.finish} onClick={e=>e.stopPropagation()} onChange={e=>updateArea(a.id,"finish",e.target.value)}
-                            style={{...I,flex:1,minWidth:0,height:26,fontSize:10,padding:"0 4px"}}>
-                            {FINISH_OPTIONS.map(f=><option key={f} value={f}>{f}</option>)}
-                          </select>
+                          <button onClick={(e)=>{e.stopPropagation();updateArea(a.id,"_expanded",false);}}
+                            style={{border:"1px solid #059669",background:"#f0fdf4",color:"#059669",cursor:"pointer",
+                              fontSize:10,fontWeight:700,padding:"4px 8px",borderRadius:6,marginLeft:"auto"}}>
+                            ✓ Done
+                          </button>
                         </>
                       ) : (
                         <div style={{flex:1,minWidth:0}}>
@@ -657,8 +669,8 @@ export default function BoardPlasterEstimate(){
                         </div>
                       )}
                       {!expanded && <span style={{fontSize:12,fontWeight:700,color:"#059669",whiteSpace:"nowrap"}}>{fmt(a.sqft||0)} ft²</span>}
-                      <span style={{fontSize:11,color:C.faint}}>{expanded?"▲":"✏️"}</span>
-                      <button onClick={(e)=>{e.stopPropagation();removeArea(a.id);}} style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:15}}>✕</button>
+                      <span style={{fontSize:11,color:C.faint,marginLeft:expanded?6:0}}>{expanded?"▲":"✏️"}</span>
+                      <button onClick={(e)=>{e.stopPropagation();removeArea(a.id);}} style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:15,marginLeft:4}}>✕</button>
                     </div>
                     {expanded && (
                     <div style={{padding:"10px 12px"}}>
@@ -700,20 +712,20 @@ export default function BoardPlasterEstimate(){
                         ))}
                       </div>
                     )}
-                    <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6}}>
+                    <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6,flexWrap:"wrap"}}>
                       <span style={{fontSize:10,color:C.faint,whiteSpace:"nowrap"}}>− deduct</span>
                       <input placeholder="ft²" inputMode="decimal" value={a.deduct||""}
                         onChange={e=>updateDeduct(a.id,e.target.value)}
-                        style={{...I,width:70,height:24,fontSize:11}} />
+                        style={{...I,width:60,height:24,fontSize:11}} />
                       <span style={{fontSize:10,color:C.faint}}>(windows, doors, openings)</span>
+                      <select value={a.finish} onChange={e=>updateArea(a.id,"finish",e.target.value)}
+                        style={{...I,width:120,flexShrink:0,height:24,fontSize:10,marginLeft:10,padding:"0 4px"}}>
+                        {FINISH_OPTIONS.map(f=><option key={f} value={f}>{f}</option>)}
+                      </select>
                     </div>
                     <input placeholder="Note for this area (e.g. include rim joist, exclude closet)" value={a.note||""}
                       onChange={e=>updateArea(a.id,"note",e.target.value)}
                       style={{...I,width:"100%",height:26,fontSize:11,marginBottom:6}} />
-                    <button onClick={()=>updateArea(a.id,"_expanded",false)}
-                      style={{...Btn,width:"100%",justifyContent:"center",marginTop:2,color:"#059669",borderColor:"#059669"}}>
-                      ✓ Done
-                    </button>
                     </div>
                     )}
                   </div>
