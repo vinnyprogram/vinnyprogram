@@ -1204,7 +1204,7 @@ export default function HersFieldMeasurements() {
             const key = `${a.floor||"Other"}||${a.area_type}`;
             if(!combined[key]) combined[key] = { sqft:0, measurements:[] };
             combined[key].sqft += Number(a.sqft);
-            combined[key].measurements.push(...(a.measurements||[]).map(m=>({h:m.h,l:m.l,q:m.q||1,sqft:m.sqft,note:""})));
+            combined[key].measurements.push(...(a.measurements||[]).map(m=>({h:m.h,l:m.l,q:m.q||1,sqft:m.sqft})));
           });
       });
       pushAreas = Object.entries(combined).map(([key,val])=>{
@@ -1216,7 +1216,7 @@ export default function HersFieldMeasurements() {
       pushAreas = Object.entries(areas).flatMap(([floorName,floorAreas])=>
         floorAreas.filter(a=>a.area_type && RELEVANT.includes(a.area_type) && a.sqft>0)
           .map(a=>({ id:uid(), floor:floorName, area_type:a.area_type, sqft:a.sqft, thickness:defaultThickness(a.area_type), thicknessOther:"", layers:1,
-            measurements:(a.measurements||[]).map(m=>({h:m.h,l:m.l,q:m.q||1,sqft:m.sqft,note:""})), mh:"",ml:"",mq:"1", deduct:a.deduct_sqft||"", note:"", finish:"Smooth skim coat" }))
+            measurements:(a.measurements||[]).map(m=>({h:m.h,l:m.l,q:m.q||1,sqft:m.sqft})), mh:"",ml:"",mq:"1", deduct:a.deduct_sqft||"", note:"", finish:"Smooth skim coat" }))
       );
     }
 

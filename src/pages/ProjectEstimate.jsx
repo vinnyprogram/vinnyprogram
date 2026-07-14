@@ -2170,7 +2170,7 @@ export default function ProjectEstimate() {
       .map(a=>({
         id:Date.now()+Math.random(), floor, area_type:a.area_type, sqft:a.sqft,
         thickness:'1/2"', thicknessOther:"", layers:1,
-        measurements:(a.measurements||[]).map(m=>({h:m.h,l:m.l,q:m.q||1,sqft:m.sqft,note:""})),
+        measurements:(a.measurements||[]).map(m=>({h:m.h,l:m.l,q:m.q||1,sqft:m.sqft})),
         mh:"", ml:"", mq:"1", deduct:a.deduct_sqft||"", note:"",
         finish:"Smooth skim coat",
       })));

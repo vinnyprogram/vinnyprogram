@@ -259,7 +259,7 @@ export default function BoardPlasterEstimate(){
           const [floor,area_type] = key.split("||");
           return {
             id: uid(), floor, area_type, sqft: Math.round(sqft*100)/100,
-            thickness: defaultThickness(area_type), thicknessOther: "", layers: 1, measurements: [], mh:"", ml:"", mq:"1", deduct:"", finish: FINISH_OPTIONS[0],
+            thickness: defaultThickness(area_type), thicknessOther: "", layers: 1, measurements: [], mh:"", ml:"", mq:"1", deduct:"", note:"", finish: FINISH_OPTIONS[0],
           };
         });
         sourceLabel = cand.address||"HERS estimate";
@@ -279,7 +279,7 @@ export default function BoardPlasterEstimate(){
   }
 
   function addArea(){
-    setAreas(p=>[...p,{ id: uid(), floor:"", area_type:"Exterior Wall", sqft:"", thickness:'1/2"', thicknessOther:"", layers:1, measurements:[], mh:"", ml:"", mq:"1", deduct:"", finish: FINISH_OPTIONS[0] }]);
+    setAreas(p=>[...p,{ id: uid(), floor:"", area_type:"Exterior Wall", sqft:"", thickness:'1/2"', thicknessOther:"", layers:1, measurements:[], mh:"", ml:"", mq:"1", deduct:"", note:"", finish: FINISH_OPTIONS[0] }]);
   }
   function updateArea(id, field, value){
     setAreas(p=>p.map(a=>{
@@ -314,7 +314,7 @@ export default function BoardPlasterEstimate(){
       const existingMeas = (a.measurements||[]).length===0 && Number(a.sqft)>0
         ? [{h:"imported",l:"",q:1,sqft:Number(a.sqft)}]
         : (a.measurements||[]);
-      const meas = [...existingMeas, {h,l,q,sqft:rowSqft,note:""}];
+      const meas = [...existingMeas, {h,l,q,sqft:rowSqft}];
       const d = parseFloat(a.deduct)||0;
       const total = Math.max(0, Math.round((meas.reduce((s,m)=>s+m.sqft,0)-d)*100)/100);
       return {...a, measurements:meas, sqft:total, mh:"", ml:"", mq:"1"};
@@ -327,13 +327,6 @@ export default function BoardPlasterEstimate(){
       const d = parseFloat(a.deduct)||0;
       const total = Math.max(0, Math.round((meas.reduce((s,m)=>s+m.sqft,0)-d)*100)/100);
       return {...a, measurements:meas, sqft:total};
-    }));
-  }
-  function updateMeasurementNote(id, idx, note){
-    setAreas(p=>p.map(a=>{
-      if(a.id!==id) return a;
-      const meas = (a.measurements||[]).map((m,i)=>i===idx?{...m,note}:m);
-      return {...a, measurements:meas};
     }));
   }
   function updateDeduct(id, value){
@@ -548,18 +541,15 @@ export default function BoardPlasterEstimate(){
                     {(a.measurements||[]).length>0 && (
                       <div style={{marginBottom:6}}>
                         {a.measurements.map((m,mi)=>(
-                          <div key={mi} style={{display:"flex",alignItems:"center",gap:4,
-                              background:"#f8fafc",borderRadius:4,padding:"3px 6px",marginBottom:3}}>
-                            <span style={{fontSize:10,color:C.muted,whiteSpace:"nowrap"}}>
+                          <span key={mi} style={{display:"inline-flex",alignItems:"center",gap:2,
+                              background:"#f8fafc",borderRadius:4,padding:"3px 7px",marginRight:4,marginBottom:3,fontSize:10}}>
+                            <span style={{color:C.muted,whiteSpace:"nowrap"}}>
                               {m.h==="imported" ? "Imported total" : `${m.h}×${m.l}${m.q>1?`×${m.q}`:""}`}
                             </span>
-                            <b style={{fontSize:10,color:C.ink,whiteSpace:"nowrap"}}>{fmt(m.sqft)}</b>
-                            <input placeholder="note (e.g. window opening)" value={m.note||""}
-                              onChange={e=>updateMeasurementNote(a.id,mi,e.target.value)}
-                              style={{...I,flex:1,height:22,fontSize:10,padding:"0 6px",background:"white"}} />
+                            <b style={{color:C.ink,whiteSpace:"nowrap"}}>&nbsp;{fmt(m.sqft)}</b>
                             <button onClick={()=>delMeasurement(a.id,mi)}
-                              style={{border:"none",background:"none",cursor:"pointer",color:C.faint,fontSize:12,padding:0,lineHeight:1,flexShrink:0}}>✕</button>
-                          </div>
+                              style={{border:"none",background:"none",cursor:"pointer",color:C.faint,fontSize:11,padding:0,lineHeight:1,marginLeft:2}}>✕</button>
+                          </span>
                         ))}
                       </div>
                     )}
@@ -570,6 +560,9 @@ export default function BoardPlasterEstimate(){
                         style={{...I,width:70,height:24,fontSize:11}} />
                       <span style={{fontSize:10,color:C.faint}}>(windows, doors, openings)</span>
                     </div>
+                    <input placeholder="Note for this area (e.g. include rim joist, exclude closet)" value={a.note||""}
+                      onChange={e=>updateArea(a.id,"note",e.target.value)}
+                      style={{...I,width:"100%",height:26,fontSize:11,marginBottom:6}} />
                     <div style={{display:"flex",gap:6}}>
                       <select value={a.thickness} onChange={e=>updateArea(a.id,"thickness",e.target.value)}
                         style={{...I,flex:1,height:28,fontSize:11}}>
