@@ -355,7 +355,7 @@ export default function BoardPlasterEstimate(){
   }
 
   function addArea(){
-    setAreas(p=>[...p,{ id: uid(), floor:activeFloor, area_type:"Exterior Wall", sqft:"", thickness:'1/2"', thicknessOther:"", layers:1, measurements:[], mh:"", ml:"", mq:"1", deduct:"", note:"", finish: FINISH_OPTIONS[0] }]);
+    setAreas(p=>[...p,{ id: uid(), floor:activeFloor, area_type:"Exterior Wall", sqft:"", thickness:'1/2"', thicknessOther:"", layers:1, measurements:[], mh:"", ml:"", mq:"1", deduct:"", note:"", finish: FINISH_OPTIONS[0], _expanded:true }]);
   }
   function updateArea(id, field, value){
     setAreas(p=>p.map(a=>{
@@ -599,8 +599,10 @@ export default function BoardPlasterEstimate(){
             const floorTotal = floorAreas.reduce((s,a)=>s+(Number(a.sqft)||0),0);
             return (
               <>
-                <div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}>
-                  <span style={{fontWeight:700,fontSize:13}}>+ Add area to {activeFloor}</span>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                  <button onClick={addArea} style={{border:"none",background:"none",color:"#7c3aed",fontWeight:700,fontSize:13,cursor:"pointer",padding:0}}>
+                    + Add area to {activeFloor}
+                  </button>
                   <span style={{fontSize:12,color:C.muted}}>{fmt(floorTotal)} ft² total</span>
                 </div>
 
@@ -610,16 +612,36 @@ export default function BoardPlasterEstimate(){
                   </div>
                 )}
 
-                {floorAreas.map(a=>(
+                {floorAreas.map(a=>{
+                  const expanded = a._expanded!==false; // default expanded for new/incomplete areas
+                  const thickLabel = a.thickness==="Other" ? (a.thicknessOther||"Other") : a.thickness;
+                  return (
                   <div key={a.id} style={{border:`1.5px solid #cbd5e1`,borderRadius:10,padding:0,
                       marginBottom:14,background:C.white,boxShadow:"0 1px 4px rgba(0,0,0,.06)",overflow:"hidden"}}>
-                    <div style={{display:"flex",gap:6,padding:"8px 10px",background:"#f1f5f9",borderBottom:"1px solid #e2e8f0"}}>
-                      <select value={a.area_type} onChange={e=>updateArea(a.id,"area_type",e.target.value)}
-                        style={{...I,flex:1,height:28,fontSize:11,fontWeight:700}}>
-                        {RELEVANT_AREA_TYPES.map(t=><option key={t} value={t}>{t}</option>)}
-                      </select>
-                      <button onClick={()=>removeArea(a.id)} style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:15}}>✕</button>
+                    <div onClick={()=>updateArea(a.id,"_expanded",!expanded)}
+                      style={{display:"flex",gap:6,alignItems:"center",padding:"8px 10px",background:"#f1f5f9",
+                        borderBottom:expanded?"1px solid #e2e8f0":"none",cursor:"pointer"}}>
+                      {expanded ? (
+                        <select value={a.area_type} onClick={e=>e.stopPropagation()} onChange={e=>updateArea(a.id,"area_type",e.target.value)}
+                          style={{...I,width:130,flexShrink:0,height:28,fontSize:11,fontWeight:700}}>
+                          {RELEVANT_AREA_TYPES.map(t=><option key={t} value={t}>{t}</option>)}
+                        </select>
+                      ) : (
+                        <div style={{flex:1,minWidth:0}}>
+                          <div style={{fontWeight:700,fontSize:12,color:"#0f172a"}}>{a.area_type}</div>
+                          <div style={{fontSize:10,color:"#64748b"}}>
+                            {thickLabel} · {a.finish} · {fmt(a.sqft||0)} ft²
+                            {(a.measurements||[]).length>0 && (
+                              <span> ({a.measurements.map(m=>m.h==="imported"?"imported":`${m.h}×${m.l}`).join(" ")})</span>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                      {!expanded && <span style={{fontSize:12,fontWeight:700,color:"#059669",whiteSpace:"nowrap"}}>{fmt(a.sqft||0)} ft²</span>}
+                      <span style={{fontSize:11,color:C.faint}}>{expanded?"▲":"✏️"}</span>
+                      <button onClick={(e)=>{e.stopPropagation();removeArea(a.id);}} style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:15}}>✕</button>
                     </div>
+                    {expanded && (
                     <div style={{padding:"10px 12px"}}>
 
                     {/* On-site measuring: add one or more H×L segments; total sqft is computed automatically.
@@ -629,17 +651,17 @@ export default function BoardPlasterEstimate(){
                       <input placeholder="Qty" inputMode="decimal" value={a.mq||"1"}
                         onChange={e=>updateArea(a.id,"mq",e.target.value)}
                         onKeyDown={e=>e.key==="Enter"&&commitMeasurement(a.id)}
-                        style={{...I,width:44,flexShrink:0,height:28,fontSize:11,textAlign:"center"}} />
+                        style={{...I,width:36,flexShrink:0,height:26,fontSize:11,textAlign:"center",padding:0}} />
                       <span style={{fontSize:10,color:C.faint}}>×</span>
                       <input placeholder="H" inputMode="decimal" value={a.mh||""}
                         onChange={e=>updateArea(a.id,"mh",e.target.value)}
                         onKeyDown={e=>e.key==="Enter"&&commitMeasurement(a.id)}
-                        style={{...I,flex:1,height:28,fontSize:11,textAlign:"center"}} />
+                        style={{...I,width:60,flexShrink:0,height:26,fontSize:11,textAlign:"center",padding:0}} />
                       <span style={{fontSize:10,color:C.faint}}>×</span>
                       <input placeholder="L" inputMode="decimal" value={a.ml||""}
                         onChange={e=>updateArea(a.id,"ml",e.target.value)}
                         onBlur={()=>commitMeasurement(a.id)} onKeyDown={e=>e.key==="Enter"&&commitMeasurement(a.id)}
-                        style={{...I,flex:1,height:28,fontSize:11,textAlign:"center"}} />
+                        style={{...I,width:60,flexShrink:0,height:26,fontSize:11,textAlign:"center",padding:0}} />
                       <span style={{fontSize:11,fontWeight:700,color:C.green,whiteSpace:"nowrap",marginLeft:2}}>
                         {fmt(a.sqft||0)} ft²
                       </span>
@@ -678,25 +700,25 @@ export default function BoardPlasterEstimate(){
                         <input placeholder="Custom size" value={a.thicknessOther||""} onChange={e=>updateArea(a.id,"thicknessOther",e.target.value)}
                           style={{...I,flex:1,height:28,fontSize:11}} />
                       )}
-                      <select value={a.layers||1} onChange={e=>updateArea(a.id,"layers",Number(e.target.value))}
-                        title="Number of board layers" style={{...I,width:80,flexShrink:0,height:28,fontSize:11}}>
-                        <option value={1}>1 layer</option>
-                        <option value={2}>2 layers</option>
-                        <option value={3}>3 layers</option>
-                      </select>
                       <select value={a.finish} onChange={e=>updateArea(a.id,"finish",e.target.value)}
                         style={{...I,flex:2,height:28,fontSize:11}}>
                         {FINISH_OPTIONS.map(f=><option key={f} value={f}>{f}</option>)}
                       </select>
                     </div>
+                    <button onClick={()=>updateArea(a.id,"_expanded",false)}
+                      style={{...Btn,width:"100%",justifyContent:"center",marginTop:8,color:"#059669",borderColor:"#059669"}}>
+                      ✓ Done
+                    </button>
                     </div>
+                    )}
                   </div>
-                ))}
+                  );
+                })}
               </>
             );
           })()}
 
-          <button onClick={addArea} style={{...Btn,width:"100%",justifyContent:"center"}}>+ Add Area</button>
+          <button onClick={addArea} style={{...Btn,width:"100%",justifyContent:"center"}}>+ Add Area to {activeFloor}</button>
         </div>
 
         {/* Line Items */}
