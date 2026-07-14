@@ -623,9 +623,14 @@ export default function BoardPlasterEstimate(){
                     <div style={{padding:"10px 12px"}}>
 
                     {/* On-site measuring: add one or more H×L segments; total sqft is computed automatically.
-                        Commit only fires when leaving the Qty field (or hitting Enter anywhere) - not on
-                        H or L individually, so tabbing H -> L -> Qty lets you actually set Qty before it commits. */}
+                        Commit only fires when leaving the LAST field (L) - or hitting Enter anywhere -
+                        so tabbing Qty -> H -> L lets you set Qty first before anything commits. */}
                     <div style={{display:"flex",alignItems:"center",gap:4,marginBottom:6}}>
+                      <input placeholder="Qty" inputMode="decimal" value={a.mq||"1"}
+                        onChange={e=>updateArea(a.id,"mq",e.target.value)}
+                        onKeyDown={e=>e.key==="Enter"&&commitMeasurement(a.id)}
+                        style={{...I,width:44,flexShrink:0,height:28,fontSize:11,textAlign:"center"}} />
+                      <span style={{fontSize:10,color:C.faint}}>×</span>
                       <input placeholder="H" inputMode="decimal" value={a.mh||""}
                         onChange={e=>updateArea(a.id,"mh",e.target.value)}
                         onKeyDown={e=>e.key==="Enter"&&commitMeasurement(a.id)}
@@ -633,13 +638,8 @@ export default function BoardPlasterEstimate(){
                       <span style={{fontSize:10,color:C.faint}}>×</span>
                       <input placeholder="L" inputMode="decimal" value={a.ml||""}
                         onChange={e=>updateArea(a.id,"ml",e.target.value)}
-                        onKeyDown={e=>e.key==="Enter"&&commitMeasurement(a.id)}
-                        style={{...I,flex:1,height:28,fontSize:11,textAlign:"center"}} />
-                      <span style={{fontSize:10,color:C.faint}}>×</span>
-                      <input placeholder="Qty" inputMode="decimal" value={a.mq||"1"}
-                        onChange={e=>updateArea(a.id,"mq",e.target.value)}
                         onBlur={()=>commitMeasurement(a.id)} onKeyDown={e=>e.key==="Enter"&&commitMeasurement(a.id)}
-                        style={{...I,width:44,flexShrink:0,height:28,fontSize:11,textAlign:"center"}} />
+                        style={{...I,flex:1,height:28,fontSize:11,textAlign:"center"}} />
                       <span style={{fontSize:11,fontWeight:700,color:C.green,whiteSpace:"nowrap",marginLeft:2}}>
                         {fmt(a.sqft||0)} ft²
                       </span>
