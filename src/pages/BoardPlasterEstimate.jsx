@@ -267,7 +267,7 @@ export default function BoardPlasterEstimate(){
 
       if(!imported.length){ alert(`No wall/ceiling areas found on "${sourceLabel}" to import.`); setImporting(false); setImportCandidates(null); return; }
       setAreas(prev=>[...prev, ...imported]);
-      if(!address) setAddress(cand.address||"");
+      if(cand.address) setAddress(cand.address); // always take the source job's address - it's the correct one for whatever you're importing from
       setImportCandidates(null);
       alert(`✅ Imported ${imported.length} area(s) from ${cand.source==="hers"?"HERS":"Insulation"} — "${sourceLabel}" (${cand.status}). Review board thickness/finish for each below.`);
     } catch(err){
