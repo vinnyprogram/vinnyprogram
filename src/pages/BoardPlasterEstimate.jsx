@@ -35,9 +35,16 @@ const CARD = {
 
 const THICKNESS_OPTIONS = ['1/2"', '3/8"', '5/8"', "Other"];
 const FINISH_OPTIONS = ["Smooth skim coat", "Level 4 finish", "Texture/orange peel", "Knockdown texture"];
-// Which insulation area types are relevant to board & plaster (skip
-// Attic/Roof Rafter/Rim Joist/Concrete Wall - those are insulation-only).
-const RELEVANT_AREA_TYPES = ["Exterior Wall", "Interior Walls", "Demising Wall", "Ceiling", "Fire Blocking"];
+// Every insulation area type is importable now, matching the full list
+// insulation itself uses - rather than pre-filtering to a "relevant"
+// subset, bring everything across and let the user delete whatever
+// doesn't apply to plaster themselves (e.g. Rim Joist is sometimes
+// needed, sometimes not - that's a judgment call per job, not a fixed rule).
+const RELEVANT_AREA_TYPES = [
+  "Roof Rafter w/ Strapping","Roof Rafter behind knee walls","Floor",
+  "Exterior Wall","Demising Wall","Rim Joist","Concrete Wall",
+  "Ceiling","Interior Walls","Fire Blocking","Other",
+];
 // Demising walls (the wall between two units) commonly need fire-rated
 // 5/8" board (often two layers per code) rather than the standard 1/2"
 // used for exterior/interior walls and ceilings - default accordingly,

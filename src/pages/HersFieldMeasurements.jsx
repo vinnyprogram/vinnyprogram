@@ -1173,7 +1173,9 @@ export default function HersFieldMeasurements() {
 
   async function pushToBoardPlaster(){
     if(!invoice?.customer_id) return;
-    const RELEVANT = ["Exterior Wall","Interior Walls","Demising Wall","Ceiling","Fire Blocking"];
+    // Push every area type, not just a pre-filtered "relevant" subset - let
+    // the user delete whatever doesn't apply to plaster on the other side.
+    const RELEVANT = ["Roof Rafter w/ Strapping","Roof Rafter behind knee walls","Floor","Exterior Wall","Demising Wall","Rim Joist","Concrete Wall","Ceiling","Interior Walls","Fire Blocking","Other"];
     const defaultThickness = (t)=> t==="Demising Wall" ? '5/8"' : '1/2"';
 
     let pushAreas = [];

@@ -1735,8 +1735,12 @@ export default function ProjectEstimate() {
       // When an area is expanded (un-collapsed), move it to position 0
       // so it's always at the top — important for mobile where the screen
       // is small and you need to see the active area without scrolling.
+      // Also collapse every OTHER area on this floor (accordion behavior) -
+      // having several areas open at once made it easy to lose track of
+      // which one you were actually editing.
       if(field==="_collapsed" && value===false){
-        const area=upd.splice(idx,1)[0];
+        const area={...upd.splice(idx,1)[0], _collapsed:false};
+        upd.forEach((a,i)=>{ upd[i] = {...a, _collapsed:true}; });
         upd.unshift(area);
         setTimeout(()=>{ areaListRef.current?.scrollTo({top:0,behavior:"smooth"}); }, 60);
       }
@@ -2150,7 +2154,10 @@ export default function ProjectEstimate() {
 
   async function pushToBoardPlaster(){
     if(!selectedLeadId) return;
-    const RELEVANT = ["Exterior Wall","Interior Walls","Demising Wall","Ceiling","Fire Blocking"];
+    // Push every area type, not just a pre-filtered "relevant" subset - let
+    // the user delete whatever doesn't apply to plaster on the other side
+    // (e.g. Rim Joist is sometimes needed, sometimes not).
+    const RELEVANT = ["Roof Rafter w/ Strapping","Roof Rafter behind knee walls","Floor","Exterior Wall","Demising Wall","Rim Joist","Concrete Wall","Ceiling","Interior Walls","Fire Blocking","Other"];
     const rawAreas = floors.flatMap(floor=>(areas[floor]||[])
       .filter(a=>a.area_type && RELEVANT.includes(a.area_type) && a.sqft>0)
       .map(a=>({floor,area_type:a.area_type,sqft:a.sqft})));
