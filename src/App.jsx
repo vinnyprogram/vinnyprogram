@@ -37,7 +37,6 @@ function Dashboard() {
         <div style={{fontSize:22,fontWeight:700,color:"#0f172a",marginBottom:8}}>
           NEX
         </div>
-        <div style={{fontSize:14}}>Select an option from the menu</div>
       </div>
     </div>
   );
