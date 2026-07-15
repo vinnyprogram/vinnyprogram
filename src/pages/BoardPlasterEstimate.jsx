@@ -131,6 +131,7 @@ export default function BoardPlasterEstimate(){
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [companyId, setCompanyId] = useState(null);
+  const [companyAreaTypes, setCompanyAreaTypes] = useState([]); // company's Settings-configured list (list_area_type) - authoritative when present
   const [bottomPanelOpen, setBottomPanelOpen] = useState(false);
 
   // customer
@@ -173,6 +174,11 @@ export default function BoardPlasterEstimate(){
       const { data:{user} } = await supabase.auth.getUser();
       const { data:cd } = await supabase.from("companies").select("id").eq("user_id",user.id).maybeSingle();
       setCompanyId(cd?.id||null);
+      if(cd?.id){
+        const { data:listRows } = await supabase.from("cost_settings").select("name,sort_order")
+          .eq("company_id",cd.id).eq("period","list_area_type").order("sort_order");
+        if(listRows?.length) setCompanyAreaTypes(listRows.map(r=>r.name));
+      }
       const { data:ls } = await supabase.from("customers").select("id,name,phone,company_name,address,email").order("name").limit(1000);
       setLeads(ls||[]);
 
@@ -266,7 +272,7 @@ export default function BoardPlasterEstimate(){
         (projFloors||[]).forEach(f=>{ floorMap[f.id]=f.name; });
 
         const rawAreas = (projAreas||[])
-          .filter(a=>a.area_type && RELEVANT_AREA_TYPES.includes(a.area_type) && a.sqft>0);
+          .filter(a=>a.area_type && (companyAreaTypes.length?companyAreaTypes:RELEVANT_AREA_TYPES).includes(a.area_type) && a.sqft>0);
         // Combo materials (e.g. Open Cell + another layer on the same wall)
         // are stored as multiple rows sharing the SAME floor, area_type, and
         // full sqft. Dedupe down to one entry per unique combination so the
@@ -321,7 +327,7 @@ export default function BoardPlasterEstimate(){
           } else {
             flatAreas = savedAreas.map(a=>({...a,floor:a.floor||"Other"}));
           }
-          flatAreas.filter(a=>a.area_type && RELEVANT_AREA_TYPES.includes(a.area_type) && a.sqft>0)
+          flatAreas.filter(a=>a.area_type && (companyAreaTypes.length?companyAreaTypes:RELEVANT_AREA_TYPES).includes(a.area_type) && a.sqft>0)
             .forEach(a=>{
               const key = `${a.floor||"Other"}||${a.area_type}`;
               totals[key] = (totals[key]||0) + Number(a.sqft);
@@ -663,7 +669,7 @@ export default function BoardPlasterEstimate(){
                         <>
                           <select value={a.area_type} onClick={e=>e.stopPropagation()} onChange={e=>updateArea(a.id,"area_type",e.target.value)}
                             style={{...I,width:220,flexShrink:0,height:26,fontSize:10,fontWeight:700,padding:"0 4px"}}>
-                            {RELEVANT_AREA_TYPES.map(t=><option key={t} value={t}>{t}</option>)}
+                            {(companyAreaTypes.length?companyAreaTypes:RELEVANT_AREA_TYPES).map(t=><option key={t} value={t}>{t}</option>)}
                           </select>
                           <select value={a.thickness} onClick={e=>e.stopPropagation()} onChange={e=>updateArea(a.id,"thickness",e.target.value)}
                             style={{...I,width:64,flexShrink:0,height:26,fontSize:10,padding:"0 2px"}}>
