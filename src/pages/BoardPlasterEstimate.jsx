@@ -293,7 +293,7 @@ export default function BoardPlasterEstimate(){
             id: uid(), floor: floorMap[a.floor_id]||"Other", area_type: a.area_type, sqft: a.sqft,
             thickness: defaultThickness(a.area_type), thicknessOther: "", layers: 1,
             measurements: segsByArea[a.id]||[], mh:"", ml:"", mq:"1", deduct:"", note:"",
-            finish: FINISH_OPTIONS[0],
+            finish: FINISH_OPTIONS[0], _from_import:true,
           }));
         sourceLabel = cand.name||cand.address;
       } else {
@@ -332,21 +332,44 @@ export default function BoardPlasterEstimate(){
           const [floor,area_type] = key.split("||");
           return {
             id: uid(), floor, area_type, sqft: Math.round(sqft*100)/100,
-            thickness: defaultThickness(area_type), thicknessOther: "", layers: 1, measurements: [], mh:"", ml:"", mq:"1", deduct:"", note:"", finish: FINISH_OPTIONS[0],
+            thickness: defaultThickness(area_type), thicknessOther: "", layers: 1, measurements: [], mh:"", ml:"", mq:"1", deduct:"", note:"", finish: FINISH_OPTIONS[0], _from_import:true,
           };
         });
         sourceLabel = cand.address||"HERS estimate";
       }
 
-      if(!imported.length){ alert(`No wall/ceiling areas found on "${sourceLabel}" to import.`); setImporting(false); setImportCandidates(null); return; }
-      const shouldReplace = areas.length===0 || window.confirm(`You already have ${areas.length} area(s) on this estimate. Replace them with the ${imported.length} freshly imported area(s)?\n\nTap Cancel to add the imported areas alongside your existing ones instead (may create duplicates if you're re-importing the same job).`);
-      if(shouldReplace){ setAreas(imported); } else { setAreas(prev=>[...prev, ...imported]); }
+     if(!imported.length){ alert(`No wall/ceiling areas found on "${sourceLabel}" to import.`); setImporting(false); setImportCandidates(null); return; }
+
+      // Smart merge: match existing previously-imported areas to the fresh
+      // import by floor+area_type. Manually-added areas (never imported) are
+      // left untouched. Areas removed from the source disappear here too,
+      // instead of lingering as stale duplicates or getting wiped alongside
+      // manual edits.
+      const keyOf = a => `${a.floor||"Other"}||${a.area_type}`;
+      const manualAreas = areas.filter(a=>!a._from_import);
+      const prevImportedByKey = {};
+      areas.filter(a=>a._from_import).forEach(a=>{ prevImportedByKey[keyOf(a)] = a; });
+
+      let updatedCount = 0, addedCount = 0, removedCount = 0;
+      const mergedImported = imported.map(fresh=>{
+        const prior = prevImportedByKey[keyOf(fresh)];
+        if(prior){
+          updatedCount++;
+          return { ...prior, sqft: fresh.sqft, measurements: fresh.measurements };
+        }
+        addedCount++;
+        return fresh;
+      });
+      const freshKeys = new Set(imported.map(keyOf));
+      removedCount = Object.keys(prevImportedByKey).filter(k=>!freshKeys.has(k)).length;
+
+      setAreas([...manualAreas, ...mergedImported]);
       const importedFloors = [...new Set(imported.map(a=>a.floor).filter(Boolean))];
       setFloorNames(prev=>sortFloors([...new Set([...prev, ...importedFloors])]));
       if(importedFloors.length) setActiveFloor(sortFloors(importedFloors)[0]);
-      if(cand.address) setAddress(cand.address); // always take the source job's address - it's the correct one for whatever you're importing from
+      if(cand.address) setAddress(cand.address);
       setImportCandidates(null);
-      alert(`✅ Imported ${imported.length} area(s) from ${cand.source==="hers"?"HERS":"Insulation"} — "${sourceLabel}" (${cand.status}). Review board thickness/finish for each below.`);
+      alert(`✅ Synced from ${cand.source==="hers"?"HERS":"Insulation"} — "${sourceLabel}" (${cand.status}).\n${updatedCount} area(s) updated, ${addedCount} added, ${removedCount} removed (no longer in source). Your manually-added areas and board thickness/finish choices were kept.`);
     } catch(err){
       bpLog(`❌ Import failed: ${err.message}`);
       alert("Import error: "+(err.message||JSON.stringify(err)));
