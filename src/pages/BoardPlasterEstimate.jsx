@@ -139,7 +139,7 @@ export default function BoardPlasterEstimate(){
   const [companyId, setCompanyId] = useState(null);
   const [companyAreaTypes, setCompanyAreaTypes] = useState([]); // company's Settings-configured list (list_area_type) - authoritative when present
   const [bottomPanelOpen, setBottomPanelOpen] = useState(false);
-data:cd
+
   // customer
   const [leads, setLeads] = useState([]);
   const [selectedLeadId, setSelectedLeadId] = useState(paramLeadId);
