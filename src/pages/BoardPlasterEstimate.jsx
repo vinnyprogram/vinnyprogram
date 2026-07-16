@@ -45,6 +45,12 @@ const RELEVANT_AREA_TYPES = [
   "Exterior Wall","Demising Wall","Rim Joist","Concrete Wall",
   "Ceiling","Interior Walls","Fire Blocking","Other",
 ];
+const NOT_FINISHED_AREA_TYPES = ["Rim Joist", "Roof Rafter above ceiling/behind knees wall", "Roof Rafter behind knee walls"];
+function isFinishableForImport(areaType, floorName){
+  if(NOT_FINISHED_AREA_TYPES.includes(areaType)) return false;
+  if((floorName||"").toLowerCase().includes("crawl")) return false;
+  return true;
+}
 // Demising walls (the wall between two units) commonly need fire-rated
 // 5/8" board (often two layers per code) rather than the standard 1/2"
 // used for exterior/interior walls and ceilings - default accordingly,
@@ -133,7 +139,7 @@ export default function BoardPlasterEstimate(){
   const [companyId, setCompanyId] = useState(null);
   const [companyAreaTypes, setCompanyAreaTypes] = useState([]); // company's Settings-configured list (list_area_type) - authoritative when present
   const [bottomPanelOpen, setBottomPanelOpen] = useState(false);
-
+data:cd
   // customer
   const [leads, setLeads] = useState([]);
   const [selectedLeadId, setSelectedLeadId] = useState(paramLeadId);
@@ -272,7 +278,8 @@ export default function BoardPlasterEstimate(){
         (projFloors||[]).forEach(f=>{ floorMap[f.id]=f.name; });
 
         const rawAreas = (projAreas||[])
-          .filter(a=>a.area_type && (companyAreaTypes.length?companyAreaTypes:RELEVANT_AREA_TYPES).includes(a.area_type) && a.sqft>0);
+          .filter(a=>a.area_type && (companyAreaTypes.length?companyAreaTypes:RELEVANT_AREA_TYPES).includes(a.area_type) && a.sqft>0
+            && isFinishableForImport(a.area_type, floorMap[a.floor_id]));
         // Combo materials (e.g. Open Cell + another layer on the same wall)
         // are stored as multiple rows sharing the SAME floor, area_type, and
         // full sqft. Dedupe down to one entry per unique combination so the
@@ -327,7 +334,8 @@ export default function BoardPlasterEstimate(){
           } else {
             flatAreas = savedAreas.map(a=>({...a,floor:a.floor||"Other"}));
           }
-          flatAreas.filter(a=>a.area_type && (companyAreaTypes.length?companyAreaTypes:RELEVANT_AREA_TYPES).includes(a.area_type) && a.sqft>0)
+          flatAreas.filter(a=>a.area_type && (companyAreaTypes.length?companyAreaTypes:RELEVANT_AREA_TYPES).includes(a.area_type) && a.sqft>0
+            && isFinishableForImport(a.area_type, a.floor))
             .forEach(a=>{
               const key = `${a.floor||"Other"}||${a.area_type}`;
               totals[key] = (totals[key]||0) + Number(a.sqft);
