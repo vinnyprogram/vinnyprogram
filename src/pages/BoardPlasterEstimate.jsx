@@ -80,43 +80,70 @@ function sortFloors(names){
 // matching specs - e.g. "2nd, 1st, Basement - Exterior Wall 1/2" - same
 // pattern as Insulation's Estimate panel. Not used for pricing at all.
 function SummaryPanel({ areas }){
-  const groups = {};
-  const order = [];
+  // Group by floor first (so the crew can see, per floor, how much of each
+  // board thickness to bring up, and what it's for) - matches how sheets
+  // actually get loaded/delivered on the job, rather than merging the same
+  // spec across every floor into one line like the old layout did.
+  const floorGroups = {};
   areas.filter(a=>a.area_type && Number(a.sqft)>0).forEach(a=>{
     const thick = a.thickness==="Other" ? (a.thicknessOther||"Other") : a.thickness;
-    const key = `${a.area_type}||${thick}||${a.finish}||${a.layers||1}`;
-    if(!groups[key]){ groups[key] = { area_type:a.area_type, thick, finish:a.finish, layers:a.layers||1, floors:[], sqft:0 }; order.push(key); }
-    if(!groups[key].floors.includes(a.floor)) groups[key].floors.push(a.floor);
-    groups[key].sqft += Number(a.sqft);
+    const floor = a.floor || "Other";
+    if(!floorGroups[floor]) floorGroups[floor] = { thickGroups:{}, order:[] };
+    const fg = floorGroups[floor];
+    const thickKey = `${thick}||${a.layers||1}`;
+    if(!fg.thickGroups[thickKey]){ fg.thickGroups[thickKey] = { thick, layers:a.layers||1, total:0, items:{}, order:[] }; fg.order.push(thickKey); }
+    const tg = fg.thickGroups[thickKey];
+    tg.total += Number(a.sqft);
+    const itemKey = `${a.area_type}||${a.finish}`;
+    if(!tg.items[itemKey]){ tg.items[itemKey] = { area_type:a.area_type, finish:a.finish, sqft:0 }; tg.order.push(itemKey); }
+    tg.items[itemKey].sqft += Number(a.sqft);
   });
-  const rows = order.map(k=>groups[k]);
-  const grandTotal = rows.reduce((s,g)=>s+g.sqft,0);
+  const floorNames = Object.keys(floorGroups).sort((a,b)=>{
+    const ai=FLOOR_ORDER.indexOf(a), bi=FLOOR_ORDER.indexOf(b);
+    if(ai===-1&&bi===-1) return 0;
+    if(ai===-1) return 1;
+    if(bi===-1) return -1;
+    return ai-bi;
+  });
+  const grandTotal = floorNames.reduce((s,f)=>s+Object.values(floorGroups[f].thickGroups).reduce((s2,tg)=>s2+tg.total,0),0);
 
-  function floorLabel(floors){
-    return [...floors].sort((a,b)=>{
-      const ai=FLOOR_ORDER.indexOf(a), bi=FLOOR_ORDER.indexOf(b);
-      if(ai===-1&&bi===-1) return 0;
-      if(ai===-1) return 1;
-      if(bi===-1) return -1;
-      return ai-bi;
-    }).join(", ");
-  }
-
-  if(rows.length===0){
+  if(floorNames.length===0){
     return <div style={{fontSize:12,color:"#94a3b8",textAlign:"center",padding:"20px 10px"}}>No measurements yet.</div>;
   }
   return (
     <div>
-      {rows.map((g,i)=>(
-        <div key={i} style={{marginBottom:10,paddingBottom:10,borderBottom:i<rows.length-1?"1px solid #e2e8f0":"none"}}>
-          <div style={{fontSize:11,fontWeight:700,color:"#0f172a"}}>{floorLabel(g.floors)}</div>
-          <div style={{fontSize:11,color:"#374151"}}>{g.area_type}</div>
-          <div style={{fontSize:10,color:"#64748b"}}>
-            {g.thick}{g.layers>1?` ×${g.layers} layers`:""} · {g.finish}
+      {floorNames.map((floor,fi)=>{
+        const fg = floorGroups[floor];
+        const thickKeys = fg.order.filter(k=>fg.thickGroups[k]); // thickness-group keys only, dedup via Set below
+        const seenThick = new Set();
+        return (
+          <div key={floor} style={{marginBottom:14,paddingBottom:12,borderBottom:fi<floorNames.length-1?"2px solid #cbd5e1":"none"}}>
+            <div style={{fontSize:12,fontWeight:800,color:"#0f172a",marginBottom:6,textTransform:"uppercase",letterSpacing:0.3}}>{floor}</div>
+            {Object.keys(fg.thickGroups).map((tk,ti)=>{
+              const tg = fg.thickGroups[tk];
+              const itemKeys = Object.keys(tg.items);
+              return (
+                <div key={tk} style={{marginBottom:8,paddingLeft:4}}>
+                  <div style={{display:"flex",justifyContent:"space-between",fontSize:11,fontWeight:700,color:"#374151",
+                      background:"#f1f5f9",borderRadius:4,padding:"3px 6px",marginBottom:3}}>
+                    <span>{tg.thick}{tg.layers>1?` ×${tg.layers} layers`:""} — Total</span>
+                    <span style={{color:"#059669"}}>{fmt(tg.total)} ft²</span>
+                  </div>
+                  {itemKeys.map(ik=>{
+                    const it = tg.items[ik];
+                    return (
+                      <div key={ik} style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#64748b",paddingLeft:8,marginBottom:1}}>
+                        <span>{it.area_type} · {it.finish}</span>
+                        <span style={{color:"#0f172a",fontWeight:600}}>{fmt(it.sqft)} ft²</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })}
           </div>
-          <div style={{fontSize:12,fontWeight:700,color:"#059669",marginTop:2}}>{fmt(g.sqft)} ft²</div>
-        </div>
-      ))}
+        );
+      })}
       <div style={{display:"flex",justifyContent:"space-between",paddingTop:6,borderTop:"2px solid #0f172a"}}>
         <span style={{fontSize:12,fontWeight:700}}>Total</span>
         <span style={{fontSize:13,fontWeight:800,color:"#059669"}}>{fmt(grandTotal)} ft²</span>
@@ -875,7 +902,7 @@ export default function BoardPlasterEstimate(){
           <button onClick={()=>window.print()} title="Print/Save as PDF - for double-checking measurements only, not used for pricing"
             style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:14}}>🖨️</button>
         </div>
-        <div className="print-backup-only">
+        <div>
           <SummaryPanel areas={areas} />
         </div>
       </div>
@@ -893,12 +920,19 @@ export default function BoardPlasterEstimate(){
         {bottomPanelOpen && (<div style={{maxHeight:"45vh",overflowY:"auto",padding:"8px 14px 24px"}}><SummaryPanel areas={areas} /></div>)}
       </div>
 
+      {/* Dedicated print-only summary - always mounted regardless of screen
+          width or whether the mobile bottom panel happens to be expanded,
+          so printing never produces a blank page. */}
+      <div className="print-only-summary">
+        <SummaryPanel areas={areas} />
+      </div>
+
       <style>{`
-        .print-backup-only { display: block; }
+        .print-only-summary { display: none; }
         @media print {
           body * { visibility: hidden; }
-          .print-backup-only, .print-backup-only * { visibility: visible; }
-          .print-backup-only { position: absolute; top: 0; left: 0; width: 100%; font-size: 14px; }
+          .print-only-summary, .print-only-summary * { visibility: visible; display: block; }
+          .print-only-summary { position: absolute; top: 0; left: 0; width: 100%; font-size: 14px; padding: 20px; }
         }
         @media (min-width: 900px) { .bp-bottom-panel { display: none !important; } }
         @media (max-width: 899px) { .bp-side-panel { display: none !important; } }
