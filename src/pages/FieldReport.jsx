@@ -392,6 +392,7 @@ export default function FieldReport() {
                   floor: fl,
                   floorOrder: floorIdx,
                   sqft: a.sqft||0,
+                  paint_sqft: a.paint_sqft||0,
                   materials: [],
                   segs: segments.filter(s=>s.area_id===a.id),
                 };
@@ -411,11 +412,12 @@ export default function FieldReport() {
               Object.values(groupMap).forEach(g=>{
                 const matKey = g.materials.map(m=>m.material+m.thickness_in+m.r_value).sort().join("+");
                 const key = g.area_type+"||||"+matKey;
-                if(!mergedMap[key]) mergedMap[key]={
+               if(!mergedMap[key]) mergedMap[key]={
                   area_type: g.area_type,
                   floors: [],
                   floorOrder: g.floorOrder,
                   sqft: 0,
+                  paint_sqft: 0,
                   materials: g.materials,
                   segs: [],
                 };
@@ -423,6 +425,7 @@ export default function FieldReport() {
                 if(!mg.floors.find(f=>f?.id===g.floor?.id)) mg.floors.push(g.floor);
                 if(g.floorOrder < mg.floorOrder) mg.floorOrder = g.floorOrder;
                 mg.sqft += g.sqft;
+                mg.paint_sqft += g.paint_sqft||0;
                 mg.segs = [...mg.segs, ...g.segs];
               });
 
@@ -476,6 +479,12 @@ export default function FieldReport() {
                       <div style={{fontSize:10,color:"#64748b",marginTop:3,
                           paddingLeft:4,letterSpacing:0.2}}>
                         {measStr}
+                      </div>
+                    )}
+                    {g.paint_sqft>0 && (
+                      <div style={{fontSize:10,color:"#c2410c",marginTop:3,
+                          paddingLeft:4,fontWeight:600}}>
+                        🎨 Intumescent paint: {fmt(g.paint_sqft)} ft²
                       </div>
                     )}
                   </div>
