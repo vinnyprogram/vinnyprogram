@@ -336,7 +336,8 @@ function AreaRow({ area, matTypesLive, materials, materialMap, variantMap, onCha
   const [rValOpts, setRValOpts] = useState(()=>loadCustomList("custom_rval_opts", R_VALS));
 
   const [calcOpen, setCalcOpen] = useState(false);
-  const [calcExpr, setCalcExpr] = useState(""); 
+  const [calcExpr, setCalcExpr] = useState("");
+  const [calcError, setCalcError] = useState(false);
   const [overrideOpen, setOverrideOpen] = useState(!!area.price_override);
   const [movingTo, setMovingTo] = useState(false);
 
@@ -417,18 +418,20 @@ function AreaRow({ area, matTypesLive, materials, materialMap, variantMap, onCha
     onChange("mh", ""); onChange("ml", ""); onChange("mq", "1");
   }
 
-  function calcPress(val) {
-  if(val==="C") { setCalcExpr(""); return; }
-  if(val==="⌫") { setCalcExpr(p=>p.slice(0,-1)); return; }
+ function calcPress(val) {
+  if(val==="C") { setCalcExpr(""); setCalcError(false); return; }
+  if(val==="⌫") { setCalcExpr(p=>p.slice(0,-1)); setCalcError(false); return; }
   if(val==="="){
     try {
       const safe = calcExpr.replace(/[^0-9+\-*/.()]/g,"");
       const result = Function(`"use strict";return (${safe||0})`)();
       setCalcExpr(String(Math.round(result*100)/100));
-    } catch(e){ setCalcExpr("Error"); }
+      setCalcError(false);
+    } catch(e){ setCalcError(true); } // keep the typed expression as-is so nothing is lost - just flag it
     return;
   }
   setCalcExpr(p=>p+val);
+  setCalcError(false);
 }
 function useCalcResult(field) {
   const n = parseFloat(calcExpr);
@@ -872,6 +875,7 @@ function useCalcResult(field) {
         <button onClick={()=>{setCalcOpen(false);setCalcExpr("");}}
           style={{border:"none",background:"none",color:C.faint,fontSize:16,cursor:"pointer",padding:0}}>✕</button>
       </div>
+      {calcError && <div style={{color:"#dc2626",fontSize:10,fontWeight:600,marginBottom:2}}>⚠️ Not a valid expression — check for a trailing +, ×, etc. and fix it below, nothing was lost</div>}
       <input readOnly value={calcExpr||"0"}
         style={{...XS,width:"100%",marginBottom:6,textAlign:"right",fontSize:18,fontWeight:700,height:36}} />
       <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:4,marginBottom:6}}>
@@ -1041,7 +1045,7 @@ function EstimatePanel({ floors, areas, materialMap, variantMap, crewNotes, proj
           const gm={};
           list.forEach(a=>{
             const mls=(a.mat_lines&&a.mat_lines.length>0)?a.mat_lines:[{material:a.material||"",thickness_in:a.thickness_in||"",r_value:a.r_value||"",oc:a.oc||""}];
-            const key=a.area_type+"||||"+mls.map(ml=>ml.material).join("+");
+            const key=a.area_type+"||||"+mls.map(ml=>ml.material+"|"+ml.thickness_in+"|"+ml.r_value).join("+");
             if(!gm[key]) gm[key]={area_type:a.area_type,floors:[],mat_lines:mls,totalSqft:0,totalCost:0,totalPaintSqft:0,floorOrder:floors.indexOf(a.floor)};
             const g=gm[key];
             if(!g.floors.includes(a.floor)) g.floors.push(a.floor);
