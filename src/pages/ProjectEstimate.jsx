@@ -876,7 +876,7 @@ function useCalcResult(field) {
           style={{border:"none",background:"none",color:C.faint,fontSize:16,cursor:"pointer",padding:0}}>✕</button>
       </div>
       {calcError && <div style={{color:"#dc2626",fontSize:10,fontWeight:600,marginBottom:2}}>⚠️ Not a valid expression — check for a trailing +, ×, etc. and fix it below, nothing was lost</div>}
-      <input readOnly value={calcExpr||"0"}git add -A
+      <input readOnly value={calcExpr||"0"}
         style={{...XS,width:"100%",marginBottom:6,textAlign:"right",fontSize:18,fontWeight:700,height:36}} />
       <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:4,marginBottom:6}}>
         {["7","8","9","÷","4","5","6","×","1","2","3","−","C","0",".","+"].map(k=>(
