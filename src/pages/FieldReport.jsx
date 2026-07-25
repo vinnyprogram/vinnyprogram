@@ -128,15 +128,21 @@ export default function FieldReport() {
    // same as the printed report. Mixing them in was the bug: sqft totals were
    // silently combining regular scope with customer-choice options.
     lines.push("SCOPE OF WORK");
+    const sortedAreas = [...areas].filter(a=>!a.is_optional).sort((a,b)=>a.order_index-b.order_index);
+    const primaryAreas = sortedAreas.filter(a=>a.order_index%10===0);
+    const physicalAreas = primaryAreas.map(p=>{
+      const combos = sortedAreas.filter(s=>s.floor_id===p.floor_id && s.order_index>p.order_index && s.order_index<p.order_index+10);
+      const mls = [{material:p.material,thickness_in:p.thickness_in,r_value:p.r_value}, ...combos.map(c=>({material:c.material,thickness_in:c.thickness_in,r_value:c.r_value}))];
+      return { area_type:p.area_type, floor_id:p.floor_id, sqft:p.sqft||0, id:p.id, mat_lines:mls };
+    });
     const groupMap = {};
-    areas.forEach(a=>{
-      if(a.is_optional) return;
+    physicalAreas.forEach(a=>{
       const fl = floors.find(f=>f.id===a.floor_id);
       const floorIdx = floors.findIndex(f=>f.id===a.floor_id);
-      const key = (a.area_type||"")+"||||"+(a.material||"")+"||||"+(a.thickness_in||"")+"||||"+(a.r_value||"");
+      const specKey = a.mat_lines.map(ml=>`${ml.material}|${ml.thickness_in}|${ml.r_value}`).join("~");
+      const key = (a.area_type||"")+"||||"+specKey;
       if(!groupMap[key]) groupMap[key]={
-        floors: [], floorOrder: floorIdx, area_type:a.area_type,
-        material:a.material, thickness_in:a.thickness_in, r_value:a.r_value,
+        floors: [], floorOrder: floorIdx, area_type:a.area_type, mat_lines:a.mat_lines,
         sqft:0, segs:[],
       };
       const g = groupMap[key];
@@ -147,14 +153,18 @@ export default function FieldReport() {
     });
     const groups = Object.values(groupMap).sort((a,b)=>a.floorOrder-b.floorOrder);
     groups.forEach(g=>{
-      const spec = [g.thickness_in, g.r_value].filter(Boolean).join(" ");
+      const thick = g.mat_lines[0]?.thickness_in || "";
+      const specs = g.mat_lines.map(ml=>[ml.material,ml.r_value].filter(Boolean).join(" ")).filter(Boolean);
+      const spec = g.mat_lines.length>1
+        ? [thick,"Combo:",specs.join(" + ")].filter(Boolean).join(" ")
+        : [thick,specs[0]].filter(Boolean).join(" ");
       const floorLabel = g.floors
         .sort((a,b)=>floors.findIndex(f=>f.id===a.id)-floors.findIndex(f=>f.id===b.id))
         .map(f=>f.name).join(", ");
       const measStr = g.segs.length>0
         ? [...new Set(g.segs.map(s=>`${s.height}x${s.length}`))].join("  ")
         : "";
-      lines.push(`${floorLabel?floorLabel+": ":""}${g.area_type} ${g.material||""} ${spec} - ${fmt(g.sqft)}ft²`);
+      lines.push(`${floorLabel?floorLabel+": ":""}${g.area_type} ${spec} - ${fmt(g.sqft)}ft²`);
       if(measStr) lines.push(`  ${measStr}`);
     });
 
