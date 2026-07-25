@@ -577,7 +577,6 @@ function useCalcResult(field) {
           💲 {overrideOpen?"✕ Price":"Price"}
         </button>
         <button
-          <button
           onClick={()=>onChange("phase", area.phase===1 ? "__clear_all__" : area.phase===2 ? null : 1)}
           title={area.phase===1?"Tap to remove all phases (customer changed mind)":"Set phase (1st before inspection, 2nd after)"}
           style={{border:"none",borderRadius:6,cursor:"pointer",fontSize:11,fontWeight:800,padding:"5px 10px",flex:1,
