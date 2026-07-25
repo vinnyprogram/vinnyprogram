@@ -242,7 +242,7 @@ export default function QuotePDF() {
       return (opts||[]).filter(o=>o.material||o.label).map((o,oi)=>{
         const fl=floors.find(f=>f.id===a.floor_id);
         const optMls=(o.mat_lines||[]).length>0?o.mat_lines:[{material:o.material||"",thickness_in:o.thickness_in||a.thickness_in||"",r_value:o.r_value||""}];
-        const matLabel=optMls.map(ml=>[ml.thickness_in,ml.material,ml.r_value].filter(Boolean).join(" ")).join(" + ");
+        const matLabel=(optMls.length>1?[optMls[0]?.thickness_in,"Combo:",optMls.map(ml=>[ml.material,ml.r_value].filter(Boolean).join(" ")).join(" + ")].filter(Boolean).join(" "):[optMls[0]?.thickness_in,optMls[0]?.material,optMls[0]?.r_value].filter(Boolean).join(" "));
         const savedAmounts=(() => { try{ return JSON.parse(quote?.option_amounts_json||"{}"); }catch{ return {}; } })();
         const extraAmt=Number(savedAmounts[`sub-${oi}`]||0);
         // Calculate material cost for this option using ITS OWN material

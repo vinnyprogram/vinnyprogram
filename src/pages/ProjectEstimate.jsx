@@ -1058,7 +1058,7 @@ function EstimatePanel({ floors, areas, materialMap, variantMap, crewNotes, proj
           return groups.map((g,i)=>{
             const thick=g.mat_lines[0]?.thickness_in||"";
             const floorLabel=g.floors.sort((a,b)=>floors.indexOf(a)-floors.indexOf(b)).map(f=>f.replace(" Floor","")).join(", ");
-            const matLabel=g.mat_lines.length>1?g.mat_lines.map(ml=>((ml.material||"")+" "+(ml.r_value||"")).trim()).join(" · "):((g.mat_lines[0]?.material||"")+" "+(g.mat_lines[0]?.r_value||"")+" "+(g.mat_lines[0]?.oc||"")).trim();
+            const matLabel=g.mat_lines.length>1?"Combo: "+g.mat_lines.map(ml=>((ml.material||"")+" "+(ml.r_value||"")).trim()).join(" + "):((g.mat_lines[0]?.material||"")+" "+(g.mat_lines[0]?.r_value||"")+" "+(g.mat_lines[0]?.oc||"")).trim();
             const {qty,unit}=calcArea(g.totalSqft,thick,materialMap[g.mat_lines[0]?.material],g.mat_lines[0]?.r_value,variantMap);
             return (
               <div key={i} style={{paddingBottom:5,marginBottom:5,borderBottom:`1px solid ${C.chip}`}}>
@@ -1107,7 +1107,7 @@ function EstimatePanel({ floors, areas, materialMap, variantMap, crewNotes, proj
             {optionalAreas.map((a,i)=>{
               const cost=getAreaTotalCost(a,materialMap,variantMap);
               const mls=(a.mat_lines&&a.mat_lines.length>0)?a.mat_lines:[{material:a.material||"",thickness_in:a.thickness_in||"",r_value:a.r_value||""}];
-              const matLabel=mls.map(ml=>[ml.thickness_in,ml.material,ml.r_value].filter(Boolean).join(" ")).join(" + ");
+              const matLabel=(mls.length>1?[mls[0]?.thickness_in,"Combo:",mls.map(ml=>[ml.material,ml.r_value].filter(Boolean).join(" ")).join(" + ")].filter(Boolean).join(" "):[mls[0]?.thickness_in,mls[0]?.material,mls[0]?.r_value].filter(Boolean).join(" "));
               return (
                 <div key={i} style={{paddingBottom:5,marginBottom:5,borderBottom:`1px solid ${C.chip}`}}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
@@ -1130,7 +1130,7 @@ function EstimatePanel({ floors, areas, materialMap, variantMap, crewNotes, proj
                 <div style={{fontSize:10,fontWeight:800,color:"#92400e",textTransform:"uppercase",letterSpacing:0.4,marginBottom:4}}>⚡ Sub-Options</div>
                 {allSubOptions.map((o,i)=>{
                   const optMls=(o.mat_lines||[]).length>0?o.mat_lines:[{material:o.material||"",thickness_in:o.thickness_in||o._area?.thickness_in||"",r_value:o.r_value||o._area?.r_value||""}];
-                  const matLabel=optMls.map(ml=>[ml.thickness_in,ml.material,ml.r_value].filter(Boolean).join(" ")).join(" + ");
+                  const matLabel=(optMls.length>1?[optMls[0]?.thickness_in,"Combo:",optMls.map(ml=>[ml.material,ml.r_value].filter(Boolean).join(" ")).join(" + ")].filter(Boolean).join(" "):[optMls[0]?.thickness_in,optMls[0]?.material,optMls[0]?.r_value].filter(Boolean).join(" "));
                   return (
                     <div key={i} style={{fontSize:11,color:"#92400e",marginBottom:4,paddingLeft:6,borderLeft:"2px solid #fed7aa"}}>
                       <div style={{fontWeight:700}}>{o.label||`Option ${o._oi+1}`} — {o._area.area_type}</div>

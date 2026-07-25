@@ -714,7 +714,7 @@ export default function QuotePricing() {
               <div style={SEC}><span>⚡ Sub-Options</span><span style={{fontSize:9,color:C.faint}}>Per-area alternatives — price separately</span></div>
               {subOpts.map((o,i)=>{
                 const optMls=(o.mat_lines||[]).length>0?o.mat_lines:[{material:o.material||"",thickness_in:o.thickness_in||o._area?.thickness_in||"",r_value:o.r_value||o._area?.r_value||""}];
-                const matLabel=optMls.map(ml=>[ml.thickness_in,ml.material,ml.r_value].filter(Boolean).join(" ")).join(" + ");
+                const matLabel=(optMls.length>1?[optMls[0]?.thickness_in,"Combo:",optMls.map(ml=>[ml.material,ml.r_value].filter(Boolean).join(" ")).join(" + ")].filter(Boolean).join(" "):[optMls[0]?.thickness_in,optMls[0]?.material,optMls[0]?.r_value].filter(Boolean).join(" "));
                 // Calculate option material cost
                 const optMatCost = optMls.reduce((s,ml)=>{
                   // Try effective $/sqft from main areas using same material

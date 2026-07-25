@@ -185,7 +185,7 @@ export default function FieldReport() {
       lines.push("");
       lines.push("OPTIONS (CUSTOMER CHOICE)");
       Object.values(optMerged).forEach(g=>{
-        const matLabel = g.materials.map(m=>[m.thickness_in,m.material,m.r_value].filter(Boolean).join(" ")).join(" + ");
+        const matLabel = (g.materials.length>1?[g.materials[0]?.thickness_in,"Combo:",g.materials.map(ml=>[ml.material,ml.r_value].filter(Boolean).join(" ")).join(" + ")].filter(Boolean).join(" "):[g.materials[0]?.thickness_in,g.materials[0]?.material,g.materials[0]?.r_value].filter(Boolean).join(" "));
         lines.push(`- ${g.area_type} ${matLabel} - ${fmt(g.sqft)}ft²`);
         if(g.optional_note) lines.push(`  ${g.optional_note}`);
       });
@@ -449,12 +449,12 @@ export default function FieldReport() {
                   .map(f=>f?.name?.replace(" Floor",""))
                   .filter(Boolean).join(", ");
 
-                // combo: "2x6 Closed Cell R-15 + Open Cell R-21"
+                // combo: "2x6 Combo: Closed Cell R-15 + Open Cell R-21"
                 // single: "2x6 Open Cell R-21"
                 const matLabel = isCombo
-                  ? g.materials.map(m=>
-                      [m.thickness_in, m.material, m.r_value].filter(Boolean).join(" ")
-                    ).join(" + ")
+                  ? [g.materials[0]?.thickness_in, "Combo:", g.materials.map(m=>
+                      [m.material, m.r_value].filter(Boolean).join(" ")
+                    ).join(" + ")].filter(Boolean).join(" ")
                   : [g.materials[0]?.thickness_in, g.materials[0]?.material, g.materials[0]?.r_value]
                       .filter(Boolean).join(" ");
                 const measStr = g.segs.length>0
@@ -529,7 +529,7 @@ export default function FieldReport() {
                   const floorLabel = g.floors
                     .sort((a,b)=>floors.findIndex(f=>f.id===a?.id)-floors.findIndex(f=>f.id===b?.id))
                     .map(f=>f?.name?.replace(" Floor","")).filter(Boolean).join(", ");
-                  const matLabel = g.materials.map(m=>[m.thickness_in,m.material,m.r_value].filter(Boolean).join(" ")).join(" + ");
+                  const matLabel = (g.materials.length>1?[g.materials[0]?.thickness_in,"Combo:",g.materials.map(ml=>[ml.material,ml.r_value].filter(Boolean).join(" ")).join(" + ")].filter(Boolean).join(" "):[g.materials[0]?.thickness_in,g.materials[0]?.material,g.materials[0]?.r_value].filter(Boolean).join(" "));
                   return (
                     <div key={i} style={{padding:"8px 12px",background:i%2===0?"#fffbeb":"white",
                         border:"1px solid #fde68a",borderTop:i===0?"1px solid #fde68a":"none",
@@ -568,7 +568,7 @@ export default function FieldReport() {
                 {subOpts.map((o,i)=>{
                   const fl = floors.find(f=>f.id===o._area.floor_id);
                   const optMls=(o.mat_lines||[]).length>0?o.mat_lines:[{material:o.material||"",thickness_in:o.thickness_in||o._area?.thickness_in||"",r_value:o.r_value||o._area?.r_value||""}];
-                  const matLabel=optMls.map(ml=>[ml.thickness_in,ml.material,ml.r_value].filter(Boolean).join(" ")).join(" + ");
+                  const matLabel=(optMls.length>1?[optMls[0]?.thickness_in,"Combo:",optMls.map(ml=>[ml.material,ml.r_value].filter(Boolean).join(" ")).join(" + ")].filter(Boolean).join(" "):[optMls[0]?.thickness_in,optMls[0]?.material,optMls[0]?.r_value].filter(Boolean).join(" "));
                   return (
                     <div key={i} style={{padding:"8px 12px",background:i%2===0?"#fffbeb":"white",
                         border:"1px solid #fde68a",borderTop:i===0?"1px solid #fde68a":"none",
