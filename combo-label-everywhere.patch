@@ -1,0 +1,158 @@
+diff --git a/src/pages/FieldReport.jsx b/src/pages/FieldReport.jsx
+index 5aa8b87..689b4aa 100644
+--- a/src/pages/FieldReport.jsx
++++ b/src/pages/FieldReport.jsx
+@@ -128,15 +128,26 @@ export default function FieldReport() {
+    // same as the printed report. Mixing them in was the bug: sqft totals were
+    // silently combining regular scope with customer-choice options.
+     lines.push("SCOPE OF WORK");
++    // Stage 1: reconstruct each physical area (a combo is several DB rows -
++    // a primary row at order_index%10===0 plus secondary rows right after
++    // it) into one entry with a combined materials list, instead of
++    // treating each material row as its own separate area.
++    const sortedAreas = [...areas].filter(a=>!a.is_optional).sort((a,b)=>a.order_index-b.order_index);
++    const primaryAreas = sortedAreas.filter(a=>a.order_index%10===0);
++    const physicalAreas = primaryAreas.map(p=>{
++      const combos = sortedAreas.filter(s=>s.floor_id===p.floor_id && s.order_index>p.order_index && s.order_index<p.order_index+10);
++      const mls = [{material:p.material,thickness_in:p.thickness_in,r_value:p.r_value}, ...combos.map(c=>({material:c.material,thickness_in:c.thickness_in,r_value:c.r_value}))];
++      return { area_type:p.area_type, floor_id:p.floor_id, sqft:p.sqft||0, id:p.id, mat_lines:mls };
++    });
++    // Stage 2: merge matching physical areas across floors, same as before
+     const groupMap = {};
+-    areas.forEach(a=>{
+-      if(a.is_optional) return;
++    physicalAreas.forEach(a=>{
+       const fl = floors.find(f=>f.id===a.floor_id);
+       const floorIdx = floors.findIndex(f=>f.id===a.floor_id);
+-      const key = (a.area_type||"")+"||||"+(a.material||"")+"||||"+(a.thickness_in||"")+"||||"+(a.r_value||"");
++      const specKey = a.mat_lines.map(ml=>`${ml.material}|${ml.thickness_in}|${ml.r_value}`).join("~");
++      const key = (a.area_type||"")+"||||"+specKey;
+       if(!groupMap[key]) groupMap[key]={
+-        floors: [], floorOrder: floorIdx, area_type:a.area_type,
+-        material:a.material, thickness_in:a.thickness_in, r_value:a.r_value,
++        floors: [], floorOrder: floorIdx, area_type:a.area_type, mat_lines:a.mat_lines,
+         sqft:0, segs:[],
+       };
+       const g = groupMap[key];
+@@ -147,14 +158,18 @@ export default function FieldReport() {
+     });
+     const groups = Object.values(groupMap).sort((a,b)=>a.floorOrder-b.floorOrder);
+     groups.forEach(g=>{
+-      const spec = [g.thickness_in, g.r_value].filter(Boolean).join(" ");
++      const thick = g.mat_lines[0]?.thickness_in || "";
++      const specs = g.mat_lines.map(ml=>[ml.material,ml.r_value].filter(Boolean).join(" ")).filter(Boolean);
++      const spec = g.mat_lines.length>1
++        ? [thick,"Combo:",specs.join(" + ")].filter(Boolean).join(" ")
++        : [thick,specs[0]].filter(Boolean).join(" ");
+       const floorLabel = g.floors
+         .sort((a,b)=>floors.findIndex(f=>f.id===a.id)-floors.findIndex(f=>f.id===b.id))
+         .map(f=>f.name).join(", ");
+       const measStr = g.segs.length>0
+         ? [...new Set(g.segs.map(s=>`${s.height}x${s.length}`))].join("  ")
+         : "";
+-      lines.push(`${floorLabel?floorLabel+": ":""}${g.area_type} ${g.material||""} ${spec} - ${fmt(g.sqft)}ft²`);
++      lines.push(`${floorLabel?floorLabel+": ":""}${g.area_type} ${spec} - ${fmt(g.sqft)}ft²`);
+       if(measStr) lines.push(`  ${measStr}`);
+     });
+ 
+@@ -175,7 +190,7 @@ export default function FieldReport() {
+       lines.push("");
+       lines.push("OPTIONS (CUSTOMER CHOICE)");
+       Object.values(optMerged).forEach(g=>{
+-        const matLabel = g.materials.map(m=>[m.thickness_in,m.material,m.r_value].filter(Boolean).join(" ")).join(" + ");
++        const matLabel = (g.materials.length>1?[g.materials[0]?.thickness_in,"Combo:",g.materials.map(ml=>[ml.material,ml.r_value].filter(Boolean).join(" ")).join(" + ")].filter(Boolean).join(" "):[g.materials[0]?.thickness_in,g.materials[0]?.material,g.materials[0]?.r_value].filter(Boolean).join(" "));
+         lines.push(`- ${g.area_type} ${matLabel} - ${fmt(g.sqft)}ft²`);
+         if(g.optional_note) lines.push(`  ${g.optional_note}`);
+       });
+@@ -439,12 +454,12 @@ export default function FieldReport() {
+                   .map(f=>f?.name?.replace(" Floor",""))
+                   .filter(Boolean).join(", ");
+ 
+-                // combo: "2x6 Closed Cell R-15 + Open Cell R-21"
++                // combo: "2x6 Combo: Closed Cell R-15 + Open Cell R-21"
+                 // single: "2x6 Open Cell R-21"
+                 const matLabel = isCombo
+-                  ? g.materials.map(m=>
+-                      [m.thickness_in, m.material, m.r_value].filter(Boolean).join(" ")
+-                    ).join(" + ")
++                  ? [g.materials[0]?.thickness_in, "Combo:", g.materials.map(m=>
++                      [m.material, m.r_value].filter(Boolean).join(" ")
++                    ).join(" + ")].filter(Boolean).join(" ")
+                   : [g.materials[0]?.thickness_in, g.materials[0]?.material, g.materials[0]?.r_value]
+                       .filter(Boolean).join(" ");
+                 const measStr = g.segs.length>0
+@@ -519,7 +534,7 @@ export default function FieldReport() {
+                   const floorLabel = g.floors
+                     .sort((a,b)=>floors.findIndex(f=>f.id===a?.id)-floors.findIndex(f=>f.id===b?.id))
+                     .map(f=>f?.name?.replace(" Floor","")).filter(Boolean).join(", ");
+-                  const matLabel = g.materials.map(m=>[m.thickness_in,m.material,m.r_value].filter(Boolean).join(" ")).join(" + ");
++                  const matLabel = (g.materials.length>1?[g.materials[0]?.thickness_in,"Combo:",g.materials.map(ml=>[ml.material,ml.r_value].filter(Boolean).join(" ")).join(" + ")].filter(Boolean).join(" "):[g.materials[0]?.thickness_in,g.materials[0]?.material,g.materials[0]?.r_value].filter(Boolean).join(" "));
+                   return (
+                     <div key={i} style={{padding:"8px 12px",background:i%2===0?"#fffbeb":"white",
+                         border:"1px solid #fde68a",borderTop:i===0?"1px solid #fde68a":"none",
+@@ -558,7 +573,7 @@ export default function FieldReport() {
+                 {subOpts.map((o,i)=>{
+                   const fl = floors.find(f=>f.id===o._area.floor_id);
+                   const optMls=(o.mat_lines||[]).length>0?o.mat_lines:[{material:o.material||"",thickness_in:o.thickness_in||o._area?.thickness_in||"",r_value:o.r_value||o._area?.r_value||""}];
+-                  const matLabel=optMls.map(ml=>[ml.thickness_in,ml.material,ml.r_value].filter(Boolean).join(" ")).join(" + ");
++                  const matLabel=(optMls.length>1?[optMls[0]?.thickness_in,"Combo:",optMls.map(ml=>[ml.material,ml.r_value].filter(Boolean).join(" ")).join(" + ")].filter(Boolean).join(" "):[optMls[0]?.thickness_in,optMls[0]?.material,optMls[0]?.r_value].filter(Boolean).join(" "));
+                   return (
+                     <div key={i} style={{padding:"8px 12px",background:i%2===0?"#fffbeb":"white",
+                         border:"1px solid #fde68a",borderTop:i===0?"1px solid #fde68a":"none",
+diff --git a/src/pages/ProjectEstimate.jsx b/src/pages/ProjectEstimate.jsx
+index 9aceffb..7ccb9e1 100644
+--- a/src/pages/ProjectEstimate.jsx
++++ b/src/pages/ProjectEstimate.jsx
+@@ -1058,7 +1058,7 @@ function EstimatePanel({ floors, areas, materialMap, variantMap, crewNotes, proj
+           return groups.map((g,i)=>{
+             const thick=g.mat_lines[0]?.thickness_in||"";
+             const floorLabel=g.floors.sort((a,b)=>floors.indexOf(a)-floors.indexOf(b)).map(f=>f.replace(" Floor","")).join(", ");
+-            const matLabel=g.mat_lines.length>1?g.mat_lines.map(ml=>((ml.material||"")+" "+(ml.r_value||"")).trim()).join(" · "):((g.mat_lines[0]?.material||"")+" "+(g.mat_lines[0]?.r_value||"")+" "+(g.mat_lines[0]?.oc||"")).trim();
++            const matLabel=g.mat_lines.length>1?"Combo: "+g.mat_lines.map(ml=>((ml.material||"")+" "+(ml.r_value||"")).trim()).join(" + "):((g.mat_lines[0]?.material||"")+" "+(g.mat_lines[0]?.r_value||"")+" "+(g.mat_lines[0]?.oc||"")).trim();
+             const {qty,unit}=calcArea(g.totalSqft,thick,materialMap[g.mat_lines[0]?.material],g.mat_lines[0]?.r_value,variantMap);
+             return (
+               <div key={i} style={{paddingBottom:5,marginBottom:5,borderBottom:`1px solid ${C.chip}`}}>
+@@ -1107,7 +1107,7 @@ function EstimatePanel({ floors, areas, materialMap, variantMap, crewNotes, proj
+             {optionalAreas.map((a,i)=>{
+               const cost=getAreaTotalCost(a,materialMap,variantMap);
+               const mls=(a.mat_lines&&a.mat_lines.length>0)?a.mat_lines:[{material:a.material||"",thickness_in:a.thickness_in||"",r_value:a.r_value||""}];
+-              const matLabel=mls.map(ml=>[ml.thickness_in,ml.material,ml.r_value].filter(Boolean).join(" ")).join(" + ");
++              const matLabel=(mls.length>1?[mls[0]?.thickness_in,"Combo:",mls.map(ml=>[ml.material,ml.r_value].filter(Boolean).join(" ")).join(" + ")].filter(Boolean).join(" "):[mls[0]?.thickness_in,mls[0]?.material,mls[0]?.r_value].filter(Boolean).join(" "));
+               return (
+                 <div key={i} style={{paddingBottom:5,marginBottom:5,borderBottom:`1px solid ${C.chip}`}}>
+                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+@@ -1130,7 +1130,7 @@ function EstimatePanel({ floors, areas, materialMap, variantMap, crewNotes, proj
+                 <div style={{fontSize:10,fontWeight:800,color:"#92400e",textTransform:"uppercase",letterSpacing:0.4,marginBottom:4}}>⚡ Sub-Options</div>
+                 {allSubOptions.map((o,i)=>{
+                   const optMls=(o.mat_lines||[]).length>0?o.mat_lines:[{material:o.material||"",thickness_in:o.thickness_in||o._area?.thickness_in||"",r_value:o.r_value||o._area?.r_value||""}];
+-                  const matLabel=optMls.map(ml=>[ml.thickness_in,ml.material,ml.r_value].filter(Boolean).join(" ")).join(" + ");
++                  const matLabel=(optMls.length>1?[optMls[0]?.thickness_in,"Combo:",optMls.map(ml=>[ml.material,ml.r_value].filter(Boolean).join(" ")).join(" + ")].filter(Boolean).join(" "):[optMls[0]?.thickness_in,optMls[0]?.material,optMls[0]?.r_value].filter(Boolean).join(" "));
+                   return (
+                     <div key={i} style={{fontSize:11,color:"#92400e",marginBottom:4,paddingLeft:6,borderLeft:"2px solid #fed7aa"}}>
+                       <div style={{fontWeight:700}}>{o.label||`Option ${o._oi+1}`} — {o._area.area_type}</div>
+diff --git a/src/pages/QuotePDF.jsx b/src/pages/QuotePDF.jsx
+index ce92b8e..aa1b55e 100644
+--- a/src/pages/QuotePDF.jsx
++++ b/src/pages/QuotePDF.jsx
+@@ -242,7 +242,7 @@ export default function QuotePDF() {
+       return (opts||[]).filter(o=>o.material||o.label).map((o,oi)=>{
+         const fl=floors.find(f=>f.id===a.floor_id);
+         const optMls=(o.mat_lines||[]).length>0?o.mat_lines:[{material:o.material||"",thickness_in:o.thickness_in||a.thickness_in||"",r_value:o.r_value||""}];
+-        const matLabel=optMls.map(ml=>[ml.thickness_in,ml.material,ml.r_value].filter(Boolean).join(" ")).join(" + ");
++        const matLabel=(optMls.length>1?[optMls[0]?.thickness_in,"Combo:",optMls.map(ml=>[ml.material,ml.r_value].filter(Boolean).join(" ")).join(" + ")].filter(Boolean).join(" "):[optMls[0]?.thickness_in,optMls[0]?.material,optMls[0]?.r_value].filter(Boolean).join(" "));
+         const savedAmounts=(() => { try{ return JSON.parse(quote?.option_amounts_json||"{}"); }catch{ return {}; } })();
+         const extraAmt=Number(savedAmounts[`sub-${oi}`]||0);
+         // Calculate material cost for this option using ITS OWN material
+diff --git a/src/pages/QuotePricing.jsx b/src/pages/QuotePricing.jsx
+index cc59038..24ed805 100644
+--- a/src/pages/QuotePricing.jsx
++++ b/src/pages/QuotePricing.jsx
+@@ -714,7 +714,7 @@ export default function QuotePricing() {
+               <div style={SEC}><span>⚡ Sub-Options</span><span style={{fontSize:9,color:C.faint}}>Per-area alternatives — price separately</span></div>
+               {subOpts.map((o,i)=>{
+                 const optMls=(o.mat_lines||[]).length>0?o.mat_lines:[{material:o.material||"",thickness_in:o.thickness_in||o._area?.thickness_in||"",r_value:o.r_value||o._area?.r_value||""}];
+-                const matLabel=optMls.map(ml=>[ml.thickness_in,ml.material,ml.r_value].filter(Boolean).join(" ")).join(" + ");
++                const matLabel=(optMls.length>1?[optMls[0]?.thickness_in,"Combo:",optMls.map(ml=>[ml.material,ml.r_value].filter(Boolean).join(" ")).join(" + ")].filter(Boolean).join(" "):[optMls[0]?.thickness_in,optMls[0]?.material,optMls[0]?.r_value].filter(Boolean).join(" "));
+                 // Calculate option material cost
+                 const optMatCost = optMls.reduce((s,ml)=>{
+                   // Try effective $/sqft from main areas using same material
