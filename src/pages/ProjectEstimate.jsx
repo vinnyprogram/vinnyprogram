@@ -876,7 +876,7 @@ function useCalcResult(field) {
           style={{border:"none",background:"none",color:C.faint,fontSize:16,cursor:"pointer",padding:0}}>✕</button>
       </div>
       {calcError && <div style={{color:"#dc2626",fontSize:10,fontWeight:600,marginBottom:2}}>⚠️ Not a valid expression — check for a trailing +, ×, etc. and fix it below, nothing was lost</div>}
-      <input readOnly value={calcExpr||"0"}
+      <input readOnly value={calcExpr||"0"}git add -A
         style={{...XS,width:"100%",marginBottom:6,textAlign:"right",fontSize:18,fontWeight:700,height:36}} />
       <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:4,marginBottom:6}}>
         {["7","8","9","÷","4","5","6","×","1","2","3","−","C","0",".","+"].map(k=>(
@@ -1918,11 +1918,13 @@ export default function ProjectEstimate() {
         floorAreas.forEach(a=>{
           const mls=(a.mat_lines&&a.mat_lines.length>0)?a.mat_lines:[{material:a.material||"",thickness_in:a.thickness_in||"",r_value:a.r_value||""}];
           const hasSqft = (a.sqft>0)||(a.measurements?.length>0);
-          mls.forEach(ml=>{
-            const spec=[ml.material,ml.thickness_in,ml.r_value].filter(Boolean).join(" ");
-            const flag = !hasSqft ? " — ⚠ INCOMPLETE, not yet measured" : "";
-            lines.push(`  ${a.area_type} — ${spec||"(no material chosen yet)"} — ${a.sqft||0} ft²${a.is_optional?" (Optional)":""}${flag}`);
-          });
+          const flag = !hasSqft ? " — ⚠ INCOMPLETE, not yet measured" : "";
+          const thick = mls[0]?.thickness_in || "";
+          const specs = mls.map(ml=>[ml.material,ml.r_value].filter(Boolean).join(" ")).filter(Boolean);
+          const spec = mls.length>1
+            ? [thick,"Combo:",specs.join(" + ")].filter(Boolean).join(" ")
+            : [thick,specs[0]].filter(Boolean).join(" ");
+          lines.push(`  ${a.area_type} — ${spec||"(no material chosen yet)"} — ${a.sqft||0} ft²${a.is_optional?" (Optional)":""}${flag}`);
         });
       });
       return lines.join("\n");

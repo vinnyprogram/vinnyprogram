@@ -231,6 +231,8 @@ export default function CustomerProfile() {
               material:a.material, thickness_in:a.thickness_in, r_value:a.r_value,
               sqft:a.sqft, qty:a.qty, unit:a.unit, unit_price:a.unit_price, line_total:a.line_total,
               order_index:a.order_index, company_id:a.company_id, options:a.options,
+              paint_sqft:a.paint_sqft, deduct_sqft:a.deduct_sqft, price_override:a.price_override,
+              phase:a.phase, is_optional:a.is_optional, optional_note:a.optional_note,
             }))
           ).select();
           if(ae){ console.error("Area copy error:", ae.message); }
