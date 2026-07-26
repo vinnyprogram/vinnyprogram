@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import AddressInput from "./AddressInput";
+import { AdjustmentRow, PaymentScheduleEditor } from "./PricingOptions";
 
 const C = {
   bg: "#f4f5f7", white: "#fff", ink: "#0f172a",
@@ -77,10 +78,24 @@ export default function GCEstimate(){
   const selectedLead = leads.find(l=>String(l.id)===String(selectedLeadId));
 
   const [jobType, setJobType] = useState("Remodel"); // New Construction / Remodel / Addition
+  const [status, setStatus] = useState("Draft");
   const [floorNames, setFloorNames] = useState(["1st"]);
   const [activeFloor, setActiveFloor] = useState("1st");
   const [areas, setAreas] = useState([]);
   const [notes, setNotes] = useState("");
+
+  const [taxRate, setTaxRate] = useState("0");
+  const [markupOpen, setMarkupOpen] = useState(false);
+  const [markupType, setMarkupType] = useState("percent");
+  const [markupValue, setMarkupValue] = useState("");
+  const [discountOpen, setDiscountOpen] = useState(false);
+  const [discountType, setDiscountType] = useState("percent");
+  const [discountValue, setDiscountValue] = useState("");
+  const [depositOpen, setDepositOpen] = useState(false);
+  const [depositType, setDepositType] = useState("percent");
+  const [depositValue, setDepositValue] = useState("");
+  const [scheduleOpen, setScheduleOpen] = useState(false);
+  const [paymentSchedule, setPaymentSchedule] = useState([]);
 
   useEffect(()=>{
     (async()=>{
@@ -109,6 +124,12 @@ export default function GCEstimate(){
           setAreas(est.areas||[]);
           setScopes(est.scopes||[]);
           setNotes(est.notes||"");
+          setStatus(est.status||"Draft");
+          setTaxRate(String(est.tax_rate||"0"));
+          if(Number(est.markup_value)>0){ setMarkupOpen(true); setMarkupType(est.markup_type||"percent"); setMarkupValue(String(est.markup_value)); }
+          if(Number(est.discount_value)>0){ setDiscountOpen(true); setDiscountType(est.discount_type||"percent"); setDiscountValue(String(est.discount_value)); }
+          if(Number(est.deposit_value)>0){ setDepositOpen(true); setDepositType(est.deposit_type||"percent"); setDepositValue(String(est.deposit_value)); }
+          if((est.payment_schedule||[]).length){ setScheduleOpen(true); setPaymentSchedule(est.payment_schedule); }
           const fls = sortFloors([...new Set((est.areas||[]).map(a=>a.floor).filter(Boolean))]);
           if(fls.length){ setFloorNames(fls); setActiveFloor(fls[0]); }
         }
@@ -241,7 +262,50 @@ export default function GCEstimate(){
     setScopes(prev=>prev.filter(sc=>sc.id!==id));
   }
 
-  const grandTotal = areas.reduce((s,a)=>s+materialsTotal(a.materials),0) + scopeTotal(scopes);
+  const subtotal = areas.reduce((s,a)=>s+materialsTotal(a.materials),0) + scopeTotal(scopes);
+  const markupAmount = markupOpen ? (markupType==="percent" ? subtotal*(Number(markupValue)||0)/100 : Number(markupValue)||0) : 0;
+  const discountAmount = discountOpen ? (discountType==="percent" ? subtotal*(Number(discountValue)||0)/100 : Number(discountValue)||0) : 0;
+  const afterAdjustments = Math.max(0, subtotal + markupAmount - discountAmount);
+  const taxTotal = afterAdjustments * (Number(taxRate)||0)/100;
+  const grandTotal = afterAdjustments + taxTotal;
+  const depositAmount = depositOpen ? (depositType==="percent" ? grandTotal*(Number(depositValue)||0)/100 : Number(depositValue)||0) : 0;
+  function installmentAmount(s){ return s.type==="percent" ? grandTotal*(Number(s.value)||0)/100 : Number(s.value)||0; }
+  const scheduledTotal = paymentSchedule.reduce((s,it)=>s+installmentAmount(it),0);
+
+  function emailQuote(){
+    if(!selectedLead){ alert("Select a customer first."); return; }
+    const lines = [];
+    lines.push(`Estimate for ${address||"your project"}`);
+    lines.push(`Job type: ${jobType}`);
+    lines.push("");
+    areas.forEach(a=>{
+      if(!a.name && !(a.materials||[]).length) return;
+      lines.push(`${a.floor} — ${a.name||"(area)"}${a.spec?` (${a.spec})`:""}`);
+      (a.materials||[]).forEach(m=>{
+        if(!m.material) return;
+        lines.push(`  ${m.material}: ${m.qty||0} ${m.unit||""} × $${m.unit_price||0} = $${fmt((Number(m.qty)||0)*(Number(m.unit_price)||0))}`);
+      });
+    });
+    if(scopes.length){
+      lines.push("");
+      lines.push("Scopes of work:");
+      scopes.forEach(sc=>{
+        const lt = (Number(sc.material_cost)||0)+(Number(sc.labor_cost)||0);
+        lines.push(`  ${sc.title||sc.trade}: $${fmt(lt)}`);
+      });
+    }
+    lines.push("");
+    lines.push(`Subtotal: $${fmt(subtotal)}`);
+    if(markupOpen && Number(markupValue)>0) lines.push(`Markup: +$${fmt(markupAmount)}`);
+    if(discountOpen && Number(discountValue)>0) lines.push(`Discount: -$${fmt(discountAmount)}`);
+    if(Number(taxRate)>0) lines.push(`Tax (${taxRate}%): $${fmt(taxTotal)}`);
+    lines.push(`Total: $${fmt(grandTotal)}`);
+    if(depositOpen && Number(depositValue)>0) lines.push(`Deposit required: $${fmt(depositAmount)}`);
+
+    const subject = encodeURIComponent(`Estimate for ${address||"your project"}`);
+    const body = encodeURIComponent(lines.join("\n"));
+    window.location.href = `mailto:${selectedLead.email||""}?subject=${subject}&body=${body}`;
+  }
 
   async function saveEstimate(){
     if(saving) return;
@@ -252,7 +316,12 @@ export default function GCEstimate(){
       const payload = {
         company_id: companyId,
         customer_id: Number(selectedLeadId),
-        address, job_type: jobType, areas, scopes, notes,
+        address, job_type: jobType, areas, scopes, notes, status,
+        tax_rate: Number(taxRate)||0,
+        markup_type: markupType, markup_value: markupOpen ? Number(markupValue)||0 : 0,
+        discount_type: discountType, discount_value: discountOpen ? Number(discountValue)||0 : 0,
+        deposit_type: depositType, deposit_value: depositOpen ? Number(depositValue)||0 : 0,
+        payment_schedule: scheduleOpen ? paymentSchedule.map(s=>({...s})) : [],
         updated_at: new Date().toISOString(),
       };
       if(isEditing){
@@ -283,9 +352,13 @@ export default function GCEstimate(){
           padding:"12px 16px",background:C.white,borderBottom:`1px solid ${C.border}`,position:"sticky",top:0,zIndex:10}}>
         <button onClick={()=>navigate(-1)} style={Btn}>← Back</button>
         <div style={{fontWeight:800,fontSize:15}}>✏️ GC Estimate</div>
-        <button onClick={saveEstimate} disabled={saving} style={{...BtnD,background:saving?"#64748b":C.ink}}>
-          {saving?"…":saved?"✓ Saved":"Save"}
-        </button>
+        <div style={{display:"flex",gap:6}}>
+          <button onClick={()=>window.print()} title="Print / Save as PDF" style={Btn}>🖨️ Office</button>
+          <button onClick={emailQuote} title="Email this quote to the customer" style={Btn}>✉️ Email</button>
+          <button onClick={saveEstimate} disabled={saving} style={{...BtnD,background:saving?"#64748b":C.ink}}>
+            {saving?"…":saved?"✓ Saved":"Save"}
+          </button>
+        </div>
       </div>
 
       <div style={{maxWidth:720,margin:"0 auto",padding:"14px 12px"}}>
@@ -595,19 +668,125 @@ export default function GCEstimate(){
           <button onClick={addScope} style={{...Btn,color:C.amber,borderColor:C.amber}}>+ Add scope</button>
         </div>
 
-        {/* Notes + total */}
+        {/* Notes */}
         <div style={CARD}>
           <div style={{fontSize:11,fontWeight:700,color:C.faint,textTransform:"uppercase",letterSpacing:0.5,marginBottom:10}}>Job Notes</div>
           <textarea value={notes} onChange={e=>setNotes(e.target.value)} placeholder="General notes for the crew or office…"
             style={{...I,width:"100%",height:60,padding:8,resize:"vertical"}} />
         </div>
 
-        <div style={{...CARD,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-          <span style={{fontWeight:700,fontSize:14}}>Total (materials + scopes entered so far)</span>
-          <span style={{fontWeight:800,fontSize:18,color:C.green}}>{fmt$(grandTotal)}</span>
+        {/* Pricing & Terms */}
+        <div style={{...CARD,padding:0,overflow:"hidden"}}>
+          <AdjustmentRow label="Add markup" open={markupOpen} type={markupType} value={markupValue} amount={markupAmount}
+            onAdd={()=>setMarkupOpen(true)} onTypeChange={setMarkupType} onValueChange={setMarkupValue}
+            onRemove={()=>{setMarkupOpen(false);setMarkupValue("");setMarkupType("percent");}} />
+          <div style={{borderTop:`1px solid ${C.border}`}}>
+            <AdjustmentRow label="Apply discount" open={discountOpen} type={discountType} value={discountValue} amount={discountAmount}
+              onAdd={()=>setDiscountOpen(true)} onTypeChange={setDiscountType} onValueChange={setDiscountValue}
+              onRemove={()=>{setDiscountOpen(false);setDiscountValue("");setDiscountType("percent");}} />
+          </div>
+          <div style={{borderTop:`1px solid ${C.border}`,padding:"7px 14px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <span style={{fontSize:13}}>Tax rate</span>
+            <input inputMode="decimal" value={taxRate} onChange={e=>setTaxRate(e.target.value)}
+              style={{...I,width:70,textAlign:"right"}} />
+          </div>
+          <div style={{borderTop:`1px solid ${C.border}`}}>
+            <AdjustmentRow label="Request a deposit" open={depositOpen} type={depositType} value={depositValue} amount={depositAmount}
+              onAdd={()=>setDepositOpen(true)} onTypeChange={setDepositType} onValueChange={setDepositValue}
+              onRemove={()=>{setDepositOpen(false);setDepositValue("");setDepositType("percent");}} />
+          </div>
+          <div style={{borderTop:`1px solid ${C.border}`}}>
+            <PaymentScheduleEditor open={scheduleOpen} schedule={paymentSchedule} grandTotal={grandTotal}
+              scheduledTotal={scheduledTotal} installmentAmount={installmentAmount}
+              onAdd={()=>setScheduleOpen(true)} onChange={setPaymentSchedule}
+              onRemoveAll={()=>{setScheduleOpen(false);setPaymentSchedule([]);}} />
+          </div>
+        </div>
+
+        {/* Estimate panel — check the numbers */}
+        <div style={{background:C.ink,borderRadius:12,padding:"16px 20px"}}>
+          <div style={{fontSize:11,fontWeight:700,color:"#94a3b8",textTransform:"uppercase",letterSpacing:0.5,marginBottom:10}}>Estimate Summary</div>
+          <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
+            <span style={{color:"#94a3b8",fontSize:12}}>Subtotal (materials + scopes)</span>
+            <span style={{color:"#fff",fontSize:12}}>${fmt(subtotal)}</span>
+          </div>
+          {markupOpen && Number(markupValue)>0 && (
+            <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
+              <span style={{color:"#94a3b8",fontSize:12}}>Markup</span>
+              <span style={{color:"#fff",fontSize:12}}>+${fmt(markupAmount)}</span>
+            </div>
+          )}
+          {discountOpen && Number(discountValue)>0 && (
+            <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
+              <span style={{color:"#94a3b8",fontSize:12}}>Discount</span>
+              <span style={{color:"#fff",fontSize:12}}>-${fmt(discountAmount)}</span>
+            </div>
+          )}
+          {Number(taxRate)>0 && (
+            <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
+              <span style={{color:"#94a3b8",fontSize:12}}>Tax ({taxRate}%)</span>
+              <span style={{color:"#fff",fontSize:12}}>${fmt(taxTotal)}</span>
+            </div>
+          )}
+          <div style={{borderTop:"1px solid #374151",paddingTop:10,marginTop:4,display:"flex",justifyContent:"space-between",alignItems:"baseline"}}>
+            <span style={{color:"#94a3b8",fontSize:12}}>Total</span>
+            <span style={{color:"#059669",fontWeight:800,fontSize:24}}>${fmt(grandTotal)}</span>
+          </div>
+          {depositOpen && Number(depositValue)>0 && (
+            <div style={{display:"flex",justifyContent:"space-between",marginTop:10,paddingTop:10,borderTop:"1px solid #374151"}}>
+              <span style={{color:"#94a3b8",fontSize:12}}>Deposit required</span>
+              <span style={{color:"#fff",fontSize:13,fontWeight:700}}>${fmt(depositAmount)}</span>
+            </div>
+          )}
+          {scheduleOpen && paymentSchedule.length>0 && (
+            <div style={{marginTop:10,paddingTop:10,borderTop:"1px solid #374151"}}>
+              <div style={{color:"#94a3b8",fontSize:12,marginBottom:4}}>Payment Schedule</div>
+              {paymentSchedule.map(s=>(
+                <div key={s.id} style={{display:"flex",justifyContent:"space-between",marginBottom:3}}>
+                  <span style={{color:"#cbd5e1",fontSize:11}}>{s.label||"Payment"}</span>
+                  <span style={{color:"#fff",fontSize:11}}>${fmt(installmentAmount(s))}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
       </div>
+
+      {/* Dedicated print-only view for the Office button */}
+      <div className="print-only-gc">
+        <div style={{fontWeight:800,fontSize:18,marginBottom:4}}>Estimate — {address}</div>
+        <div style={{fontSize:13,marginBottom:12}}>{selectedLead?.name} · {jobType}</div>
+        {areas.map(a=>(a.name || (a.materials||[]).length>0) && (
+          <div key={a.id} style={{marginBottom:10}}>
+            <b>{a.floor} — {a.name}{a.spec?` (${a.spec})`:""}</b>
+            {(a.materials||[]).filter(m=>m.material).map(m=>(
+              <div key={m.id} style={{fontSize:12,paddingLeft:12}}>
+                {m.material}: {m.qty} {m.unit} × ${m.unit_price} = ${fmt((Number(m.qty)||0)*(Number(m.unit_price)||0))}
+              </div>
+            ))}
+          </div>
+        ))}
+        {scopes.length>0 && (
+          <div style={{marginBottom:10}}>
+            <b>Scopes of work</b>
+            {scopes.map(sc=>(
+              <div key={sc.id} style={{fontSize:12,paddingLeft:12}}>
+                {sc.title||sc.trade}: ${fmt((Number(sc.material_cost)||0)+(Number(sc.labor_cost)||0))}
+              </div>
+            ))}
+          </div>
+        )}
+        <div style={{fontWeight:800,fontSize:16,marginTop:10}}>Total: ${fmt(grandTotal)}</div>
+      </div>
+      <style>{`
+        .print-only-gc { display: none; }
+        @media print {
+          body * { visibility: hidden; }
+          .print-only-gc, .print-only-gc * { visibility: visible; display: block; }
+          .print-only-gc { position: absolute; top: 0; left: 0; width: 100%; font-size: 14px; padding: 20px; }
+        }
+      `}</style>
       <datalist id="gc-materials-list">
         {companyMaterials.map(m=><option key={m.name} value={m.name}>{m.category?` ${m.category}`:""}</option>)}
       </datalist>
