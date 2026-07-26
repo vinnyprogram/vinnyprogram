@@ -136,6 +136,7 @@ export default function GCEstimate(){
       id: uid(), floor: activeFloor, name: "", spec: "",
       measurements: [], mh:"", ml:"", mq:"1", sqft: 0,
       materials: [], notes: "", _expanded: true,
+      fr_len:"", fr_spacing:"16", fr_openings:"0", // framing/stud calculator inputs
     };
     setAreas(prev=>[...prev, a]);
   }
@@ -181,6 +182,26 @@ export default function GCEstimate(){
     setAreas(prev=>prev.map(a=>a.id===areaId
       ? {...a, materials:[...(a.materials||[]), {id:uid(), material:"", qty:"", unit:"ea", unit_price:""}]}
       : a));
+  }
+  // Standard rule-of-thumb framing formula: studs = (wall length in inches / spacing) + 1
+  // for the run itself, plus 2 extra studs per opening (a jack + king stud on each
+  // side of a window/door) - a reasonable estimate, not a substitute for checking
+  // against the actual plan when openings are close together or doubled up.
+  function studCount(a){
+    const lenFt = parseFloat(a.fr_len)||0;
+    const spacing = parseFloat(a.fr_spacing)||16;
+    const openings = parseFloat(a.fr_openings)||0;
+    if(!lenFt||!spacing) return 0;
+    const base = Math.ceil((lenFt*12)/spacing) + 1;
+    return base + openings*4;
+  }
+  function insertStudCountAsMaterial(areaId){
+    const a = areas.find(x=>x.id===areaId);
+    const count = studCount(a);
+    if(!count) return;
+    setAreas(prev=>prev.map(x=>x.id!==areaId ? x : {
+      ...x, materials:[...(x.materials||[]), {id:uid(), material:"", qty:String(count), unit:"each", unit_price:""}]
+    }));
   }
   function updateMaterial(areaId, matId, field, value){
     setAreas(prev=>prev.map(a=>a.id!==areaId ? a : {
@@ -428,6 +449,43 @@ export default function GCEstimate(){
                         ))}
                       </div>
                     )}
+
+                    {/* Framing / stud calculator — separate from sqft coverage,
+                        since stud count depends on linear footage and spacing,
+                        not area. */}
+                    <div style={{background:"#f8fafc",border:`1px solid ${C.border}`,borderRadius:8,padding:10,marginBottom:10}}>
+                      <div style={{fontSize:11,fontWeight:700,color:C.faint,textTransform:"uppercase",letterSpacing:0.5,marginBottom:6}}>
+                        🧮 Framing calculator
+                      </div>
+                      <div style={{display:"flex",gap:6,marginBottom:6,flexWrap:"wrap"}}>
+                        <div style={{flex:1,minWidth:80}}>
+                          <div style={{fontSize:9,color:C.faint,marginBottom:2}}>WALL LENGTH (FT)</div>
+                          <input placeholder="0" inputMode="decimal" value={a.fr_len}
+                            onChange={e=>updateArea(a.id,"fr_len",e.target.value)} style={{...I,width:"100%"}} />
+                        </div>
+                        <div style={{width:100}}>
+                          <div style={{fontSize:9,color:C.faint,marginBottom:2}}>SPACING</div>
+                          <select value={a.fr_spacing} onChange={e=>updateArea(a.id,"fr_spacing",e.target.value)} style={{...I,width:"100%"}}>
+                            <option value="16">16" o.c.</option>
+                            <option value="24">24" o.c.</option>
+                          </select>
+                        </div>
+                        <div style={{width:90}}>
+                          <div style={{fontSize:9,color:C.faint,marginBottom:2}}>OPENINGS</div>
+                          <input placeholder="0" inputMode="decimal" value={a.fr_openings}
+                            onChange={e=>updateArea(a.id,"fr_openings",e.target.value)} style={{...I,width:"100%"}} />
+                        </div>
+                      </div>
+                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                        <span style={{fontSize:11,color:C.muted}}>
+                          = <b style={{color:C.ink,fontSize:14}}>{studCount(a)}</b> studs (start/end stud + 1 per opening for jack/king studs)
+                        </span>
+                        <button onClick={()=>insertStudCountAsMaterial(a.id)} disabled={!studCount(a)}
+                          style={{...Btn,fontSize:11,padding:"4px 10px",height:26,opacity:studCount(a)?1:0.4}}>
+                          + Add as material
+                        </button>
+                      </div>
+                    </div>
 
                     {/* Materials for this section */}
                     <div style={{fontSize:11,fontWeight:700,color:C.faint,textTransform:"uppercase",letterSpacing:0.5,marginBottom:6}}>
