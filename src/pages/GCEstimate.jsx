@@ -348,8 +348,57 @@ export default function GCEstimate(){
   const floorTotal = floorAreas.reduce((s,a)=>s+materialsTotal(a.materials),0);
 
   const estimateTotalsPanel = (
-    <div style={{fontSize:12}}>
-      <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
+    <div style={{fontSize:11,lineHeight:1.55}}>
+      {selectedLead && (
+        <div style={{marginBottom:7,paddingBottom:6,borderBottom:`1px solid ${C.border}`}}>
+          <div style={{fontWeight:700,fontSize:12,color:C.ink}}>{selectedLead.name}</div>
+          {selectedLead.phone && <div style={{color:C.muted}}>{selectedLead.phone}</div>}
+          {selectedLead.company_name && <div style={{color:C.muted}}>{selectedLead.company_name}</div>}
+          {selectedLead.email && <div style={{color:C.faint,fontSize:10}}>{selectedLead.email}</div>}
+        </div>
+      )}
+      {address && (
+        <div style={{marginBottom:8,paddingBottom:6,borderBottom:`1px solid ${C.border}`,color:C.muted}}>
+          <span style={{fontWeight:600,color:C.ink}}>{jobType} </span>{address}
+        </div>
+      )}
+
+      <div style={{marginBottom:8}}>
+        {areas.filter(a=>a.name || (a.materials||[]).some(m=>m.material)).map(a=>(
+          <div key={a.id} style={{marginBottom:8}}>
+            <div style={{fontWeight:700,color:C.ink,fontSize:11}}>{a.floor} — {a.name}{a.spec?` (${a.spec})`:""}</div>
+            {(a.materials||[]).filter(m=>m.material).map(m=>(
+              <div key={m.id} style={{display:"flex",justifyContent:"space-between",paddingLeft:6,color:C.muted,fontSize:10.5}}>
+                <span>{m.material} ({m.qty||0} {m.unit||""})</span>
+                <span style={{color:C.ink,flexShrink:0,marginLeft:6}}>${fmt((Number(m.qty)||0)*(Number(m.unit_price)||0))}</span>
+              </div>
+            ))}
+          </div>
+        ))}
+        {scopes.filter(sc=>sc.title||sc.trade).map(sc=>(
+          <div key={sc.id} style={{marginBottom:8}}>
+            <div style={{fontWeight:700,color:C.ink,fontSize:11}}>{sc.trade}{sc.title?` — ${sc.title}`:""}</div>
+            {sc.performed_by==="Subcontractor" && sc.subcontractor_name && (
+              <div style={{paddingLeft:6,color:C.faint,fontSize:10}}>Sub: {sc.subcontractor_name}</div>
+            )}
+            {Number(sc.material_cost)>0 && (
+              <div style={{display:"flex",justifyContent:"space-between",paddingLeft:6,color:C.muted,fontSize:10.5}}>
+                <span>Material</span><span style={{color:C.ink}}>${fmt(Number(sc.material_cost))}</span>
+              </div>
+            )}
+            {Number(sc.labor_cost)>0 && (
+              <div style={{display:"flex",justifyContent:"space-between",paddingLeft:6,color:C.muted,fontSize:10.5}}>
+                <span>Labor</span><span style={{color:C.ink}}>${fmt(Number(sc.labor_cost))}</span>
+              </div>
+            )}
+          </div>
+        ))}
+        {areas.length===0 && scopes.length===0 && (
+          <div style={{color:C.faint,fontSize:10,textAlign:"center",padding:"10px 0"}}>Nothing entered yet</div>
+        )}
+      </div>
+
+      <div style={{display:"flex",justifyContent:"space-between",marginBottom:6,paddingTop:6,borderTop:`1px solid ${C.border}`}}>
         <span style={{color:C.muted}}>Subtotal</span>
         <span style={{color:C.ink}}>${fmt(subtotal)}</span>
       </div>
@@ -392,21 +441,6 @@ export default function GCEstimate(){
           ))}
         </div>
       )}
-      <div style={{marginTop:10,paddingTop:8,borderTop:`1px solid ${C.border}`}}>
-        <div style={{color:C.muted,marginBottom:4}}>By area</div>
-        {areas.filter(a=>a.name).map(a=>(
-          <div key={a.id} style={{display:"flex",justifyContent:"space-between",marginBottom:3}}>
-            <span style={{color:C.muted,fontSize:11}}>{a.floor} — {a.name}</span>
-            <span style={{color:C.ink,fontSize:11}}>${fmt(materialsTotal(a.materials))}</span>
-          </div>
-        ))}
-        {scopes.filter(sc=>sc.title||sc.trade).map(sc=>(
-          <div key={sc.id} style={{display:"flex",justifyContent:"space-between",marginBottom:3}}>
-            <span style={{color:C.muted,fontSize:11}}>{sc.title||sc.trade}</span>
-            <span style={{color:C.ink,fontSize:11}}>${fmt((Number(sc.material_cost)||0)+(Number(sc.labor_cost)||0))}</span>
-          </div>
-        ))}
-      </div>
     </div>
   );
 
