@@ -62,6 +62,7 @@ export default function GCEstimate(){
   const isEditing = !!estimateId;
 
   const [loading, setLoading] = useState(isEditing);
+  const [bottomPanelOpen, setBottomPanelOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [companyId, setCompanyId] = useState(null);
@@ -346,6 +347,69 @@ export default function GCEstimate(){
   const floorAreas = areas.filter(a=>a.floor===activeFloor);
   const floorTotal = floorAreas.reduce((s,a)=>s+materialsTotal(a.materials),0);
 
+  const estimateTotalsPanel = (
+    <div style={{fontSize:12}}>
+      <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
+        <span style={{color:C.muted}}>Subtotal</span>
+        <span style={{color:C.ink}}>${fmt(subtotal)}</span>
+      </div>
+      {markupOpen && Number(markupValue)>0 && (
+        <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
+          <span style={{color:C.muted}}>Markup</span>
+          <span style={{color:C.ink}}>+${fmt(markupAmount)}</span>
+        </div>
+      )}
+      {discountOpen && Number(discountValue)>0 && (
+        <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
+          <span style={{color:C.muted}}>Discount</span>
+          <span style={{color:C.ink}}>-${fmt(discountAmount)}</span>
+        </div>
+      )}
+      {Number(taxRate)>0 && (
+        <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
+          <span style={{color:C.muted}}>Tax ({taxRate}%)</span>
+          <span style={{color:C.ink}}>${fmt(taxTotal)}</span>
+        </div>
+      )}
+      <div style={{borderTop:`1px solid ${C.border}`,paddingTop:8,marginTop:4,display:"flex",justifyContent:"space-between",alignItems:"baseline"}}>
+        <span style={{color:C.muted}}>Total</span>
+        <span style={{color:C.green,fontWeight:800,fontSize:18}}>${fmt(grandTotal)}</span>
+      </div>
+      {depositOpen && Number(depositValue)>0 && (
+        <div style={{display:"flex",justifyContent:"space-between",marginTop:8,paddingTop:8,borderTop:`1px solid ${C.border}`}}>
+          <span style={{color:C.muted}}>Deposit</span>
+          <span style={{color:C.ink,fontWeight:700}}>${fmt(depositAmount)}</span>
+        </div>
+      )}
+      {scheduleOpen && paymentSchedule.length>0 && (
+        <div style={{marginTop:8,paddingTop:8,borderTop:`1px solid ${C.border}`}}>
+          <div style={{color:C.muted,marginBottom:4}}>Payment Schedule</div>
+          {paymentSchedule.map(s=>(
+            <div key={s.id} style={{display:"flex",justifyContent:"space-between",marginBottom:3}}>
+              <span style={{color:C.muted,fontSize:11}}>{s.label||"Payment"}</span>
+              <span style={{color:C.ink,fontSize:11}}>${fmt(installmentAmount(s))}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      <div style={{marginTop:10,paddingTop:8,borderTop:`1px solid ${C.border}`}}>
+        <div style={{color:C.muted,marginBottom:4}}>By area</div>
+        {areas.filter(a=>a.name).map(a=>(
+          <div key={a.id} style={{display:"flex",justifyContent:"space-between",marginBottom:3}}>
+            <span style={{color:C.muted,fontSize:11}}>{a.floor} — {a.name}</span>
+            <span style={{color:C.ink,fontSize:11}}>${fmt(materialsTotal(a.materials))}</span>
+          </div>
+        ))}
+        {scopes.filter(sc=>sc.title||sc.trade).map(sc=>(
+          <div key={sc.id} style={{display:"flex",justifyContent:"space-between",marginBottom:3}}>
+            <span style={{color:C.muted,fontSize:11}}>{sc.title||sc.trade}</span>
+            <span style={{color:C.ink,fontSize:11}}>${fmt((Number(sc.material_cost)||0)+(Number(sc.labor_cost)||0))}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
   return (
     <div style={{minHeight:"100vh",background:C.bg,fontFamily:"Inter,system-ui,sans-serif"}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",
@@ -361,7 +425,8 @@ export default function GCEstimate(){
         </div>
       </div>
 
-      <div style={{maxWidth:720,margin:"0 auto",padding:"14px 12px"}}>
+      <div style={{display:"flex",flex:1}}>
+      <div style={{flex:1,maxWidth:720,margin:"0 auto",padding:"14px 12px",minWidth:0}}>
 
         {/* Customer */}
         <div style={CARD}>
@@ -703,54 +768,27 @@ export default function GCEstimate(){
           </div>
         </div>
 
-        {/* Estimate panel — check the numbers */}
-        <div style={{background:C.ink,borderRadius:12,padding:"16px 20px"}}>
-          <div style={{fontSize:11,fontWeight:700,color:"#94a3b8",textTransform:"uppercase",letterSpacing:0.5,marginBottom:10}}>Estimate Summary</div>
-          <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
-            <span style={{color:"#94a3b8",fontSize:12}}>Subtotal (materials + scopes)</span>
-            <span style={{color:"#fff",fontSize:12}}>${fmt(subtotal)}</span>
-          </div>
-          {markupOpen && Number(markupValue)>0 && (
-            <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
-              <span style={{color:"#94a3b8",fontSize:12}}>Markup</span>
-              <span style={{color:"#fff",fontSize:12}}>+${fmt(markupAmount)}</span>
-            </div>
-          )}
-          {discountOpen && Number(discountValue)>0 && (
-            <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
-              <span style={{color:"#94a3b8",fontSize:12}}>Discount</span>
-              <span style={{color:"#fff",fontSize:12}}>-${fmt(discountAmount)}</span>
-            </div>
-          )}
-          {Number(taxRate)>0 && (
-            <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
-              <span style={{color:"#94a3b8",fontSize:12}}>Tax ({taxRate}%)</span>
-              <span style={{color:"#fff",fontSize:12}}>${fmt(taxTotal)}</span>
-            </div>
-          )}
-          <div style={{borderTop:"1px solid #374151",paddingTop:10,marginTop:4,display:"flex",justifyContent:"space-between",alignItems:"baseline"}}>
-            <span style={{color:"#94a3b8",fontSize:12}}>Total</span>
-            <span style={{color:"#059669",fontWeight:800,fontSize:24}}>${fmt(grandTotal)}</span>
-          </div>
-          {depositOpen && Number(depositValue)>0 && (
-            <div style={{display:"flex",justifyContent:"space-between",marginTop:10,paddingTop:10,borderTop:"1px solid #374151"}}>
-              <span style={{color:"#94a3b8",fontSize:12}}>Deposit required</span>
-              <span style={{color:"#fff",fontSize:13,fontWeight:700}}>${fmt(depositAmount)}</span>
-            </div>
-          )}
-          {scheduleOpen && paymentSchedule.length>0 && (
-            <div style={{marginTop:10,paddingTop:10,borderTop:"1px solid #374151"}}>
-              <div style={{color:"#94a3b8",fontSize:12,marginBottom:4}}>Payment Schedule</div>
-              {paymentSchedule.map(s=>(
-                <div key={s.id} style={{display:"flex",justifyContent:"space-between",marginBottom:3}}>
-                  <span style={{color:"#cbd5e1",fontSize:11}}>{s.label||"Payment"}</span>
-                  <span style={{color:"#fff",fontSize:11}}>${fmt(installmentAmount(s))}</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+      </div>
 
+      <div className="gc-side-panel" style={{width:260,flexShrink:0,borderLeft:`1px solid ${C.border}`,background:C.white,overflowY:"auto",padding:"10px 10px 20px"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+          <div style={{fontSize:10,fontWeight:800,color:C.faint,textTransform:"uppercase",letterSpacing:0.5}}>Estimate Summary</div>
+          <button onClick={()=>window.print()} title="Print / Save as PDF" style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:14}}>🖨️</button>
+        </div>
+        {estimateTotalsPanel}
+      </div>
+      </div>
+
+      <div className="gc-bottom-panel" style={{position:"fixed",bottom:0,left:0,right:0,zIndex:200,background:C.white,borderTop:`2px solid ${C.border}`,boxShadow:"0 -2px 12px rgba(0,0,0,.08)"}}>
+        <div onClick={()=>setBottomPanelOpen(p=>!p)} style={{padding:"10px 14px",display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}>
+          <span style={{fontSize:10,fontWeight:800,color:C.faint,textTransform:"uppercase",letterSpacing:0.5}}>Estimate Summary — ${fmt(grandTotal)}</span>
+          <div style={{display:"flex",alignItems:"center",gap:8}}>
+            <button onClick={(e)=>{e.stopPropagation();window.print();}} title="Print / Save as PDF"
+              style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:14,padding:0}}>🖨️</button>
+            <span style={{fontSize:9,color:C.faint}}>{bottomPanelOpen?"▼":"▲"}</span>
+          </div>
+        </div>
+        {bottomPanelOpen && (<div style={{maxHeight:"45vh",overflowY:"auto",padding:"8px 14px 24px"}}>{estimateTotalsPanel}</div>)}
       </div>
 
       {/* Dedicated print-only view for the Office button */}
@@ -786,6 +824,8 @@ export default function GCEstimate(){
           .print-only-gc, .print-only-gc * { visibility: visible; display: block; }
           .print-only-gc { position: absolute; top: 0; left: 0; width: 100%; font-size: 14px; padding: 20px; }
         }
+        @media (min-width: 900px) { .gc-bottom-panel { display: none !important; } }
+        @media (max-width: 899px) { .gc-side-panel { display: none !important; } }
       `}</style>
       <datalist id="gc-materials-list">
         {companyMaterials.map(m=><option key={m.name} value={m.name}>{m.category?` ${m.category}`:""}</option>)}
