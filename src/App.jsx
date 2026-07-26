@@ -26,6 +26,7 @@ import EkotropeReport from "./pages/EkotropeReport";
 import JobStart from "./pages/JobStart";
 import Projects from "./pages/Projects";
 import Schedule from "./pages/Schedule";
+import GCEstimate from "./pages/GCEstimate";
 
 
 function Dashboard() {
@@ -107,6 +108,8 @@ function ProtectedApp() {
         <Route path="/board-plaster/new" element={<BoardPlasterEstimate />} />
         <Route path="/board-plaster/search" element={<BoardPlasterSearch />} />
         <Route path="/board-plaster/:id" element={<BoardPlasterEstimate />} />
+        <Route path="gc/new" element={<GCEstimate />} />
+        <Route path="gc/:id" element={<GCEstimate />} />
       </Route>
 
       {/* Print reports — outside MainLayout so they print without sidebar clipping */}
