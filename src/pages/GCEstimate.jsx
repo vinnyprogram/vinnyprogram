@@ -92,7 +92,7 @@ export default function GCEstimate(){
         const { data:listRows } = await supabase.from("cost_settings").select("name,sort_order")
           .eq("company_id",cd.id).eq("period","list_gc_trade").order("sort_order");
         if(listRows?.length) setCompanyTrades(listRows.map(r=>r.name));
-        const { data:matRows } = await supabase.from("cost_settings").select("name,category,unit_price,notes")
+        const { data:matRows } = await supabase.from("cost_settings").select("name,category,unit_price,notes,qty_per_job")
           .eq("company_id",cd.id).eq("period","list_gc_material").order("sort_order");
         if(matRows?.length) setCompanyMaterials(matRows);
       }
@@ -153,7 +153,7 @@ export default function GCEstimate(){
       const sqft = Math.round(h*l*q*100)/100;
       const meas = [...(a.measurements||[]), {h,l,q,sqft}];
       const total = Math.round(meas.reduce((s,m)=>s+m.sqft,0)*100)/100;
-      return {...a, measurements:meas, sqft:total, mh:"", ml:"", mq:"1"};
+      return {...a, measurements:meas, sqft:total, mh:"", ml:"", mq:"1", materials:recalcAutoQty(a.materials, total)};
     }));
   }
   function deleteMeasurement(areaId, idx){
@@ -161,8 +161,20 @@ export default function GCEstimate(){
       if(a.id!==areaId) return a;
       const meas = (a.measurements||[]).filter((_,i)=>i!==idx);
       const total = Math.round(meas.reduce((s,m)=>s+m.sqft,0)*100)/100;
-      return {...a, measurements:meas, sqft:total};
+      return {...a, measurements:meas, sqft:total, materials:recalcAutoQty(a.materials, total)};
     }));
+  }
+  // Re-run the coverage calculation for any material row still flagged
+  // auto-qty (i.e. the user hasn't hand-edited its quantity), so adding
+  // more measurements after picking a material keeps the qty in sync.
+  function recalcAutoQty(materials, sqft){
+    return (materials||[]).map(m=>{
+      if(!m._auto_qty) return m;
+      const known = companyMaterials.find(cm=>cm.name===m.material);
+      const coverage = Number(known?.qty_per_job)||0;
+      if(coverage>0 && sqft>0) return {...m, qty:String(Math.ceil(sqft/coverage))};
+      return m;
+    });
   }
 
   function addMaterial(areaId){
@@ -176,8 +188,15 @@ export default function GCEstimate(){
         if(m.id!==matId) return m;
         if(field==="material"){
           const known = companyMaterials.find(cm=>cm.name===value);
-          if(known) return {...m, material:value, unit:known.notes||m.unit, unit_price:String(known.unit_price??m.unit_price)};
+          if(known){
+            const coverage = Number(known.qty_per_job)||0; // sqft one unit covers, e.g. one OSB sheet = 32 sqft
+            const autoQty = coverage>0 && Number(a.sqft)>0 ? Math.ceil(Number(a.sqft)/coverage) : m.qty;
+            return {...m, material:value, unit:known.notes||m.unit, unit_price:String(known.unit_price??m.unit_price),
+              qty:String(autoQty||""), _auto_qty: coverage>0 && Number(a.sqft)>0};
+          }
         }
+        // Manually editing qty turns off auto-calc for this row so it stops overriding a hand-typed value
+        if(field==="qty") return {...m, qty:value, _auto_qty:false};
         return {...m,[field]:value};
       })
     }));
