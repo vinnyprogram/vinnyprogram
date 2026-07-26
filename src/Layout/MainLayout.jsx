@@ -289,6 +289,13 @@ export default function MainLayout() {
                   onMouseEnter={e=>e.currentTarget.style.background="#374151"}
                   onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
                   <span>+</span> New Estimate
+                  <Link to="/gc/search"
+                    onClick={()=>{ setGcOpen(false); setMenuOpen(false); }}
+                    style={subLink}
+                    onMouseEnter={e=>e.currentTarget.style.background="#374151"}
+                    onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                    <span>🔍</span> Search Estimates
+                  </Link>
                 </Link>
 
               </div>

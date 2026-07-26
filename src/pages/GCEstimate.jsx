@@ -46,6 +46,11 @@ function sortFloors(list){
 function materialsTotal(materials){
   return (materials||[]).reduce((s,m)=>s+(Number(m.qty)||0)*(Number(m.unit_price)||0),0);
 }
+const DEFAULT_TRADES = ["Framing","Plumbing","Electrical","HVAC","Roofing","Windows & Doors",
+  "Painting","Flooring","Drywall","Insulation","Concrete","Demolition","Other"];
+function scopeTotal(scopes){
+  return (scopes||[]).reduce((s,sc)=>s+(Number(sc.price)||0),0);
+}
 
 export default function GCEstimate(){
   const navigate = useNavigate();
@@ -59,6 +64,8 @@ export default function GCEstimate(){
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [companyId, setCompanyId] = useState(null);
+  const [companyTrades, setCompanyTrades] = useState([]); // Settings-configured trade list (list_gc_trade)
+  const [scopes, setScopes] = useState([]); // subcontractor / trade scopes, priced independently of the area takeoff
 
   const [leads, setLeads] = useState([]);
   const [selectedLeadId, setSelectedLeadId] = useState(paramLeadId);
@@ -80,6 +87,11 @@ export default function GCEstimate(){
       if(!user) return;
       const { data:cd } = await supabase.from("companies").select("id").eq("user_id",user.id).maybeSingle();
       setCompanyId(cd?.id||null);
+      if(cd?.id){
+        const { data:listRows } = await supabase.from("cost_settings").select("name,sort_order")
+          .eq("company_id",cd.id).eq("period","list_gc_trade").order("sort_order");
+        if(listRows?.length) setCompanyTrades(listRows.map(r=>r.name));
+      }
       const { data:ls } = await supabase.from("customers").select("id,name,phone,company_name,address,email").order("name").limit(1000);
       setLeads(ls||[]);
 
@@ -91,6 +103,7 @@ export default function GCEstimate(){
           setAddress(est.address||"");
           setJobType(est.job_type||"Remodel");
           setAreas(est.areas||[]);
+          setScopes(est.scopes||[]);
           setNotes(est.notes||"");
           const fls = sortFloors([...new Set((est.areas||[]).map(a=>a.floor).filter(Boolean))]);
           if(fls.length){ setFloorNames(fls); setActiveFloor(fls[0]); }
@@ -162,7 +175,20 @@ export default function GCEstimate(){
     setAreas(prev=>prev.map(a=>a.id!==areaId ? a : {...a, materials:(a.materials||[]).filter(m=>m.id!==matId)}));
   }
 
-  const grandTotal = areas.reduce((s,a)=>s+materialsTotal(a.materials),0);
+  function addScope(){
+    setScopes(prev=>[...prev, {
+      id: uid(), trade: (companyTrades.length?companyTrades:DEFAULT_TRADES)[0]||"",
+      performed_by: "Subcontractor", subcontractor_name: "", price: "", notes: "",
+    }]);
+  }
+  function updateScope(id, field, value){
+    setScopes(prev=>prev.map(sc=>sc.id===id?{...sc,[field]:value}:sc));
+  }
+  function deleteScope(id){
+    setScopes(prev=>prev.filter(sc=>sc.id!==id));
+  }
+
+  const grandTotal = areas.reduce((s,a)=>s+materialsTotal(a.materials),0) + scopeTotal(scopes);
 
   async function saveEstimate(){
     if(saving) return;
@@ -173,7 +199,7 @@ export default function GCEstimate(){
       const payload = {
         company_id: companyId,
         customer_id: Number(selectedLeadId),
-        address, job_type: jobType, areas, notes,
+        address, job_type: jobType, areas, scopes, notes,
         updated_at: new Date().toISOString(),
       };
       if(isEditing){
@@ -406,6 +432,59 @@ export default function GCEstimate(){
           })}
         </div>
 
+        {/* Scopes & Subcontractors */}
+        <div style={CARD}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+            <div style={{fontSize:11,fontWeight:700,color:C.faint,textTransform:"uppercase",letterSpacing:0.5}}>
+              Scopes &amp; Subcontractors
+            </div>
+            <span style={{fontSize:12,color:C.muted}}>{fmt$(scopeTotal(scopes))} total</span>
+          </div>
+          <div style={{fontSize:11,color:C.faint,marginBottom:10}}>
+            Add a scope as soon as you know it's needed — leave the price blank until the subcontractor gets back to you, then fill it in and it flows into the total below.
+          </div>
+
+          {scopes.length===0 && (
+            <div style={{fontSize:12,color:C.faint,textAlign:"center",padding:"6px 0 12px"}}>
+              No scopes added yet.
+            </div>
+          )}
+
+          {scopes.map(sc=>{
+            const priced = Number(sc.price)>0;
+            return (
+              <div key={sc.id} style={{border:"1.5px solid #cbd5e1",borderRadius:10,padding:12,marginBottom:10,background:C.white}}>
+                <div style={{display:"flex",gap:6,marginBottom:8,alignItems:"center"}}>
+                  <select value={sc.trade} onChange={e=>updateScope(sc.id,"trade",e.target.value)} style={{...I,flex:1}}>
+                    {(companyTrades.length?companyTrades:DEFAULT_TRADES).map(t=><option key={t}>{t}</option>)}
+                  </select>
+                  <span style={{fontSize:10,fontWeight:700,padding:"3px 8px",borderRadius:10,whiteSpace:"nowrap",
+                      background:priced?"#dcfce7":"#fef3c7",color:priced?"#059669":"#b45309"}}>
+                    {priced?"✓ Priced":"⏳ Pending price"}
+                  </span>
+                  <button onClick={()=>deleteScope(sc.id)} style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:16}}>✕</button>
+                </div>
+                <div style={{display:"flex",gap:6,marginBottom:8}}>
+                  <select value={sc.performed_by} onChange={e=>updateScope(sc.id,"performed_by",e.target.value)} style={{...I,width:130}}>
+                    <option>Self</option>
+                    <option>Subcontractor</option>
+                  </select>
+                  {sc.performed_by==="Subcontractor" && (
+                    <input placeholder="Subcontractor name" value={sc.subcontractor_name}
+                      onChange={e=>updateScope(sc.id,"subcontractor_name",e.target.value)} style={{...I,flex:1}} />
+                  )}
+                  <input placeholder="Price (blank = pending)" inputMode="decimal" value={sc.price}
+                    onChange={e=>updateScope(sc.id,"price",e.target.value)} style={{...I,width:130}} />
+                </div>
+                <input placeholder="Notes…" value={sc.notes||""}
+                  onChange={e=>updateScope(sc.id,"notes",e.target.value)} style={{...I,width:"100%"}} />
+              </div>
+            );
+          })}
+
+          <button onClick={addScope} style={{...Btn,color:C.amber,borderColor:C.amber}}>+ Add scope</button>
+        </div>
+
         {/* Notes + total */}
         <div style={CARD}>
           <div style={{fontSize:11,fontWeight:700,color:C.faint,textTransform:"uppercase",letterSpacing:0.5,marginBottom:10}}>Job Notes</div>
@@ -414,7 +493,7 @@ export default function GCEstimate(){
         </div>
 
         <div style={{...CARD,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-          <span style={{fontWeight:700,fontSize:14}}>Total (materials entered so far)</span>
+          <span style={{fontWeight:700,fontSize:14}}>Total (materials + scopes entered so far)</span>
           <span style={{fontWeight:800,fontSize:18,color:C.green}}>{fmt$(grandTotal)}</span>
         </div>
 
