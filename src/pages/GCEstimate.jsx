@@ -49,7 +49,7 @@ function materialsTotal(materials){
 const DEFAULT_TRADES = ["Framing","Plumbing","Electrical","HVAC","Roofing","Windows & Doors",
   "Painting","Flooring","Drywall","Insulation","Concrete","Demolition","Other"];
 function scopeTotal(scopes){
-  return (scopes||[]).reduce((s,sc)=>s+(Number(sc.price)||0),0);
+  return (scopes||[]).reduce((s,sc)=>s+(Number(sc.material_cost)||0)+(Number(sc.labor_cost)||0),0);
 }
 
 export default function GCEstimate(){
@@ -178,7 +178,9 @@ export default function GCEstimate(){
   function addScope(){
     setScopes(prev=>[...prev, {
       id: uid(), trade: (companyTrades.length?companyTrades:DEFAULT_TRADES)[0]||"",
-      performed_by: "Subcontractor", subcontractor_name: "", price: "", notes: "",
+      title: "", description: "",
+      performed_by: "Subcontractor", subcontractor_name: "",
+      material_cost: "", labor_cost: "", notes: "",
     }]);
   }
   function updateScope(id, field, value){
@@ -450,11 +452,13 @@ export default function GCEstimate(){
             </div>
           )}
 
-          {scopes.map(sc=>{
-            const priced = Number(sc.price)>0;
+          {scopes.map((sc, i)=>{
+            const priced = (Number(sc.material_cost)||0) + (Number(sc.labor_cost)||0) > 0;
+            const lineTotal = (Number(sc.material_cost)||0) + (Number(sc.labor_cost)||0);
             return (
               <div key={sc.id} style={{border:"1.5px solid #cbd5e1",borderRadius:10,padding:12,marginBottom:10,background:C.white}}>
                 <div style={{display:"flex",gap:6,marginBottom:8,alignItems:"center"}}>
+                  <span style={{fontWeight:800,color:C.amber,fontSize:13,width:18}}>{i+1}</span>
                   <select value={sc.trade} onChange={e=>updateScope(sc.id,"trade",e.target.value)} style={{...I,flex:1}}>
                     {(companyTrades.length?companyTrades:DEFAULT_TRADES).map(t=><option key={t}>{t}</option>)}
                   </select>
@@ -464,6 +468,12 @@ export default function GCEstimate(){
                   </span>
                   <button onClick={()=>deleteScope(sc.id)} style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:16}}>✕</button>
                 </div>
+                <input placeholder="Work item title (e.g. Exterior Wall Framing & Sheathing Installation)"
+                  value={sc.title} onChange={e=>updateScope(sc.id,"title",e.target.value)}
+                  style={{...I,width:"100%",marginBottom:6,fontWeight:600}} />
+                <textarea placeholder="Description (e.g. Includes framing of 3 walls, rough openings for 6 windows and 1 door)"
+                  value={sc.description} onChange={e=>updateScope(sc.id,"description",e.target.value)}
+                  style={{...I,width:"100%",height:44,padding:8,resize:"vertical",fontStyle:"italic",marginBottom:8}} />
                 <div style={{display:"flex",gap:6,marginBottom:8}}>
                   <select value={sc.performed_by} onChange={e=>updateScope(sc.id,"performed_by",e.target.value)} style={{...I,width:130}}>
                     <option>Self</option>
@@ -473,11 +483,23 @@ export default function GCEstimate(){
                     <input placeholder="Subcontractor name" value={sc.subcontractor_name}
                       onChange={e=>updateScope(sc.id,"subcontractor_name",e.target.value)} style={{...I,flex:1}} />
                   )}
-                  <input placeholder="Price (blank = pending)" inputMode="decimal" value={sc.price}
-                    onChange={e=>updateScope(sc.id,"price",e.target.value)} style={{...I,width:130}} />
                 </div>
-                <input placeholder="Notes…" value={sc.notes||""}
-                  onChange={e=>updateScope(sc.id,"notes",e.target.value)} style={{...I,width:"100%"}} />
+                <div style={{display:"flex",gap:6,alignItems:"center"}}>
+                  <div style={{flex:1}}>
+                    <div style={{fontSize:9,color:C.faint,marginBottom:2}}>MATERIAL</div>
+                    <input placeholder="$0.00" inputMode="decimal" value={sc.material_cost}
+                      onChange={e=>updateScope(sc.id,"material_cost",e.target.value)} style={{...I,width:"100%"}} />
+                  </div>
+                  <div style={{flex:1}}>
+                    <div style={{fontSize:9,color:C.faint,marginBottom:2}}>LABOR</div>
+                    <input placeholder="$0.00" inputMode="decimal" value={sc.labor_cost}
+                      onChange={e=>updateScope(sc.id,"labor_cost",e.target.value)} style={{...I,width:"100%"}} />
+                  </div>
+                  <div style={{width:100,textAlign:"right"}}>
+                    <div style={{fontSize:9,color:C.faint,marginBottom:2}}>LINE TOTAL</div>
+                    <div style={{fontSize:15,fontWeight:800,color:C.green}}>{fmt$(lineTotal)}</div>
+                  </div>
+                </div>
               </div>
             );
           })}
