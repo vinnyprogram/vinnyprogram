@@ -9,6 +9,7 @@ export default function MainLayout() {
   const [estimateOpen, setEstimateOpen] = useState(false);
   const [hersOpen, setHersOpen] = useState(false);
   const [boardPlasterOpen, setBoardPlasterOpen] = useState(false);
+  const [gcOpen, setGcOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
 
   const offersInsulation = company?.offers_insulation !== false;
@@ -249,7 +250,7 @@ export default function MainLayout() {
                   <span>+</span> New Estimate
                 </Link>
 
-                <Link to="/board-plaster/search"
+          <Link to="/board-plaster/search"
                   onClick={()=>{ setBoardPlasterOpen(false); setMenuOpen(false); }}
                   style={subLink}
                   onMouseEnter={e=>e.currentTarget.style.background="#374151"}
@@ -260,6 +261,39 @@ export default function MainLayout() {
               </div>
             )}
           </div>}
+
+          {/* General Contractor module */}
+          <div>
+            <button
+              onClick={()=>setGcOpen(p=>!p)}
+              style={{
+                background: gcOpen||isActive("/gc") ? "#1f2937" : "none",
+                border:"none", cursor:"pointer",
+                color: isActive("/gc") ? "#fff" : "#94a3b8",
+                fontSize:15,
+                fontWeight: isActive("/gc") ? 700 : 400,
+                padding:"10px 12px", width:"100%", textAlign:"left", borderRadius:8,
+                display:"flex", justifyContent:"space-between", alignItems:"center",
+              }}>
+              <span>🏗️ General Contractor</span>
+              <span style={{ fontSize:10, opacity:0.5 }}>{gcOpen?"▲":"▼"}</span>
+            </button>
+
+            {gcOpen && (
+              <div style={{ marginLeft:12, marginTop:2,
+                  display:"flex", flexDirection:"column", gap:1 }}>
+
+                <Link to="/gc/new"
+                  onClick={()=>{ setGcOpen(false); setMenuOpen(false); }}
+                  style={subLink}
+                  onMouseEnter={e=>e.currentTarget.style.background="#374151"}
+                  onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                  <span>+</span> New Estimate
+                </Link>
+
+              </div>
+            )}
+          </div>
         </nav>
 
         {/* settings link */}
