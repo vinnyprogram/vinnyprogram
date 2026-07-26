@@ -65,6 +65,7 @@ export default function GCEstimate(){
   const [saved, setSaved] = useState(false);
   const [companyId, setCompanyId] = useState(null);
   const [companyTrades, setCompanyTrades] = useState([]); // Settings-configured trade list (list_gc_trade)
+  const [companyMaterials, setCompanyMaterials] = useState([]); // Settings-configured material catalog (list_gc_material)
   const [scopes, setScopes] = useState([]); // subcontractor / trade scopes, priced independently of the area takeoff
 
   const [leads, setLeads] = useState([]);
@@ -91,6 +92,9 @@ export default function GCEstimate(){
         const { data:listRows } = await supabase.from("cost_settings").select("name,sort_order")
           .eq("company_id",cd.id).eq("period","list_gc_trade").order("sort_order");
         if(listRows?.length) setCompanyTrades(listRows.map(r=>r.name));
+        const { data:matRows } = await supabase.from("cost_settings").select("name,category,unit_price,notes")
+          .eq("company_id",cd.id).eq("period","list_gc_material").order("sort_order");
+        if(matRows?.length) setCompanyMaterials(matRows);
       }
       const { data:ls } = await supabase.from("customers").select("id,name,phone,company_name,address,email").order("name").limit(1000);
       setLeads(ls||[]);
@@ -168,7 +172,14 @@ export default function GCEstimate(){
   }
   function updateMaterial(areaId, matId, field, value){
     setAreas(prev=>prev.map(a=>a.id!==areaId ? a : {
-      ...a, materials:(a.materials||[]).map(m=>m.id===matId?{...m,[field]:value}:m)
+      ...a, materials:(a.materials||[]).map(m=>{
+        if(m.id!==matId) return m;
+        if(field==="material"){
+          const known = companyMaterials.find(cm=>cm.name===value);
+          if(known) return {...m, material:value, unit:known.notes||m.unit, unit_price:String(known.unit_price??m.unit_price)};
+        }
+        return {...m,[field]:value};
+      })
     }));
   }
   function deleteMaterial(areaId, matId){
@@ -405,7 +416,7 @@ export default function GCEstimate(){
                     </div>
                     {(a.materials||[]).map(m=>(
                       <div key={m.id} style={{display:"flex",gap:6,marginBottom:6,alignItems:"center"}}>
-                        <input placeholder="Material (e.g. 2x6x10 stud)" value={m.material}
+                        <input placeholder="Material (e.g. 2x6x10 stud)" value={m.material} list="gc-materials-list"
                           onChange={e=>updateMaterial(a.id,m.id,"material",e.target.value)} style={{...I,flex:2}} />
                         <input placeholder="Qty" inputMode="decimal" value={m.qty}
                           onChange={e=>updateMaterial(a.id,m.id,"qty",e.target.value)} style={{...I,width:56}} />
@@ -520,6 +531,9 @@ export default function GCEstimate(){
         </div>
 
       </div>
+      <datalist id="gc-materials-list">
+        {companyMaterials.map(m=><option key={m.name} value={m.name}>{m.category?` ${m.category}`:""}</option>)}
+      </datalist>
     </div>
   );
 }
