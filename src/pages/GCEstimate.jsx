@@ -202,7 +202,7 @@ export default function GCEstimate(){
 
   function addMaterial(areaId){
     setAreas(prev=>prev.map(a=>a.id===areaId
-      ? {...a, materials:[...(a.materials||[]), {id:uid(), material:"", qty:"", unit:"ea", unit_price:""}]}
+      ? {...a, materials:[...(a.materials||[]), {id:uid(), category:"", material:"", qty:"", unit:"ea", unit_price:""}]}
       : a));
   }
   // Standard rule-of-thumb framing formula: studs = (wall length in inches / spacing) + 1
@@ -229,8 +229,11 @@ export default function GCEstimate(){
     setAreas(prev=>prev.map(a=>a.id!==areaId ? a : {
       ...a, materials:(a.materials||[]).map(m=>{
         if(m.id!==matId) return m;
+        if(field==="category"){
+          return {...m, category:value, material:"", unit_price:"", _auto_qty:false};
+        }
         if(field==="material"){
-          const known = companyMaterials.find(cm=>cm.name===value);
+          const known = companyMaterials.find(cm=>cm.name===value && (cm.category||"")===(m.category||""));
           if(known){
             const coverage = Number(known.qty_per_job)||0; // sqft one unit covers, e.g. one OSB sheet = 32 sqft
             const autoQty = coverage>0 && Number(a.sqft)>0 ? Math.ceil(Number(a.sqft)/coverage) : m.qty;
@@ -345,6 +348,8 @@ export default function GCEstimate(){
   if(loading) return <div style={{padding:40,textAlign:"center",color:C.muted}}>Loading…</div>;
 
   const floorAreas = areas.filter(a=>a.floor===activeFloor);
+  const gcMaterialCategories = [...new Set(companyMaterials.map(m=>m.category||"Other"))].sort();
+  if(!gcMaterialCategories.length) gcMaterialCategories.push("Framing","Board & Plaster","Roofing","Windows & Doors","Siding","Flooring","Other");
   const floorTotal = floorAreas.reduce((s,a)=>s+materialsTotal(a.materials),0);
 
   const estimateTotalsPanel = (
@@ -663,23 +668,39 @@ export default function GCEstimate(){
                     <div style={{fontSize:11,fontWeight:700,color:C.faint,textTransform:"uppercase",letterSpacing:0.5,marginBottom:6}}>
                       Materials for this section
                     </div>
-                    {(a.materials||[]).map(m=>(
-                      <div key={m.id} style={{display:"flex",gap:6,marginBottom:6,alignItems:"center"}}>
-                        <input placeholder="Material (e.g. 2x6x10 stud)" value={m.material} list="gc-materials-list"
-                          onChange={e=>updateMaterial(a.id,m.id,"material",e.target.value)} style={{...I,flex:2}} />
-                        <input placeholder="Qty" inputMode="decimal" value={m.qty}
-                          onChange={e=>updateMaterial(a.id,m.id,"qty",e.target.value)} style={{...I,width:56}} />
-                        <input placeholder="Unit" value={m.unit}
-                          onChange={e=>updateMaterial(a.id,m.id,"unit",e.target.value)} style={{...I,width:56}} />
-                        <input placeholder="$/unit" inputMode="decimal" value={m.unit_price}
-                          onChange={e=>updateMaterial(a.id,m.id,"unit_price",e.target.value)} style={{...I,width:70}} />
-                        <span style={{fontSize:12,fontWeight:700,color:C.green,width:64,textAlign:"right"}}>
-                          {fmt$((Number(m.qty)||0)*(Number(m.unit_price)||0))}
-                        </span>
-                        <button onClick={()=>deleteMaterial(a.id,m.id)}
-                          style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:14}}>✕</button>
+                    {(a.materials||[]).map(m=>{
+                      const catFiltered = companyMaterials.filter(cm=>(cm.category||"Other")===(m.category||"Other"));
+                      const datalistId = `gc-materials-${(m.category||"Other").replace(/[^a-zA-Z0-9]/g,"_")}`;
+                      return (
+                      <div key={m.id} style={{marginBottom:8}}>
+                        <div style={{display:"flex",gap:6,marginBottom:4}}>
+                          <select value={m.category||""} onChange={e=>updateMaterial(a.id,m.id,"category",e.target.value)} style={{...I,width:130}}>
+                            <option value="">Category…</option>
+                            {gcMaterialCategories.map(c=><option key={c} value={c}>{c}</option>)}
+                          </select>
+                          <input placeholder={m.category?`${m.category} material…`:"Pick a category first, or type any material"}
+                            value={m.material} list={datalistId}
+                            onChange={e=>updateMaterial(a.id,m.id,"material",e.target.value)} style={{...I,flex:1}} />
+                        </div>
+                        <div style={{display:"flex",gap:6,alignItems:"center"}}>
+                          <input placeholder="Qty" inputMode="decimal" value={m.qty}
+                            onChange={e=>updateMaterial(a.id,m.id,"qty",e.target.value)} style={{...I,width:56}} />
+                          <input placeholder="Unit" value={m.unit}
+                            onChange={e=>updateMaterial(a.id,m.id,"unit",e.target.value)} style={{...I,width:56}} />
+                          <input placeholder="$/unit" inputMode="decimal" value={m.unit_price}
+                            onChange={e=>updateMaterial(a.id,m.id,"unit_price",e.target.value)} style={{...I,width:70}} />
+                          <span style={{fontSize:12,fontWeight:700,color:C.green,width:64,textAlign:"right"}}>
+                            {fmt$((Number(m.qty)||0)*(Number(m.unit_price)||0))}
+                          </span>
+                          <button onClick={()=>deleteMaterial(a.id,m.id)}
+                            style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:14}}>✕</button>
+                        </div>
+                        <datalist id={datalistId}>
+                          {catFiltered.map(cm=><option key={cm.name} value={cm.name} />)}
+                        </datalist>
                       </div>
-                    ))}
+                      );
+                    })}
                     <button onClick={()=>addMaterial(a.id)} style={{...Btn,fontSize:11,padding:"4px 10px",height:26}}>
                       + Add material
                     </button>
@@ -861,9 +882,6 @@ export default function GCEstimate(){
         @media (min-width: 900px) { .gc-bottom-panel { display: none !important; } }
         @media (max-width: 899px) { .gc-side-panel { display: none !important; } }
       `}</style>
-      <datalist id="gc-materials-list">
-        {companyMaterials.map(m=><option key={m.name} value={m.name}>{m.category?` ${m.category}`:""}</option>)}
-      </datalist>
     </div>
   );
 }
