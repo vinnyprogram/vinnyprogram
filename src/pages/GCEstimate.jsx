@@ -233,11 +233,11 @@ export default function GCEstimate(){
           return {...m, category:value, material:"", unit_price:"", _auto_qty:false};
         }
         if(field==="material"){
-          const known = companyMaterials.find(cm=>cm.name===value && (cm.category||"")===(m.category||""));
+          const known = companyMaterials.find(cm=>cm.name===value);
           if(known){
             const coverage = Number(known.qty_per_job)||0; // sqft one unit covers, e.g. one OSB sheet = 32 sqft
             const autoQty = coverage>0 && Number(a.sqft)>0 ? Math.ceil(Number(a.sqft)/coverage) : m.qty;
-            return {...m, material:value, unit:known.notes||m.unit, unit_price:String(known.unit_price??m.unit_price),
+            return {...m, material:value, category:known.category||m.category, unit:known.notes||m.unit, unit_price:String(known.unit_price??m.unit_price),
               qty:String(autoQty||""), _auto_qty: coverage>0 && Number(a.sqft)>0};
           }
         }
@@ -669,8 +669,10 @@ export default function GCEstimate(){
                       Materials for this section
                     </div>
                     {(a.materials||[]).map(m=>{
-                      const catFiltered = companyMaterials.filter(cm=>(cm.category||"Other")===(m.category||"Other"));
-                      const datalistId = `gc-materials-${(m.category||"Other").replace(/[^a-zA-Z0-9]/g,"_")}`;
+                      const catFiltered = m.category
+                        ? companyMaterials.filter(cm=>(cm.category||"Other")===m.category)
+                        : companyMaterials; // no category picked yet - search everything by name
+                      const datalistId = `gc-materials-${(m.category||"all").replace(/[^a-zA-Z0-9]/g,"_")}`;
                       return (
                       <div key={m.id} style={{marginBottom:8}}>
                         <div style={{display:"flex",gap:6,marginBottom:4}}>
@@ -678,7 +680,7 @@ export default function GCEstimate(){
                             <option value="">Category…</option>
                             {gcMaterialCategories.map(c=><option key={c} value={c}>{c}</option>)}
                           </select>
-                          <input placeholder={m.category?`${m.category} material…`:"Pick a category first, or type any material"}
+                          <input placeholder={m.category?`${m.category} material…`:"Type to search all materials…"}
                             value={m.material} list={datalistId}
                             onChange={e=>updateMaterial(a.id,m.id,"material",e.target.value)} style={{...I,flex:1}} />
                         </div>
