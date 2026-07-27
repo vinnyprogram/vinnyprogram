@@ -47,6 +47,9 @@ function sortFloors(list){
 function materialsTotal(materials){
   return (materials||[]).reduce((s,m)=>s+(Number(m.qty)||0)*(Number(m.unit_price)||0),0);
 }
+function matDisplayName(m){
+  return [m.brand, m.model, m.thickness].filter(Boolean).join(" ");
+}
 const DEFAULT_TRADES = ["Framing","Plumbing","Electrical","HVAC","Roofing","Windows & Doors",
   "Painting","Flooring","Drywall","Insulation","Concrete","Demolition","Other"];
 function scopeTotal(scopes){
@@ -108,8 +111,8 @@ export default function GCEstimate(){
         const { data:listRows } = await supabase.from("cost_settings").select("name,sort_order")
           .eq("company_id",cd.id).eq("period","list_gc_trade").order("sort_order");
         if(listRows?.length) setCompanyTrades(listRows.map(r=>r.name));
-        const { data:matRows } = await supabase.from("cost_settings").select("name,category,unit_price,notes,qty_per_job")
-          .eq("company_id",cd.id).eq("period","list_gc_material").order("sort_order");
+        const { data:matRows } = await supabase.from("gc_materials").select("*")
+          .eq("company_id",cd.id).order("sort_order");
         if(matRows?.length) setCompanyMaterials(matRows);
       }
       const { data:ls } = await supabase.from("customers").select("id,name,phone,company_name,address,email").order("name").limit(1000);
@@ -193,8 +196,8 @@ export default function GCEstimate(){
   function recalcAutoQty(materials, sqft){
     return (materials||[]).map(m=>{
       if(!m._auto_qty) return m;
-      const known = companyMaterials.find(cm=>cm.name===m.material);
-      const coverage = Number(known?.qty_per_job)||0;
+      const known = companyMaterials.find(cm=>matDisplayName(cm)===m.material);
+      const coverage = Number(known?.coverage_sqft)||0;
       if(coverage>0 && sqft>0) return {...m, qty:String(Math.ceil(sqft/coverage))};
       return m;
     });
@@ -202,7 +205,7 @@ export default function GCEstimate(){
 
   function addMaterial(areaId){
     setAreas(prev=>prev.map(a=>a.id===areaId
-      ? {...a, materials:[...(a.materials||[]), {id:uid(), category:"", material:"", qty:"", unit:"ea", unit_price:""}]}
+      ? {...a, materials:[...(a.materials||[]), {id:uid(), category:"", material:"", brand:"", model:"", thickness:"", size:"", qty:"", unit:"ea", unit_price:""}]}
       : a));
   }
   // Standard rule-of-thumb framing formula: studs = (wall length in inches / spacing) + 1
@@ -233,11 +236,13 @@ export default function GCEstimate(){
           return {...m, category:value, material:"", unit_price:"", _auto_qty:false};
         }
         if(field==="material"){
-          const known = companyMaterials.find(cm=>cm.name===value);
+          const known = companyMaterials.find(cm=>matDisplayName(cm)===value);
           if(known){
-            const coverage = Number(known.qty_per_job)||0; // sqft one unit covers, e.g. one OSB sheet = 32 sqft
+            const coverage = Number(known.coverage_sqft)||0; // sqft one unit covers, e.g. one OSB sheet = 32 sqft
             const autoQty = coverage>0 && Number(a.sqft)>0 ? Math.ceil(Number(a.sqft)/coverage) : m.qty;
-            return {...m, material:value, category:known.category||m.category, unit:known.notes||m.unit, unit_price:String(known.unit_price??m.unit_price),
+            return {...m, material:value, category:known.category||m.category,
+              brand:known.brand||"", model:known.model||"", thickness:known.thickness||"", size:known.size||"",
+              unit:known.unit||m.unit, unit_price:String(known.unit_price??m.unit_price),
               qty:String(autoQty||""), _auto_qty: coverage>0 && Number(a.sqft)>0};
           }
         }
@@ -698,7 +703,7 @@ export default function GCEstimate(){
                             style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:14}}>✕</button>
                         </div>
                         <datalist id={datalistId}>
-                          {catFiltered.map(cm=><option key={cm.name} value={cm.name} />)}
+                          {catFiltered.map((cm,i)=><option key={i} value={matDisplayName(cm)} />)}
                         </datalist>
                       </div>
                       );
