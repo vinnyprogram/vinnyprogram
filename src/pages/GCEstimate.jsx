@@ -419,7 +419,10 @@ export default function GCEstimate(){
   if(loading) return <div style={{padding:40,textAlign:"center",color:C.muted}}>Loading…</div>;
 
   const floorAreas = areas.filter(a=>a.floor===activeFloor);
-  const gcMaterialCategories = [...new Set(companyMaterials.map(m=>m.category||"Other"))].sort();
+  const gcMaterialCategories = [...new Set([
+    ...companyMaterials.map(m=>m.category||"Other"),
+    ...assemblyTemplates.flatMap(t=>(t.layers||[]).map(l=>l.category)),
+  ])].filter(Boolean).sort();
   if(!gcMaterialCategories.length) gcMaterialCategories.push("Framing","Board & Plaster","Roofing","Windows & Doors","Siding","Flooring","Other");
   const floorTotal = floorAreas.reduce((s,a)=>s+materialsTotal(a.materials),0);
 
