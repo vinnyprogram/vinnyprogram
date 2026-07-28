@@ -31,10 +31,18 @@ export function AuthProvider({ children }) {
     const myRequestId = ++requestIdRef.current; // this call's ticket number
     let data = null;
     for (let i = 0; i < 3; i++) {
-      const result = await supabase.from("companies")
+      // First check if this user owns a company directly
+      const owned = await supabase.from("companies")
         .select("*").eq("user_id", userId).maybeSingle();
-      data = result.data;
-      if (data) break;
+      if (owned.data) { data = owned.data; break; }
+      // Otherwise check if they're an active employee of someone else's company
+      const membership = await supabase.from("company_employees")
+        .select("company_id").eq("user_id", userId).eq("status","active").maybeSingle();
+      if (membership.data?.company_id) {
+        const co = await supabase.from("companies")
+          .select("*").eq("id", membership.data.company_id).maybeSingle();
+        if (co.data) { data = co.data; break; }
+      }
       if (i < 2) await new Promise(r => setTimeout(r, 600));
     }
     // If a newer loadCompany call started after this one, ignore this
@@ -51,7 +59,7 @@ export function AuthProvider({ children }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, company, loading, signOut, loadCompany }}>
+    <AuthContext.Provider value={{ user, company, loading, signOut, loadCompany, isOwner: !!(user && company && company.user_id === user.id) }}>
       {children}
     </AuthContext.Provider>
   );

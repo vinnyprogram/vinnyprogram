@@ -45,11 +45,36 @@ const BtnG = {
 function fmt(n){ return Number(n||0).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2}); }
 
 export default function Settings() {
-  const { company, user, loadCompany } = useAuth();
+  const { company, user, loadCompany, isOwner } = useAuth();
   const navigate = useNavigate();
   const [tab, setTab] = useState("overhead");
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [employees, setEmployees] = useState([]);
+  const [inviteCode, setInviteCode] = useState("");
+  const [teamLoading, setTeamLoading] = useState(false);
+
+  useEffect(()=>{
+    if(!company?.id) return;
+    setInviteCode(company.invite_code||"");
+    supabase.from("company_employees").select("*").eq("company_id",company.id).eq("status","active")
+      .then(({data})=>setEmployees(data||[]));
+  },[company?.id]);
+
+  async function generateInviteCode(){
+    setTeamLoading(true);
+    const code = Math.random().toString(36).slice(2,8).toUpperCase() + Math.random().toString(36).slice(2,4).toUpperCase();
+    const { error } = await supabase.from("companies").update({invite_code:code}).eq("id",company.id);
+    if(error){ alert("Could not generate code: "+error.message); setTeamLoading(false); return; }
+    setInviteCode(code);
+    await loadCompany(user.id);
+    setTeamLoading(false);
+  }
+  async function removeEmployee(empId){
+    if(!window.confirm("Remove this employee's access?")) return;
+    await supabase.from("company_employees").update({status:"removed"}).eq("id",empId);
+    setEmployees(prev=>prev.filter(e=>e.id!==empId));
+  }
 
   // Configurable lists
   const DEFAULT_AREA_TYPES = ["Roof Rafter w/ Strapping","Roof Rafter behind knee walls","Floor","Exterior Wall","Demising Wall","Rim Joist","Concrete Wall","Ceiling","Interior Walls","Fire Blocking"];
@@ -899,6 +924,7 @@ export default function Settings() {
     { id:"trucks",      label:"🚛 Trucks" },
     { id:"consumables",label:"Consumables" },
     { id:"summary",    label:"Summary" },
+    { id:"team",       label:"👥 Team" },
   ];
 
   return (
@@ -1992,6 +2018,71 @@ export default function Settings() {
                 );
               })()}
             </div>
+          </div>
+        )}
+
+        {tab==="team" && (
+          <div>
+            <div style={{ fontSize:13, color:C.muted, marginBottom:12 }}>
+              Invite employees to work in this company's account. Everyone who joins shares the same customers, estimates, and materials catalog.
+            </div>
+
+            {isOwner ? (
+              <div style={{ background:C.white, borderRadius:10, border:`1px solid ${C.border}`,
+                  padding:"14px 16px", marginBottom:16 }}>
+                <div style={{ fontWeight:700, fontSize:14, marginBottom:8 }}>Invite Code</div>
+                {inviteCode ? (
+                  <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                    <div style={{ fontFamily:"monospace", fontSize:20, fontWeight:800, letterSpacing:2,
+                        background:"#f0fdf4", border:"1.5px solid #86efac", borderRadius:8,
+                        padding:"8px 16px", color:C.green }}>
+                      {inviteCode}
+                    </div>
+                    <button onClick={()=>{navigator.clipboard.writeText(inviteCode); alert("Copied!");}}
+                      style={{...Btn, height:36}}>📋 Copy</button>
+                    <button onClick={generateInviteCode} disabled={teamLoading}
+                      style={{...Btn, height:36}}>🔄 Regenerate</button>
+                  </div>
+                ) : (
+                  <button onClick={generateInviteCode} disabled={teamLoading} style={{...BtnG, height:36}}>
+                    {teamLoading?"Generating…":"+ Generate Invite Code"}
+                  </button>
+                )}
+                <div style={{ fontSize:11, color:C.faint, marginTop:8 }}>
+                  Give this code to your employee — they'll enter it under "Join a Team" when they first sign up.
+                </div>
+              </div>
+            ) : (
+              <div style={{ background:"#fffbeb", border:"1px solid #fcd34d", borderRadius:10,
+                  padding:"12px 14px", marginBottom:16, fontSize:12, color:"#92400e" }}>
+                Only the company owner can generate or view the invite code.
+              </div>
+            )}
+
+            <div style={{ fontWeight:700, fontSize:14, marginBottom:8 }}>
+              Team Members {employees.length>0 && `(${employees.length})`}
+            </div>
+            {employees.length===0 && (
+              <div style={{ fontSize:12, color:C.faint, textAlign:"center", padding:"20px 0" }}>
+                No employees have joined yet.
+              </div>
+            )}
+            {employees.map(emp=>(
+              <div key={emp.id} style={{ display:"flex", justifyContent:"space-between", alignItems:"center",
+                  background:C.white, border:`1px solid ${C.border}`, borderRadius:8,
+                  padding:"10px 14px", marginBottom:6 }}>
+                <div>
+                  <div style={{ fontWeight:600, fontSize:13 }}>{emp.invited_email || emp.user_id}</div>
+                  <div style={{ fontSize:11, color:C.faint }}>Joined {new Date(emp.created_at).toLocaleDateString()}</div>
+                </div>
+                {isOwner && (
+                  <button onClick={()=>removeEmployee(emp.id)}
+                    style={{ border:"none", background:"none", color:"#ef4444", cursor:"pointer", fontSize:12, fontWeight:700 }}>
+                    Remove
+                  </button>
+                )}
+              </div>
+            ))}
           </div>
         )}
 
