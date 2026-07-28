@@ -58,7 +58,7 @@ export default function MainLayout() {
         width:220, background:"#111827", color:"white",
         padding:"16px 12px", display:"flex", flexDirection:"column",
         flexShrink:0, position:"fixed", top:0, bottom:0, left:0,
-        zIndex:200,
+        zIndex:200, overflowY:"auto",
         transform: menuOpen ? "translateX(0)" : "translateX(-100%)",
         transition:"transform 0.25s ease",
         boxShadow: menuOpen ? "4px 0 20px rgba(0,0,0,.3)" : "none",
