@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useState, useRef } from "react";
 import { supabase } from "../lib/supabase";
 
 const AuthContext = createContext({});
@@ -7,6 +7,7 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [company, setCompany] = useState(null);
   const [loading, setLoading] = useState(true);
+  const requestIdRef = useRef(0); // guards against a slower, stale loadCompany call overwriting a newer one
 
   useEffect(() => {
     // get initial session
@@ -27,6 +28,7 @@ export function AuthProvider({ children }) {
   }, []);
 
   async function loadCompany(userId) {
+    const myRequestId = ++requestIdRef.current; // this call's ticket number
     let data = null;
     for (let i = 0; i < 3; i++) {
       const result = await supabase.from("companies")
@@ -35,6 +37,10 @@ export function AuthProvider({ children }) {
       if (data) break;
       if (i < 2) await new Promise(r => setTimeout(r, 600));
     }
+    // If a newer loadCompany call started after this one, ignore this
+    // (now-stale) result entirely instead of letting it overwrite the
+    // correct, more current state.
+    if (myRequestId !== requestIdRef.current) return;
     setCompany(data || null);
     setLoading(false);
   }
