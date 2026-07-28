@@ -15,6 +15,7 @@ export default function MainLayout() {
   const offersInsulation = company?.offers_insulation !== false;
   const offersHers       = company?.offers_hers       !== false;
   const offersBoardPlaster = company?.offers_board_plaster === true;
+  const offersGc = company?.offers_gc === true;
 
   const isActive = (path) =>
     location.pathname === path ||
@@ -262,8 +263,8 @@ export default function MainLayout() {
             )}
           </div>}
 
-          {/* General Contractor module */}
-          <div>
+          {offersGc && <div>
+            {/* General Contractor module — only shown when offers_gc is enabled */}
             <button
               onClick={()=>setGcOpen(p=>!p)}
               style={{
@@ -289,18 +290,29 @@ export default function MainLayout() {
                   onMouseEnter={e=>e.currentTarget.style.background="#374151"}
                   onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
                   <span>+</span> New Estimate
-                  <Link to="/gc/search"
-                    onClick={()=>{ setGcOpen(false); setMenuOpen(false); }}
-                    style={subLink}
-                    onMouseEnter={e=>e.currentTarget.style.background="#374151"}
-                    onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-                    <span>🔍</span> Search Estimates
-                  </Link>
+                </Link>
+                <Link to="/gc/search"
+                  onClick={()=>{ setGcOpen(false); setMenuOpen(false); }}
+                  style={subLink}
+                  onMouseEnter={e=>e.currentTarget.style.background="#374151"}
+                  onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                  <span>🔍</span> Search Estimates
                 </Link>
 
               </div>
             )}
-          </div>
+          </div>}
+
+          {(offersGc || offersBoardPlaster) && (
+            <Link to="/materials-catalog" onClick={()=>setMenuOpen(false)}
+              style={{ display:"flex", alignItems:"center", gap:10,
+                padding:"10px 12px", color: isActive("/materials-catalog") ? "#fff" : "#94a3b8",
+                fontSize:15, fontWeight: isActive("/materials-catalog") ? 700 : 400,
+                background: isActive("/materials-catalog") ? "#1f2937" : "none",
+                borderRadius:8, textDecoration:"none" }}>
+              📦 Materials Catalog
+            </Link>
+          )}
         </nav>
 
         {/* settings link */}

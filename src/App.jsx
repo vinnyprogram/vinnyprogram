@@ -28,6 +28,7 @@ import Projects from "./pages/Projects";
 import Schedule from "./pages/Schedule";
 import GCEstimate from "./pages/GCEstimate";
 import GCSearch from "./pages/GCSearch";
+import GCMaterialsCatalog from "./pages/GCMaterialsCatalog";
 
 
 function Dashboard() {
@@ -117,6 +118,7 @@ function ProtectedApp() {
       {/* Print reports — outside MainLayout so they print without sidebar clipping */}
       <Route path="/hers/ekotrope/:invoiceId" element={<EkotropeReport />} />
       <Route path="/hers/ekotrope/estimate/:estimateId" element={<EkotropeReport />} />
+      <Route path="materials-catalog" element={<GCMaterialsCatalog />} />   
     </Routes>
   );
 }
