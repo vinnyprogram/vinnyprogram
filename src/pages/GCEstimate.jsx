@@ -525,8 +525,8 @@ export default function GCEstimate(){
         {/* Address + job type */}
         <div style={CARD}>
           <div style={{fontSize:11,fontWeight:700,color:C.faint,textTransform:"uppercase",letterSpacing:0.5,marginBottom:10}}>Job</div>
-          <AddressInput value={address} onChange={setAddress} placeholder="Job site address…" style={{...I,width:"100%",marginBottom:8}} />
-          <select value={jobType} onChange={e=>setJobType(e.target.value)} style={{...I,width:"100%"}}>
+          <AddressInput value={address} onChange={setAddress} title="The address where the work will be performed" style={{...I,width:"100%",marginBottom:8}} />
+          <select title="Type of project - shown on the customer proposal" value={jobType} onChange={e=>setJobType(e.target.value)} style={{...I,width:"100%"}}>
             <option>New Construction</option>
             <option>Remodel</option>
             <option>Addition</option>
@@ -603,19 +603,19 @@ export default function GCEstimate(){
                 {expanded && (
                   <div style={{padding:"0 14px 14px",borderTop:`1px solid ${C.border}`}}>
                     <div style={{display:"flex",gap:8,marginTop:10,marginBottom:8}}>
-                      <input placeholder="Area name (e.g. Exterior Wall, Floor, Roof)" value={a.name}
+                      <input title="What part of the building this is (e.g. Exterior Wall, Floor, Roof)" value={a.name}
                         onChange={e=>updateArea(a.id,"name",e.target.value)} style={{...I,flex:2}} />
-                      <input placeholder="Spec (e.g. 2x6 fur out)" value={a.spec}
+                      <input title="Construction spec or thickness for this area" value={a.spec}
                         onChange={e=>updateArea(a.id,"spec",e.target.value)} style={{...I,flex:1}} />
                     </div>
 
                     {/* Measurement entry */}
                     <div style={{display:"flex",gap:6,marginBottom:6}}>
-                      <input placeholder="Qty" inputMode="decimal" value={a.mq}
+                      <input title="How many times this measurement repeats" placeholder="Qty" inputMode="decimal" value={a.mq}
                         onChange={e=>updateArea(a.id,"mq",e.target.value)} style={{...I,width:52}} />
-                      <input placeholder="H" inputMode="decimal" value={a.mh}
+                      <input title="Height, in feet" placeholder="H" inputMode="decimal" value={a.mh}
                         onChange={e=>updateArea(a.id,"mh",e.target.value)} style={{...I,flex:1}} />
-                      <input placeholder="L" inputMode="decimal" value={a.ml}
+                      <input title="Length, in feet" placeholder="L" inputMode="decimal" value={a.ml}
                         onChange={e=>updateArea(a.id,"ml",e.target.value)}
                         onKeyDown={e=>{if(e.key==="Enter") commitMeasurement(a.id);}} style={{...I,flex:1}} />
                       <button onClick={()=>commitMeasurement(a.id)} style={{...Btn,color:C.amber,borderColor:C.amber}}>+ Add</button>
@@ -642,19 +642,19 @@ export default function GCEstimate(){
                       <div style={{display:"flex",gap:6,marginBottom:6,flexWrap:"wrap"}}>
                         <div style={{flex:1,minWidth:80}}>
                           <div style={{fontSize:9,color:C.faint,marginBottom:2}}>WALL LENGTH (FT)</div>
-                          <input placeholder="0" inputMode="decimal" value={a.fr_len}
+                          <input title="The length of wall to be framed, in feet" placeholder="0" inputMode="decimal" value={a.fr_len}
                             onChange={e=>updateArea(a.id,"fr_len",e.target.value)} style={{...I,width:"100%"}} />
                         </div>
                         <div style={{width:100}}>
                           <div style={{fontSize:9,color:C.faint,marginBottom:2}}>SPACING</div>
-                          <select value={a.fr_spacing} onChange={e=>updateArea(a.id,"fr_spacing",e.target.value)} style={{...I,width:"100%"}}>
+                          <select title="Stud spacing on-center" value={a.fr_spacing} onChange={e=>updateArea(a.id,"fr_spacing",e.target.value)} style={{...I,width:"100%"}}>
                             <option value="16">16" o.c.</option>
                             <option value="24">24" o.c.</option>
                           </select>
                         </div>
                         <div style={{width:90}}>
                           <div style={{fontSize:9,color:C.faint,marginBottom:2}}>OPENINGS</div>
-                          <input placeholder="0" inputMode="decimal" value={a.fr_openings}
+                          <input title="Number of windows/doors in this wall - adds a jack and king stud on each side" placeholder="0" inputMode="decimal" value={a.fr_openings}
                             onChange={e=>updateArea(a.id,"fr_openings",e.target.value)} style={{...I,width:"100%"}} />
                         </div>
                       </div>
@@ -681,20 +681,20 @@ export default function GCEstimate(){
                       return (
                       <div key={m.id} style={{marginBottom:8}}>
                         <div style={{display:"flex",gap:6,marginBottom:4}}>
-                          <select value={m.category||""} onChange={e=>updateMaterial(a.id,m.id,"category",e.target.value)} style={{...I,width:130}}>
+                          <select title="Narrow the material list to one trade/category" value={m.category||""} onChange={e=>updateMaterial(a.id,m.id,"category",e.target.value)} style={{...I,width:130}}>
                             <option value="">Category…</option>
                             {gcMaterialCategories.map(c=><option key={c} value={c}>{c}</option>)}
                           </select>
-                          <input placeholder={m.category?`${m.category} material…`:"Type to search all materials…"}
+                          <input title="Pick from your catalog, or type a custom material" placeholder={m.category?`${m.category} material…`:"Type to search all materials…"}
                             value={m.material} list={datalistId}
                             onChange={e=>updateMaterial(a.id,m.id,"material",e.target.value)} style={{...I,flex:1}} />
                         </div>
                         <div style={{display:"flex",gap:6,alignItems:"center"}}>
-                          <input placeholder="Qty" inputMode="decimal" value={m.qty}
+                          <input title="Quantity needed - auto-calculated from measured area for coverage-based materials" placeholder="Qty" inputMode="decimal" value={m.qty}
                             onChange={e=>updateMaterial(a.id,m.id,"qty",e.target.value)} style={{...I,width:56}} />
-                          <input placeholder="Unit" value={m.unit}
+                          <input title="Unit of measure (each, sheet, box, roll, etc.)" placeholder="Unit" value={m.unit}
                             onChange={e=>updateMaterial(a.id,m.id,"unit",e.target.value)} style={{...I,width:56}} />
-                          <input placeholder="$/unit" inputMode="decimal" value={m.unit_price}
+                          <input title="Price per unit" placeholder="$/unit" inputMode="decimal" value={m.unit_price}
                             onChange={e=>updateMaterial(a.id,m.id,"unit_price",e.target.value)} style={{...I,width:70}} />
                           <span style={{fontSize:12,fontWeight:700,color:C.green,width:64,textAlign:"right"}}>
                             {fmt$((Number(m.qty)||0)*(Number(m.unit_price)||0))}
@@ -756,10 +756,10 @@ export default function GCEstimate(){
                   </span>
                   <button onClick={()=>deleteScope(sc.id)} style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:16}}>✕</button>
                 </div>
-                <input placeholder="Work item title (e.g. Exterior Wall Framing & Sheathing Installation)"
+                <input title="A short name for this task, shown on the customer proposal" placeholder="Work item title (e.g. Exterior Wall Framing & Sheathing Installation)"
                   value={sc.title} onChange={e=>updateScope(sc.id,"title",e.target.value)}
                   style={{...I,width:"100%",marginBottom:6,fontWeight:600}} />
-                <textarea placeholder="Description (e.g. Includes framing of 3 walls, rough openings for 6 windows and 1 door)"
+                <textarea title="Details of what's included, shown under the title on the proposal" placeholder="Description (e.g. Includes framing of 3 walls, rough openings for 6 windows and 1 door)"
                   value={sc.description} onChange={e=>updateScope(sc.id,"description",e.target.value)}
                   style={{...I,width:"100%",height:44,padding:8,resize:"vertical",fontStyle:"italic",marginBottom:8}} />
                 <div style={{display:"flex",gap:6,marginBottom:8}}>
@@ -768,19 +768,19 @@ export default function GCEstimate(){
                     <option>Subcontractor</option>
                   </select>
                   {sc.performed_by==="Subcontractor" && (
-                    <input placeholder="Subcontractor name" value={sc.subcontractor_name}
+                    <input title="Who is performing this scope of work" placeholder="Subcontractor name" value={sc.subcontractor_name}
                       onChange={e=>updateScope(sc.id,"subcontractor_name",e.target.value)} style={{...I,flex:1}} />
                   )}
                 </div>
                 <div style={{display:"flex",gap:6,alignItems:"center"}}>
                   <div style={{flex:1}}>
                     <div style={{fontSize:9,color:C.faint,marginBottom:2}}>MATERIAL</div>
-                    <input placeholder="$0.00" inputMode="decimal" value={sc.material_cost}
+                    <input title="Material cost for this scope - leave blank if not applicable" placeholder="$0.00" inputMode="decimal" value={sc.material_cost}
                       onChange={e=>updateScope(sc.id,"material_cost",e.target.value)} style={{...I,width:"100%"}} />
                   </div>
                   <div style={{flex:1}}>
                     <div style={{fontSize:9,color:C.faint,marginBottom:2}}>LABOR</div>
-                    <input placeholder="$0.00" inputMode="decimal" value={sc.labor_cost}
+                    <input title="Labor cost for this scope - leave blank until you have a price from the subcontractor" placeholder="$0.00" inputMode="decimal" value={sc.labor_cost}
                       onChange={e=>updateScope(sc.id,"labor_cost",e.target.value)} style={{...I,width:"100%"}} />
                   </div>
                   <div style={{width:100,textAlign:"right"}}>
@@ -814,7 +814,7 @@ export default function GCEstimate(){
           </div>
           <div style={{borderTop:`1px solid ${C.border}`,padding:"7px 14px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
             <span style={{fontSize:13}}>Tax rate</span>
-            <input inputMode="decimal" value={taxRate} onChange={e=>setTaxRate(e.target.value)}
+            <input title="Sales tax percentage applied after markup/discount" inputMode="decimal" value={taxRate} onChange={e=>setTaxRate(e.target.value)}
               style={{...I,width:70,textAlign:"right"}} />
           </div>
           <div style={{borderTop:`1px solid ${C.border}`}}>
