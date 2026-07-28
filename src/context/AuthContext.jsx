@@ -20,7 +20,7 @@ export function AuthProvider({ children }) {
     // listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null);
-      if (session?.user) loadCompany(session.user.id);
+      if (session?.user) { setLoading(true); loadCompany(session.user.id); }
       else { setCompany(null); setLoading(false); }
     });
 
