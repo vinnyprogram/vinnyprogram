@@ -255,6 +255,26 @@ export default function GCEstimate(){
   function deleteMaterial(areaId, matId){
     setAreas(prev=>prev.map(a=>a.id!==areaId ? a : {...a, materials:(a.materials||[]).filter(m=>m.id!==matId)}));
   }
+  const [savingToCatalog, setSavingToCatalog] = useState(null); // matId currently saving, for a small inline spinner
+  async function saveMaterialToCatalog(areaId, matId){
+    const area = areas.find(a=>a.id===areaId);
+    const m = area?.materials?.find(x=>x.id===matId);
+    if(!m || !m.material?.trim() || !companyId) return;
+    setSavingToCatalog(matId);
+    try {
+      const payload = {
+        company_id: companyId, category: m.category||"Other", brand: "", model: m.material.trim(),
+        thickness: "", size: "", coverage_sqft: null, unit: m.unit||"each", unit_price: Number(m.unit_price)||0,
+      };
+      const { data, error } = await supabase.from("gc_materials").insert([payload]).select().single();
+      if(error) throw error;
+      setCompanyMaterials(prev=>[...prev, data]);
+    } catch(e){
+      alert("Couldn't save to catalog: "+e.message);
+    } finally {
+      setSavingToCatalog(null);
+    }
+  }
 
   function addScope(){
     setScopes(prev=>[...prev, {
@@ -705,6 +725,19 @@ export default function GCEstimate(){
                         <datalist id={datalistId}>
                           {catFiltered.map((cm,i)=><option key={i} value={matDisplayName(cm)} />)}
                         </datalist>
+                        {m.material?.trim() && !companyMaterials.some(cm=>matDisplayName(cm)===m.material) && (
+                          <div style={{display:"flex",alignItems:"center",gap:8,marginTop:4,padding:"5px 8px",
+                              background:"#fffbeb",border:"1px solid #fcd34d",borderRadius:6}}>
+                            <span style={{fontSize:11,color:"#92400e",flex:1}}>
+                              "{m.material}" isn't in your catalog yet — set its unit/price above, then save it for next time.
+                            </span>
+                            <button onClick={()=>saveMaterialToCatalog(a.id,m.id)} disabled={savingToCatalog===m.id}
+                              style={{border:"none",background:C.amber,color:"#fff",cursor:"pointer",fontSize:11,fontWeight:700,
+                                padding:"4px 10px",borderRadius:5,whiteSpace:"nowrap"}}>
+                              {savingToCatalog===m.id?"Saving…":"+ Save to Catalog"}
+                            </button>
+                          </div>
+                        )}
                       </div>
                       );
                     })}
