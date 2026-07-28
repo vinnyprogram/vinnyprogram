@@ -2072,7 +2072,7 @@ export default function Settings() {
                   background:C.white, border:`1px solid ${C.border}`, borderRadius:8,
                   padding:"10px 14px", marginBottom:6 }}>
                 <div>
-                  <div style={{ fontWeight:600, fontSize:13 }}>{emp.invited_email || emp.user_id}</div>
+                  <div style={{ fontWeight:600, fontSize:13 }}>{emp.employee_name || emp.invited_email || emp.user_id}</div>
                   <div style={{ fontSize:11, color:C.faint }}>Joined {new Date(emp.created_at).toLocaleDateString()}</div>
                 </div>
                 {isOwner && (

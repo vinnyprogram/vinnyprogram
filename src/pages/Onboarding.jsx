@@ -12,12 +12,14 @@ export default function Onboarding() {
   const [logoPreview, setLogoPreview] = useState(null);
   const [mode, setMode] = useState("create"); // "create" | "join"
   const [joinCode, setJoinCode] = useState("");
+  const [employeeName, setEmployeeName] = useState("");
   const [form, setForm] = useState({
     name: "", address: "", phone: "", email: "", office_email: "", website: ""
   });
 
   async function joinTeam(e) {
     e.preventDefault();
+    if (!employeeName.trim()) { setError("Enter your name"); return; }
     if (!joinCode.trim()) { setError("Enter the invite code your employer gave you"); return; }
     setLoading(true); setError("");
     try {
@@ -28,6 +30,7 @@ export default function Onboarding() {
       if (!targetCompany) { setError("That invite code doesn't match any company"); setLoading(false); return; }
       const { error: ie } = await supabase.from("company_employees").insert([{
         company_id: targetCompany.id, user_id: user.id, role: "employee", status: "active",
+        employee_name: employeeName.trim(),
       }]);
       if (ie) throw new Error(ie.message);
       await loadCompany(user.id);
@@ -156,6 +159,15 @@ export default function Onboarding() {
 
           {mode==="join" ? (
             <form onSubmit={joinTeam}>
+              <div style={{ marginBottom: 14 }}>
+                <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 5 }}>
+                  Your Name
+                </label>
+                <input value={employeeName} onChange={e=>setEmployeeName(e.target.value)}
+                  placeholder="So the owner knows who's who on the team" required
+                  style={{ width:"100%", padding:"12px 14px", borderRadius:10, border:"1.5px solid #e0e5ef",
+                    fontSize:14, outline:"none", boxSizing:"border-box", fontFamily:"inherit" }} />
+              </div>
               <div style={{ marginBottom: 14 }}>
                 <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 5 }}>
                   Invite Code
