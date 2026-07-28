@@ -167,7 +167,7 @@ export default function GCEstimate(){
       materials: [], notes: "", _expanded: true,
       fr_len:"", fr_spacing:"16", fr_openings:"0", // framing/stud calculator inputs
     };
-    setAreas(prev=>[...prev, a]);
+    setAreas(prev=>[a, ...prev]);
   }
   function getTemplate(areaType){
     return assemblyTemplates.find(t=>t.area_type===areaType);
