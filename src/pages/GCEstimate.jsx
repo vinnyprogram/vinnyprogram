@@ -675,7 +675,7 @@ export default function GCEstimate(){
                       <select title="Area type - picks the standard layer stack for this assembly" value={a.area_type||""}
                         onChange={e=>updateAreaType(a.id, e.target.value)} style={{...I,flex:2}}>
                         <option value="">Select area type…</option>
-                        {assemblyTemplates.map(t=><option key={t.area_type} value={t.area_type}>{t.area_type}</option>)}
+                        {[...assemblyTemplates].sort((a,b)=>a.area_type.localeCompare(b.area_type)).map(t=><option key={t.area_type} value={t.area_type}>{t.area_type}</option>)}
                         <option value="__custom__">✏️ Custom / Other</option>
                       </select>
                       <input title="Construction spec or thickness for this area" value={a.spec}
