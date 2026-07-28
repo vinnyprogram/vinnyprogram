@@ -50,6 +50,86 @@ function materialsTotal(materials){
 function matDisplayName(m){
   return [m.brand, m.model, m.thickness].filter(Boolean).join(" ");
 }
+const STATE_ABBRS = new Set(["AL","AK","AZ","AR","CA","CO","CT","DE","DC","FL","GA","HI","ID","IL","IN","IA","KS","KY",
+  "LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ","NM","NY","NC","ND","OH","OK","OR","PA","RI","SC",
+  "SD","TN","TX","UT","VT","VA","WA","WV","WI","WY","PR","GU","VI"]);
+function extractStateFromAddress(address){
+  if(!address) return "";
+  const matches = [...address.matchAll(/\b([A-Z]{2})\b/g)].map(m=>m[1]);
+  const found = matches.find(m=>STATE_ABBRS.has(m));
+  return found||"";
+}
+// Zone-specific requirement notes pulled directly from the building guide,
+// keyed by area_type + layer name. Only the layers the guide actually gives
+// zone-specific specs for are covered here (mainly Insulation/Vapor
+// Retarder) - everything else has no hint and that's expected.
+const ZONE_HINTS = {
+  "Exterior Wall|Cavity Insulation": {
+    1:"R-13 or R-0+10ci. Class III vapor retarder only (no poly sheeting). Borate-treated studs required.",
+    2:"R-13 or R-0+10ci. Class III vapor retarder only (no poly sheeting). Borate-treated studs required.",
+    3:"R-20 cavity-only or R-13+5ci. Class III vapor retarder OK if paired with continuous exterior insulation.",
+    4:"R-20 cavity-only or R-13+5ci. Class II vapor retarder required.",
+    5:"R-20+5ci or R-13+10ci mandatory. Class I/II vapor retarder mandatory directly behind drywall.",
+    6:"R-20+5ci or R-13+10ci mandatory. Class I/II vapor retarder mandatory directly behind drywall.",
+    7:"R-20+10ci or R-13+15ci. Strict Class I vapor barrier as continuous air barrier.",
+    8:"R-20+10ci or R-13+15ci. Strict Class I vapor barrier as continuous air barrier.",
+  },
+  "Exterior Wall|Vapor Retarder / Air Barrier": {
+    1:"No poly sheeting behind drywall - Class III (high-perm paint) only.",
+    2:"No poly sheeting behind drywall - Class III (high-perm paint) only.",
+    3:"Class III allowed if paired with continuous exterior insulation.",
+    4:"Class II vapor retarder required (smart membrane or kraft-facing).",
+    5:"Class I or II mandatory (6-mil poly or smart membrane like MemBrain) directly behind drywall.",
+    6:"Class I or II mandatory (6-mil poly or smart membrane like MemBrain) directly behind drywall.",
+    7:"Strict Class I vapor barrier (6-mil poly), continuous internal air barrier.",
+    8:"Strict Class I vapor barrier (6-mil poly), continuous internal air barrier.",
+  },
+  "Foundation Wall|Interior Continuous Insulation (Rigid Foam)": {
+    1:"Uninsulated concrete baseline - no continuous insulation required by code.",
+    2:"Uninsulated concrete baseline - no continuous insulation required by code.",
+    3:"R-5 continuous insulation or R-13 interior framing cavity insulation.",
+    4:"R-10 continuous insulation or R-13 interior cavity insulation.",
+    5:"R-15 continuous insulation or R-19 interior cavity. Recommended: R-10 XPS + R-13 rockwool cavity.",
+    6:"R-15 continuous insulation or R-19 interior cavity. Recommended: R-10 XPS + R-13 rockwool cavity.",
+    7:"R-15 continuous insulation or R-19 interior cavity. Recommended: R-10 XPS + R-13 rockwool cavity.",
+    8:"R-15 continuous insulation or R-19 interior cavity. Recommended: R-10 XPS + R-13 rockwool cavity.",
+  },
+  "Roofing|Thermal Insulation": {
+    1:"Minimum R-30 (~9-10in blown-in).",
+    2:"Minimum R-38 (~11-13in).",
+    3:"Minimum R-38 (~11-13in).",
+    4:"Minimum R-49 (~14-16in).",
+    5:"Minimum R-49 (~14-16in).",
+    6:"Minimum R-60 (~18-22in). Mandatory Class I/II vapor retarder underneath the joists before drywall.",
+    7:"Minimum R-60 (~18-22in). Mandatory Class I/II vapor retarder underneath the joists before drywall.",
+    8:"Minimum R-60 (~18-22in). Mandatory Class I/II vapor retarder underneath the joists before drywall.",
+  },
+  "Roofing|Vapor Retarder": {
+    1:"Omit interior vapor retarders - focus on roof ventilation to exhaust attic heat.",
+    2:"Omit interior vapor retarders - focus on roof ventilation to exhaust attic heat.",
+    3:"Ice & Water shield required at lowest eaves only if history of minor freezing.",
+    4:"Ice & Water shield mandatory from roof edge to 24in inside the exterior wall line (ice damming).",
+    5:"Ice & Water shield mandatory from roof edge to 24in inside the exterior wall line (ice damming).",
+    6:"Ice & Water shield mandatory from roof edge to 24in inside the exterior wall line (ice damming).",
+    7:"Ice & Water shield mandatory from roof edge to 24in inside the exterior wall line (ice damming).",
+    8:"Ice & Water shield mandatory from roof edge to 24in inside the exterior wall line (ice damming).",
+  },
+  "Slab-on-Grade|Under-Slab Rigid Insulation": {
+    1:"Zero under-slab/perimeter insulation required by code. Vapor barrier still 100% mandatory.",
+    2:"Zero under-slab/perimeter insulation required by code. Vapor barrier still 100% mandatory.",
+    3:"No under-slab insulation required; R-5 perimeter edge insulation in northern part of zone.",
+    4:"R-10 insulation required around the perimeter edge, extending down 24 inches.",
+    5:"R-10 insulation required around the perimeter edge, extending down 24 inches.",
+    6:"R-10 continuous under the entire slab, paired with R-15 perimeter insulation down to the footing.",
+    7:"R-10 continuous under the entire slab, paired with R-15 perimeter insulation down to the footing.",
+    8:"R-10 continuous under the entire slab, paired with R-15 perimeter insulation down to the footing.",
+  },
+};
+function getZoneHint(areaType, layerName, zone){
+  if(!zone) return null;
+  const entry = ZONE_HINTS[`${areaType}|${layerName}`];
+  return entry ? entry[zone] : null;
+}
 const DEFAULT_TRADES = ["Framing","Plumbing","Electrical","HVAC","Roofing","Windows & Doors",
   "Painting","Flooring","Drywall","Insulation","Concrete","Demolition","Other"];
 function scopeTotal(scopes){
@@ -72,6 +152,8 @@ export default function GCEstimate(){
   const [companyTrades, setCompanyTrades] = useState([]); // Settings-configured trade list (list_gc_trade)
   const [companyMaterials, setCompanyMaterials] = useState([]); // Settings-configured material catalog (list_gc_material)
   const [assemblyTemplates, setAssemblyTemplates] = useState([]); // predefined layer stacks per area type
+  const [climateZones, setClimateZones] = useState([]); // state -> IECC zone lookup
+  const [climateZoneOverride, setClimateZoneOverride] = useState("");
   const [scopes, setScopes] = useState([]); // subcontractor / trade scopes, priced independently of the area takeoff
 
   const [leads, setLeads] = useState([]);
@@ -119,6 +201,8 @@ export default function GCEstimate(){
           .or(`company_id.is.null,company_id.eq.${cd.id}`).order("sort_order");
         if(tplRows?.length) setAssemblyTemplates(tplRows);
       }
+      const { data:czRows } = await supabase.from("gc_climate_zones").select("*");
+      if(czRows?.length) setClimateZones(czRows);
       const { data:ls } = await supabase.from("customers").select("id,name,phone,company_name,address,email").order("name").limit(1000);
       setLeads(ls||[]);
 
@@ -133,6 +217,7 @@ export default function GCEstimate(){
           setScopes(est.scopes||[]);
           setNotes(est.notes||"");
           setStatus(est.status||"Draft");
+          setClimateZoneOverride(est.climate_zone_override ? String(est.climate_zone_override) : "");
           setTaxRate(String(est.tax_rate||"0"));
           if(Number(est.markup_value)>0){ setMarkupOpen(true); setMarkupType(est.markup_type||"percent"); setMarkupValue(String(est.markup_value)); }
           if(Number(est.discount_value)>0){ setDiscountOpen(true); setDiscountType(est.discount_type||"percent"); setDiscountValue(String(est.discount_value)); }
@@ -397,6 +482,7 @@ export default function GCEstimate(){
         discount_type: discountType, discount_value: discountOpen ? Number(discountValue)||0 : 0,
         deposit_type: depositType, deposit_value: depositOpen ? Number(depositValue)||0 : 0,
         payment_schedule: scheduleOpen ? paymentSchedule.map(s=>({...s})) : [],
+        climate_zone_override: climateZoneOverride ? Number(climateZoneOverride) : null,
         updated_at: new Date().toISOString(),
       };
       if(isEditing){
@@ -419,6 +505,9 @@ export default function GCEstimate(){
   if(loading) return <div style={{padding:40,textAlign:"center",color:C.muted}}>Loading…</div>;
 
   const floorAreas = areas.filter(a=>a.floor===activeFloor);
+  const detectedState = extractStateFromAddress(address);
+  const stateZoneRow = climateZones.find(z=>z.state_code===detectedState);
+  const resolvedZone = climateZoneOverride ? Number(climateZoneOverride) : (stateZoneRow?.zone||null);
   const gcMaterialCategories = [...new Set([
     ...companyMaterials.map(m=>m.category||"Other"),
     ...assemblyTemplates.flatMap(t=>(t.layers||[]).map(l=>l.category)),
@@ -595,11 +684,26 @@ export default function GCEstimate(){
         <div style={CARD}>
           <div style={{fontSize:11,fontWeight:700,color:C.faint,textTransform:"uppercase",letterSpacing:0.5,marginBottom:10}}>Job</div>
           <AddressInput value={address} onChange={setAddress} title="The address where the work will be performed" style={{...I,width:"100%",marginBottom:8}} />
-          <select title="Type of project - shown on the customer proposal" value={jobType} onChange={e=>setJobType(e.target.value)} style={{...I,width:"100%"}}>
+          <select title="Type of project - shown on the customer proposal" value={jobType} onChange={e=>setJobType(e.target.value)} style={{...I,width:"100%",marginBottom:8}}>
             <option>New Construction</option>
             <option>Remodel</option>
             <option>Addition</option>
           </select>
+          <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",background:"#f8fafc",borderRadius:6}}>
+            <span style={{fontSize:12,color:C.muted,whiteSpace:"nowrap"}}>🌡️ Climate Zone</span>
+            <select title="IECC climate zone - drives insulation/vapor-retarder requirements. Auto-detected from address; override if needed."
+              value={climateZoneOverride||(stateZoneRow?.zone||"")} onChange={e=>setClimateZoneOverride(e.target.value)}
+              style={{...I,width:70}}>
+              <option value="">—</option>
+              {[1,2,3,4,5,6,7,8].map(z=><option key={z} value={z}>{z}</option>)}
+            </select>
+            {!climateZoneOverride && stateZoneRow?.needs_verify && (
+              <span style={{fontSize:10,color:C.amber,flex:1}}>⚠️ {detectedState} varies — {stateZoneRow.note || "verify and override if needed"}</span>
+            )}
+            {!climateZoneOverride && !stateZoneRow && detectedState && (
+              <span style={{fontSize:10,color:C.faint,flex:1}}>No zone data for "{detectedState}" — set manually</span>
+            )}
+          </div>
         </div>
 
         {/* Measurements */}
@@ -773,11 +877,18 @@ export default function GCEstimate(){
                         ? companyMaterials.filter(cm=>(cm.category||"Other")===m.category)
                         : companyMaterials; // no category picked yet - search everything by name
                       const datalistId = `gc-materials-${(m.category||"all").replace(/[^a-zA-Z0-9]/g,"_")}`;
+                      const zoneHint = m.layer_name ? getZoneHint(a.area_type, m.layer_name, resolvedZone) : null;
                       return (
                       <div key={m.id} style={{marginBottom:8}}>
                         {m.layer_name && (
                           <div style={{fontSize:10,fontWeight:700,color:C.amber,marginBottom:3,textTransform:"uppercase",letterSpacing:0.3}}>
                             {m.layer_name}
+                          </div>
+                        )}
+                        {zoneHint && (
+                          <div style={{fontSize:10,color:"#0369a1",background:"#f0f9ff",border:"1px solid #bae6fd",
+                              borderRadius:5,padding:"4px 7px",marginBottom:4}}>
+                            🌡️ Zone {resolvedZone}: {zoneHint}
                           </div>
                         )}
                         <div style={{display:"flex",gap:6,marginBottom:4}}>
