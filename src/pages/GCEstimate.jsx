@@ -71,6 +71,7 @@ export default function GCEstimate(){
   const [companyId, setCompanyId] = useState(null);
   const [companyTrades, setCompanyTrades] = useState([]); // Settings-configured trade list (list_gc_trade)
   const [companyMaterials, setCompanyMaterials] = useState([]); // Settings-configured material catalog (list_gc_material)
+  const [assemblyTemplates, setAssemblyTemplates] = useState([]); // predefined layer stacks per area type
   const [scopes, setScopes] = useState([]); // subcontractor / trade scopes, priced independently of the area takeoff
 
   const [leads, setLeads] = useState([]);
@@ -114,6 +115,9 @@ export default function GCEstimate(){
         const { data:matRows } = await supabase.from("gc_materials").select("*")
           .eq("company_id",cd.id).order("sort_order");
         if(matRows?.length) setCompanyMaterials(matRows);
+        const { data:tplRows } = await supabase.from("gc_assembly_templates").select("*")
+          .or(`company_id.is.null,company_id.eq.${cd.id}`).order("sort_order");
+        if(tplRows?.length) setAssemblyTemplates(tplRows);
       }
       const { data:ls } = await supabase.from("customers").select("id,name,phone,company_name,address,email").order("name").limit(1000);
       setLeads(ls||[]);
@@ -158,12 +162,54 @@ export default function GCEstimate(){
 
   function addArea(){
     const a = {
-      id: uid(), floor: activeFloor, name: "", spec: "",
+      id: uid(), floor: activeFloor, name: "", spec: "", area_type: "", side_selection: "",
       measurements: [], mh:"", ml:"", mq:"1", sqft: 0,
       materials: [], notes: "", _expanded: true,
       fr_len:"", fr_spacing:"16", fr_openings:"0", // framing/stud calculator inputs
     };
     setAreas(prev=>[...prev, a]);
+  }
+  function getTemplate(areaType){
+    return assemblyTemplates.find(t=>t.area_type===areaType);
+  }
+  function layersForSide(template, side){
+    if(!template) return [];
+    const layers = (template.layers||[]).slice().sort((a,b)=>a.order-b.order);
+    if(template.split_type==="none" || side==="both" || !side) return layers;
+    return layers.filter(l=>l.side===side || l.side==="both");
+  }
+  // Rebuilds the auto-generated layer rows for an area based on its
+  // area_type (+ side_selection for the exterior/interior-split
+  // assemblies only), leaving any manually-added materials (rows without
+  // _from_template) untouched.
+  function regenerateLayers(area){
+    const template = getTemplate(area.area_type);
+    const manualRows = (area.materials||[]).filter(m=>!m._from_template);
+    if(!template) return manualRows;
+    const layers = layersForSide(template, area.side_selection);
+    const templateRows = layers.map(l=>({
+      id: uid(), _from_template:true, layer_name:l.name, category:l.category,
+      material:"", qty:"", unit:"ea", unit_price:"",
+    }));
+    return [...templateRows, ...manualRows];
+  }
+  function updateAreaType(id, areaType){
+    setAreas(prev=>prev.map(a=>{
+      if(a.id!==id) return a;
+      const template = getTemplate(areaType);
+      const nextSide = template && template.split_type==="ext_int" ? "both" : "";
+      const updated = {...a, area_type:areaType, name:areaType, side_selection:nextSide};
+      updated.materials = regenerateLayers(updated);
+      return updated;
+    }));
+  }
+  function updateAreaSide(id, side){
+    setAreas(prev=>prev.map(a=>{
+      if(a.id!==id) return a;
+      const updated = {...a, side_selection:side};
+      updated.materials = regenerateLayers(updated);
+      return updated;
+    }));
   }
   function updateArea(id, field, value){
     setAreas(prev=>prev.map(a=>a.id===id?{...a,[field]:value}:a));
@@ -623,11 +669,37 @@ export default function GCEstimate(){
                 {expanded && (
                   <div style={{padding:"0 14px 14px",borderTop:`1px solid ${C.border}`}}>
                     <div style={{display:"flex",gap:8,marginTop:10,marginBottom:8}}>
-                      <input title="What part of the building this is (e.g. Exterior Wall, Floor, Roof)" value={a.name}
-                        onChange={e=>updateArea(a.id,"name",e.target.value)} style={{...I,flex:2}} />
+                      <select title="Area type - picks the standard layer stack for this assembly" value={a.area_type||""}
+                        onChange={e=>updateAreaType(a.id, e.target.value)} style={{...I,flex:2}}>
+                        <option value="">Select area type…</option>
+                        {assemblyTemplates.map(t=><option key={t.area_type} value={t.area_type}>{t.area_type}</option>)}
+                        <option value="__custom__">✏️ Custom / Other</option>
+                      </select>
                       <input title="Construction spec or thickness for this area" value={a.spec}
                         onChange={e=>updateArea(a.id,"spec",e.target.value)} style={{...I,flex:1}} />
                     </div>
+                    {a.area_type==="__custom__" && (
+                      <input title="Custom area name" placeholder="Area name (e.g. Chimney Chase, Skylight Well)" value={a.name}
+                        onChange={e=>updateArea(a.id,"name",e.target.value)} style={{...I,width:"100%",marginBottom:8}} />
+                    )}
+                    {(()=>{
+                      const template = getTemplate(a.area_type);
+                      if(!template || template.split_type!=="ext_int") return null;
+                      const opts = [["exterior","Exterior only"],["interior","Interior only"],["both","Both"]];
+                      return (
+                        <div style={{display:"flex",gap:6,marginBottom:8}}>
+                          {opts.map(([val,label])=>(
+                            <button key={val} onClick={()=>updateAreaSide(a.id,val)}
+                              style={{flex:1,border:`1.5px solid ${a.side_selection===val?C.amber:C.border}`,
+                                background:a.side_selection===val?"#fffbeb":C.white,
+                                color:a.side_selection===val?C.amber:C.muted,
+                                borderRadius:6,padding:"6px 4px",fontSize:11,fontWeight:700,cursor:"pointer"}}>
+                              {label}
+                            </button>
+                          ))}
+                        </div>
+                      );
+                    })()}
 
                     {/* Measurement entry */}
                     <div style={{display:"flex",gap:6,marginBottom:6}}>
@@ -700,6 +772,11 @@ export default function GCEstimate(){
                       const datalistId = `gc-materials-${(m.category||"all").replace(/[^a-zA-Z0-9]/g,"_")}`;
                       return (
                       <div key={m.id} style={{marginBottom:8}}>
+                        {m.layer_name && (
+                          <div style={{fontSize:10,fontWeight:700,color:C.amber,marginBottom:3,textTransform:"uppercase",letterSpacing:0.3}}>
+                            {m.layer_name}
+                          </div>
+                        )}
                         <div style={{display:"flex",gap:6,marginBottom:4}}>
                           <select title="Narrow the material list to one trade/category" value={m.category||""} onChange={e=>updateMaterial(a.id,m.id,"category",e.target.value)} style={{...I,width:130}}>
                             <option value="">Category…</option>
