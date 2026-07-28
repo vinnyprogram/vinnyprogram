@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
+import { useAuth } from "../context/AuthContext";
 
 const STATUS_COLORS = {
   "Draft":    { bg:"#f1f5f9", text:"#64748b" },
@@ -26,18 +27,34 @@ function estimateTotal(e){
 
 export default function GCSearch() {
   const navigate = useNavigate();
+  const { company } = useAuth();
   const [search, setSearch]   = useState("");
   const [groups, setGroups]   = useState([]);
+  const [employeeMap, setEmployeeMap] = useState({}); // user_id -> name
   const [loading, setLoading] = useState(true);
+
+  function creatorName(createdBy){
+    if(!createdBy) return null;
+    if(company && createdBy===company.user_id) return "Owner";
+    return employeeMap[createdBy] || "Team member";
+  }
 
   useEffect(()=>{
     async function load() {
       const { data:ests } = await supabase
         .from("gc_estimates")
-        .select("id, customer_id, address, job_type, status, areas, scopes, created_at")
+        .select("id, customer_id, address, job_type, status, areas, scopes, created_at, created_by")
         .order("created_at", { ascending:false });
 
       if(!ests){ setLoading(false); return; }
+
+      if(company?.id){
+        const { data:emps } = await supabase.from("company_employees")
+          .select("user_id, employee_name").eq("company_id", company.id);
+        const map = {};
+        (emps||[]).forEach(e=>{ map[e.user_id] = e.employee_name || "Team member"; });
+        setEmployeeMap(map);
+      }
 
       const custIds = [...new Set(ests.map(e=>e.customer_id).filter(Boolean))];
       const { data:customers } = await supabase
@@ -65,7 +82,7 @@ export default function GCSearch() {
       setLoading(false);
     }
     load();
-  },[]);
+  },[company?.id]);
 
   async function updateStatus(estimateId, newStatus) {
     await supabase.from("gc_estimates").update({status:newStatus}).eq("id",estimateId);
@@ -170,6 +187,7 @@ export default function GCSearch() {
                   <div style={{fontSize:11,color:"#94a3b8",marginTop:2}}>
                     {new Date(e.created_at).toLocaleDateString("en-US",
                       {month:"short",day:"numeric",year:"numeric"})}
+                    {creatorName(e.created_by) && ` · 👤 ${creatorName(e.created_by)}`}
                   </div>
                 </div>
                 <div style={{fontSize:14,fontWeight:700,color:"#059669",whiteSpace:"nowrap"}}>
