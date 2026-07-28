@@ -10,9 +10,34 @@ export default function Onboarding() {
   const [error, setError] = useState("");
   const [logoFile, setLogoFile] = useState(null);
   const [logoPreview, setLogoPreview] = useState(null);
+  const [mode, setMode] = useState("create"); // "create" | "join"
+  const [joinCode, setJoinCode] = useState("");
   const [form, setForm] = useState({
     name: "", address: "", phone: "", email: "", office_email: "", website: ""
   });
+
+  async function joinTeam(e) {
+    e.preventDefault();
+    if (!joinCode.trim()) { setError("Enter the invite code your employer gave you"); return; }
+    setLoading(true); setError("");
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      const { data: targetCompany, error: fe } = await supabase.from("companies")
+        .select("id").eq("invite_code", joinCode.trim()).maybeSingle();
+      if (fe) throw new Error(fe.message);
+      if (!targetCompany) { setError("That invite code doesn't match any company"); setLoading(false); return; }
+      const { error: ie } = await supabase.from("company_employees").insert([{
+        company_id: targetCompany.id, user_id: user.id, role: "employee", status: "active",
+      }]);
+      if (ie) throw new Error(ie.message);
+      await loadCompany(user.id);
+      navigate("/");
+    } catch (err) {
+      setError(err.message || "Could not join with that code");
+    } finally {
+      setLoading(false);
+    }
+  }
 
   function f(k, v) { setForm(p => ({ ...p, [k]: v })); }
 
@@ -118,6 +143,42 @@ export default function Onboarding() {
           boxShadow: "0 4px 24px rgba(0,0,0,.08)", border: "1px solid #e2e8f0"
         }}>
 
+          <div style={{ display:"flex", marginBottom:20, background:"#f1f5f9", borderRadius:10, padding:3 }}>
+            {[["create","Create Company"],["join","Join a Team"]].map(([m,label])=>(
+              <button key={m} type="button" onClick={()=>{ setMode(m); setError(""); }}
+                style={{ flex:1, padding:"8px", borderRadius:8, border:"none", cursor:"pointer",
+                  fontSize:13, fontWeight:700, background: mode===m?"white":"transparent",
+                  color: mode===m?"#0f172a":"#64748b", boxShadow: mode===m?"0 1px 4px rgba(0,0,0,.1)":"none" }}>
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {mode==="join" ? (
+            <form onSubmit={joinTeam}>
+              <div style={{ marginBottom: 14 }}>
+                <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 5 }}>
+                  Invite Code
+                </label>
+                <input value={joinCode} onChange={e=>setJoinCode(e.target.value)}
+                  placeholder="Ask your employer for this code" required
+                  style={{ width:"100%", padding:"12px 14px", borderRadius:10, border:"1.5px solid #e0e5ef",
+                    fontSize:14, outline:"none", boxSizing:"border-box", fontFamily:"inherit" }} />
+              </div>
+              {error && (
+                <div style={{ background:"#fef2f2", border:"1px solid #fecaca", borderRadius:8,
+                    padding:"10px 12px", marginBottom:14, fontSize:12, color:"#ef4444" }}>
+                  {error}
+                </div>
+              )}
+              <button type="submit" disabled={loading}
+                style={{ width:"100%", padding:"13px", borderRadius:10, border:"none",
+                  background: loading?"#64748b":"#059669", color:"white", fontWeight:700,
+                  fontSize:15, cursor: loading?"not-allowed":"pointer" }}>
+                {loading ? "Joining…" : "Join Team"}
+              </button>
+            </form>
+          ) : (
           <form onSubmit={save}>
 
             {/* logo upload */}
@@ -186,6 +247,7 @@ export default function Onboarding() {
               {loading ? "Saving…" : "Save & Continue →"}
             </button>
           </form>
+          )}
         </div>
 
         <div style={{ textAlign: "center", marginTop: 12, fontSize: 11, color: "#94a3b8" }}>
