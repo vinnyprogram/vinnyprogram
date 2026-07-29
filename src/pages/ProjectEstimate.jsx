@@ -2235,17 +2235,17 @@ export default function ProjectEstimate() {
           <button onClick={()=>navigate(-1)} style={{fontSize:12,fontWeight:700,padding:"4px 14px",borderRadius:6,border:"1px solid #f59e0b",background:"#fff",color:"#92400e",cursor:"pointer"}}>← Go Back</button>
         </div>
       )}
-      <div style={{position:"sticky",top:0,zIndex:100,background:C.white,borderBottom:`1px solid ${C.border}`,padding:"8px 12px",display:"flex",justifyContent:"space-between",alignItems:"center",flexShrink:0,gap:8}}>
+      <div style={{position:"sticky",top:0,zIndex:100,background:C.white,borderBottom:`1px solid ${C.border}`,padding:"8px 12px",display:"flex",flexWrap:"wrap",justifyContent:"space-between",alignItems:"center",flexShrink:0,gap:8}}>
         <button onClick={()=>navigate(-1)} title="Back"
           style={{border:"1px solid #cbd5e1",background:"#fff",color:"#64748b",cursor:"pointer",
             fontSize:12,fontWeight:700,padding:"5px 10px",borderRadius:8,flexShrink:0}}>
           ← Back
         </button>
-        <span style={{fontWeight:700,fontSize:14,flex:1,overflow:"hidden",whiteSpace:"nowrap",textOverflow:"ellipsis"}}>{isEditing?(isLocked?"🔒 View Estimate":"✏️ Edit Estimate"):(projectName||"New Project")}</span>
-        <div style={{display:"flex",gap:6}}>
+        <span style={{fontWeight:700,fontSize:14,flex:1,overflow:"hidden",whiteSpace:"nowrap",textOverflow:"ellipsis",minWidth:100}}>{isEditing?(isLocked?"🔒 View Estimate":"✏️ Edit Estimate"):(projectName||"New Project")}</span>
+        <div style={{display:"flex",gap:6,overflowX:"auto",WebkitOverflowScrolling:"touch",maxWidth:"100%",flexShrink:1}}>
           <DebugLogButton />
-          {savedProjectId&&(<><button onClick={()=>navigate(`/project/drawings/${savedProjectId}`)} style={{...BtnD,background:"#7c3aed",height:32,fontSize:12,padding:"0 10px",borderRadius:8}}>📐 Drawings</button><button onClick={()=>navigate(`/field-report/${savedProjectId}`)} style={{...BtnD,background:"#3b82f6",height:32,fontSize:12,padding:"0 10px",borderRadius:8}}>📋 Office</button><button onClick={()=>navigate(`/quote-pricing/${savedProjectId}`)} style={{...BtnD,background:"#f97316",height:32,fontSize:12,padding:"0 10px",borderRadius:8}}>📄 Quote</button>{offersBoardPlaster && <button onClick={pushToBoardPlaster} style={{...BtnD,background:"#b45309",height:32,fontSize:12,padding:"0 10px",borderRadius:8}}>🧱 To Board &amp; Plaster</button>}</>)}
-          {!isLocked && <button onClick={saveProject} disabled={saving} style={{...BtnD,fontSize:13,height:32,padding:"0 14px",background:saving?"#64748b":C.ink,borderRadius:8,opacity:!selectedLeadId?0.4:1}}>{saving?"…":"Save"}</button>}
+          {savedProjectId&&(<><button onClick={()=>navigate(`/project/drawings/${savedProjectId}`)} style={{...BtnD,background:"#7c3aed",height:32,fontSize:12,padding:"0 10px",borderRadius:8,flexShrink:0}}>📐 Drawings</button><button onClick={()=>navigate(`/field-report/${savedProjectId}`)} style={{...BtnD,background:"#3b82f6",height:32,fontSize:12,padding:"0 10px",borderRadius:8,flexShrink:0}}>📋 Office</button><button onClick={()=>navigate(`/quote-pricing/${savedProjectId}`)} style={{...BtnD,background:"#f97316",height:32,fontSize:12,padding:"0 10px",borderRadius:8,flexShrink:0}}>📄 Quote</button>{offersBoardPlaster && <button onClick={pushToBoardPlaster} style={{...BtnD,background:"#b45309",height:32,fontSize:12,padding:"0 10px",borderRadius:8,flexShrink:0}}>🧱 To Board &amp; Plaster</button>}</>)}
+          {!isLocked && <button onClick={saveProject} disabled={saving} style={{...BtnD,fontSize:13,height:32,padding:"0 14px",background:saving?"#64748b":C.ink,borderRadius:8,opacity:!selectedLeadId?0.4:1,flexShrink:0}}>{saving?"…":"Save"}</button>}
         </div>
       </div>
 
