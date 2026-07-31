@@ -514,16 +514,46 @@ export default function BoardPlasterEstimate(){
     lines.push(`Customer: ${selectedLead.name}${selectedLead.phone?" — "+selectedLead.phone:""}`);
     lines.push(`Address: ${address||""}`);
     lines.push("");
-    floorNames.forEach(fn=>{
-      const floorAreas = areas.filter(a=>a.floor===fn);
-      if(!floorAreas.length) return;
-      lines.push(`${fn.toUpperCase()}`);
-      floorAreas.forEach(a=>{
-        const thick = a.thickness==="Other" ? (a.thicknessOther||"Other") : a.thickness;
-        lines.push(`  ${a.area_type} — ${thick} · ${a.finish} — ${fmt(a.sqft)} ft²`);
+
+    // Same floor -> thickness -> area grouping as the Summary panel, so the
+    // office gets exactly what's shown on screen, with same-spec areas
+    // measured separately still combined into one subtotal.
+    const floorGroups = {};
+    areas.filter(a=>a.area_type && Number(a.sqft)>0).forEach(a=>{
+      const thick = a.thickness==="Other" ? (a.thicknessOther||"Other") : a.thickness;
+      const floor = a.floor || "Other";
+      if(!floorGroups[floor]) floorGroups[floor] = { thickGroups:{}, order:[] };
+      const fg = floorGroups[floor];
+      const thickKey = `${thick}||${a.layers||1}`;
+      if(!fg.thickGroups[thickKey]){ fg.thickGroups[thickKey] = { thick, layers:a.layers||1, total:0, items:{}, order:[] }; fg.order.push(thickKey); }
+      const tg = fg.thickGroups[thickKey];
+      tg.total += Number(a.sqft);
+      const itemKey = `${a.area_type}||${a.finish}`;
+      if(!tg.items[itemKey]){ tg.items[itemKey] = { area_type:a.area_type, finish:a.finish, sqft:0 }; tg.order.push(itemKey); }
+      tg.items[itemKey].sqft += Number(a.sqft);
+    });
+    const sortedFloorNames = Object.keys(floorGroups).sort((a,b)=>{
+      const ai=FLOOR_ORDER.indexOf(a), bi=FLOOR_ORDER.indexOf(b);
+      if(ai===-1&&bi===-1) return 0;
+      if(ai===-1) return 1;
+      if(bi===-1) return -1;
+      return ai-bi;
+    });
+
+    sortedFloorNames.forEach(floor=>{
+      lines.push(floor.toUpperCase());
+      const fg = floorGroups[floor];
+      Object.keys(fg.thickGroups).forEach(tk=>{
+        const tg = fg.thickGroups[tk];
+        lines.push(`  ${tg.thick}${tg.layers>1?` ×${tg.layers} layers`:""} — Total: ${fmt(tg.total)} ft²`);
+        Object.keys(tg.items).forEach(ik=>{
+          const it = tg.items[ik];
+          lines.push(`    ${it.area_type} · ${it.finish} — ${fmt(it.sqft)} ft²`);
+        });
       });
       lines.push("");
     });
+
     const total = areas.reduce((s,a)=>s+(Number(a.sqft)||0),0);
     lines.push(`Total: ${fmt(total)} ft²`);
 
