@@ -507,6 +507,31 @@ export default function BoardPlasterEstimate(){
   function installmentAmount(s){ return s.type==="percent" ? grandTotal*(Number(s.value)||0)/100 : Number(s.value)||0; }
   const scheduledTotal = paymentSchedule.reduce((s,it)=>s+installmentAmount(it),0);
 
+  function emailOffice(){
+    if(!selectedLead){ alert("Select a customer first."); return; }
+    const lines = [];
+    lines.push(`Board & Plaster measurements — ${address||"job site"}`);
+    lines.push(`Customer: ${selectedLead.name}${selectedLead.phone?" — "+selectedLead.phone:""}`);
+    lines.push(`Address: ${address||""}`);
+    lines.push("");
+    floorNames.forEach(fn=>{
+      const floorAreas = areas.filter(a=>a.floor===fn);
+      if(!floorAreas.length) return;
+      lines.push(`${fn.toUpperCase()}`);
+      floorAreas.forEach(a=>{
+        const thick = a.thickness==="Other" ? (a.thicknessOther||"Other") : a.thickness;
+        lines.push(`  ${a.area_type} — ${thick} · ${a.finish} — ${fmt(a.sqft)} ft²`);
+      });
+      lines.push("");
+    });
+    const total = areas.reduce((s,a)=>s+(Number(a.sqft)||0),0);
+    lines.push(`Total: ${fmt(total)} ft²`);
+
+    const subject = encodeURIComponent(`Board & Plaster measurements — ${address||selectedLead.name}`);
+    const body = encodeURIComponent(lines.join("\n"));
+    window.location.href = `mailto:?subject=${subject}&body=${body}`;
+  }
+
   async function saveEstimate(){
     if(saving) return;
     bpLog(`Save requested (${isEditing?"update":"new estimate"})`);
@@ -899,8 +924,12 @@ export default function BoardPlasterEstimate(){
       <div className="bp-side-panel" style={{width:220,flexShrink:0,borderLeft:`1px solid ${C.border}`,background:C.white,overflowY:"auto",padding:"10px 10px 20px"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
           <div style={{fontSize:10,fontWeight:800,color:C.faint,textTransform:"uppercase",letterSpacing:0.5}}>Summary</div>
-          <button onClick={()=>window.print()} title="Print/Save as PDF - for double-checking measurements only, not used for pricing"
-            style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:14}}>🖨️</button>
+          <div style={{display:"flex",gap:8}}>
+            <button onClick={emailOffice} title="Email customer, address, and measurements to the office"
+              style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:14}}>📧</button>
+            <button onClick={()=>window.print()} title="Print/Save as PDF - for double-checking measurements only, not used for pricing"
+              style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:14}}>🖨️</button>
+          </div>
         </div>
         <div>
           <SummaryPanel areas={areas} />
@@ -912,6 +941,8 @@ export default function BoardPlasterEstimate(){
         <div onClick={()=>setBottomPanelOpen(p=>!p)} style={{padding:"10px 14px",display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}>
           <span style={{fontSize:10,fontWeight:800,color:C.faint,textTransform:"uppercase",letterSpacing:0.5}}>Summary</span>
           <div style={{display:"flex",alignItems:"center",gap:8}}>
+            <button onClick={(e)=>{e.stopPropagation();emailOffice();}} title="Email customer, address, and measurements to the office"
+              style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:14,padding:0}}>📧</button>
             <button onClick={(e)=>{e.stopPropagation();window.print();}} title="Print/Save as PDF"
               style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:14,padding:0}}>🖨️</button>
             <span style={{fontSize:9,color:C.faint}}>{bottomPanelOpen?"▼":"▲"}</span>

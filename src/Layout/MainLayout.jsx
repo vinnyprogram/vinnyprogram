@@ -67,7 +67,7 @@ export default function MainLayout() {
         <div style={{ display:"flex", justifyContent:"space-between",
             alignItems:"center", marginBottom:24 }}>
           <div style={{ fontSize:16, fontWeight:800, color:"white" }}>
-            Insulation Pro
+            CUB
           </div>
           <button onClick={()=>setMenuOpen(false)}
             style={{ border:"none", background:"none", color:"#94a3b8",
@@ -360,7 +360,7 @@ export default function MainLayout() {
             <span style={{display:"block",width:22,height:2,background:"white",borderRadius:1}} />
           </button>
           <span style={{ color:"white", fontWeight:700, fontSize:15 }}>
-            Insulation Pro
+            CUB
           </span>
         </div>
 
