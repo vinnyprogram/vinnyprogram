@@ -2023,7 +2023,7 @@ export default function ProjectEstimate() {
          (committedAreas[floor]||[]).filter(a=>a.area_type).forEach(a=>{
            const primaryId=orderToId[_si*10];_si++;
            if(!primaryId)return;
-           (a.measurements||[]).forEach(m=>segs.push({area_id:primaryId,height:m.h,length:m.l,sqft:m.sqft,source:"field",company_id:companyId}));
+           (a.measurements||[]).forEach(m=>segs.push({area_id:primaryId,height:m.h,length:m.l,qty:m.q||1,sqft:m.sqft,source:"field",company_id:companyId}));
          });
        });
        if(segs.length>0){
@@ -2108,7 +2108,7 @@ export default function ProjectEstimate() {
         const orderToId2={};
         (areaRows||[]).forEach(r=>{ orderToId2[r.order_index]=r.id; });
         const segs=[];let _si2=0;
-        uniqueNewFloors.forEach(floor=>{(committedAreas[floor]||[]).filter(a=>a.area_type).forEach(a=>{const primaryId=orderToId2[_si2*10];_si2++;if(!primaryId)return;(a.measurements||[]).forEach(m=>segs.push({area_id:primaryId,height:m.h,length:m.l,sqft:m.sqft,source:"field",company_id:companyId}));});});
+        uniqueNewFloors.forEach(floor=>{(committedAreas[floor]||[]).filter(a=>a.area_type).forEach(a=>{const primaryId=orderToId2[_si2*10];_si2++;if(!primaryId)return;(a.measurements||[]).forEach(m=>segs.push({area_id:primaryId,height:m.h,length:m.l,qty:m.q||1,sqft:m.sqft,source:"field",company_id:companyId}));});});
         if(segs.length>0)await supabase.from("segments").insert(segs);
       }
       const allAreasList=floors.flatMap(floor=>(committedAreas[floor]||[]).filter(a=>a.area_type).flatMap(a=>{const mls=(a.mat_lines&&a.mat_lines.length>0)?a.mat_lines:[{material:a.material||"",thickness_in:a.thickness_in||""}];return mls.map(ml=>({...a,material:ml.material,thickness_in:ml.thickness_in}));}));
