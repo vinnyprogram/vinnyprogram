@@ -162,7 +162,7 @@ export default function FieldReport() {
         .sort((a,b)=>floors.findIndex(f=>f.id===a.id)-floors.findIndex(f=>f.id===b.id))
         .map(f=>f.name).join(", ");
       const measStr = g.segs.length>0
-        ? [...new Set(g.segs.map(s=>`${s.height}x${s.length}`))].join("  ")
+        ? g.segs.map(s=>`${s.height}x${s.length}${s.qty>1?`x${s.qty}`:""}`).join("  ")
         : "";
       lines.push(`${floorLabel?floorLabel+": ":""}${g.area_type} ${spec} - ${fmt(g.sqft)}ft²`);
       if(measStr) lines.push(`  ${measStr}`);
@@ -458,7 +458,7 @@ export default function FieldReport() {
                   : [g.materials[0]?.thickness_in, g.materials[0]?.material, g.materials[0]?.r_value]
                       .filter(Boolean).join(" ");
                 const measStr = g.segs.length>0
-                  ? [...new Set(g.segs.map(s=>s.height+"×"+s.length))].join("  ")
+                  ? g.segs.map(s=>`${s.height}×${s.length}${s.qty>1?`×${s.qty}`:""}`).join("  ")
                   : "";
 
                 return (
