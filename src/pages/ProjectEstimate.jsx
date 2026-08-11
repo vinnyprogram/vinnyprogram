@@ -1541,7 +1541,7 @@ export default function ProjectEstimate() {
         const fl=floorRows.find(f=>f.id===a.floor_id);
         if(!fl) return;
         const combos=secondaryRows.filter(s=>s.floor_id===a.floor_id&&s.order_index>a.order_index&&s.order_index<a.order_index+10);
-        const rawSegs=segRows.filter(s=>s.area_id===a.id).map(s=>({h:s.height,l:s.length,q:1,sqft:s.sqft}));
+        const rawSegs=segRows.filter(s=>s.area_id===a.id).map(s=>({h:s.height,l:s.length,q:s.qty||1,sqft:s.sqft}));
         // If no segments saved (legacy bug), synthesize one so sqft/chips display
         const measurements=rawSegs.length>0?rawSegs:(a.sqft>0?[{h:a.sqft,l:1,q:1,sqft:a.sqft}]:[]);
         const mat_lines=[{id:1,material:a.material||"",thickness_in:a.thickness_in||"",r_value:a.r_value||"",oc:a.oc||""},...combos.map((s,i)=>({id:i+2,material:s.material||"",thickness_in:s.thickness_in||"",r_value:s.r_value||"",oc:s.oc||""}))];
@@ -1952,24 +1952,39 @@ export default function ProjectEstimate() {
 
      // CONFLICT CHECK: if another tab/device (e.g. a backgrounded session
      // that never fully closed) has saved this same job more recently than
-     // what THIS session last knew about, refuse to proceed - otherwise
-     // this session's (possibly older/stale) in-memory data would silently
-     // overwrite the newer version, with no way to tell anything was lost.
+     // what THIS session last knew about, don't silently overwrite it -
+     // but also don't just dead-end the user into losing their own local
+     // work (field conditions like switching phones on bad signal make
+     // that a real, common way to lose real data). Ask which version wins.
      if(loadedUpdatedAt){
        const { data:latestProj, error:latestErr } = await supabase.from("projects").select("updated_at").eq("id",targetProjectId).maybeSingle();
        if(!latestErr && latestProj?.updated_at && new Date(latestProj.updated_at).getTime() !== new Date(loadedUpdatedAt).getTime()){
-         logEvent(`⛔ CONFLICT DETECTED (${silent?"silent autosave":"manual save"}): server shows ${latestProj.updated_at}, this session expected ${loadedUpdatedAt} - save blocked`);
-         setSaving(false);
-         setHasUnsavedChanges(true);
-         // Only interrupt the user with a popup for an explicit Save button
-         // click - a silent background autosave hitting this should never
-         // pop a blocking alert, or it can repeat every time the
-         // background timer retries, locking up the screen with alerts
-         // the user can't get ahead of.
-         if(!silent) alert("This job was updated elsewhere (another tab or device) since you opened it here. To avoid overwriting those newer changes, nothing was saved. Please reload this page to see the latest version before continuing.");
-         return;
+         logEvent(`⛔ CONFLICT DETECTED (${silent?"silent autosave":"manual save"}): server shows ${latestProj.updated_at}, this session expected ${loadedUpdatedAt}`);
+         if(silent){
+           // Never interrupt the user for a background autosave - just skip
+           // this attempt silently and let the next timer tick (or their
+           // next manual Save) re-check.
+           setSaving(false);
+           setHasUnsavedChanges(true);
+           return;
+         }
+         const keepMine = window.confirm(
+           "This job was updated elsewhere (another tab or device) since you opened it here.\n\n" +
+           "Press OK to SAVE YOUR CHANGES from this screen anyway (this will overwrite whatever was saved elsewhere).\n\n" +
+           "Press Cancel to back out without saving, so you can reload and see the other version instead - but anything you typed here that isn't saved yet will be lost when you reload."
+         );
+         if(!keepMine){
+           setSaving(false);
+           setHasUnsavedChanges(true);
+           return;
+         }
+         // User chose to keep their own local changes - accept the current
+         // server timestamp as the new baseline and fall through to save.
+         logEvent("User chose to keep local changes and overwrite the other device's save");
+         setLoadedUpdatedAt(latestProj.updated_at);
+       } else {
+         logEvent("Conflict check passed - no newer save from elsewhere");
        }
-       logEvent("Conflict check passed - no newer save from elsewhere");
      }
 
      // ARCHITECTURE: insert the NEW floors/areas/segments FIRST, fully
