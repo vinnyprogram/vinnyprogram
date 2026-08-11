@@ -335,9 +335,24 @@ function AreaRow({ area, matTypesLive, materials, materialMap, variantMap, onCha
   const [thickOpts, setThickOpts] = useState(()=>loadCustomList("custom_thick_opts", THICK_OPTS));
   const [rValOpts, setRValOpts] = useState(()=>loadCustomList("custom_rval_opts", R_VALS));
 
-  const [calcOpen, setCalcOpen] = useState(false);
-  const [calcExpr, setCalcExpr] = useState("");
+  // Calculator state is restored/persisted per-area so an in-progress
+  // expression survives navigating to another page (or the phone
+  // closing/reopening the browser) before you hit "=" and apply it.
+  const calcStorageKey = `calc_state_${area.id ?? area.temp_id}`;
+  const [calcOpen, setCalcOpen] = useState(()=>{
+    try{ return JSON.parse(localStorage.getItem(calcStorageKey)||"null")?.open || false; }catch(e){ return false; }
+  });
+  const [calcExpr, setCalcExpr] = useState(()=>{
+    try{ return JSON.parse(localStorage.getItem(calcStorageKey)||"null")?.expr || ""; }catch(e){ return ""; }
+  });
   const [calcError, setCalcError] = useState(false);
+
+  useEffect(()=>{
+    try{
+      if(calcOpen || calcExpr) localStorage.setItem(calcStorageKey, JSON.stringify({open:calcOpen, expr:calcExpr}));
+      else localStorage.removeItem(calcStorageKey);
+    }catch(e){}
+  },[calcOpen, calcExpr]);
   const [overrideOpen, setOverrideOpen] = useState(!!area.price_override);
   const [movingTo, setMovingTo] = useState(false);
 
@@ -550,7 +565,7 @@ function useCalcResult(field) {
     <div style={{ margin:"-6px -8px 8px -8px", background:"#059669", borderRadius:"7px 7px 0 0" }}>
       {/* Row 1: primary actions */}
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"8px 10px 4px", gap:5 }}>
-        <button onClick={()=>setExpanded(false)}
+        <button onClick={()=>{ setExpanded(false); onChange("_collapsed", true); }}
           style={{border:"none",background:"rgba(255,255,255,0.25)",color:"#fff",
             padding:"7px 18px",borderRadius:6,cursor:"pointer",fontSize:13,fontWeight:700,flex:1}}>
           ✓ Done
@@ -1304,6 +1319,33 @@ export default function ProjectEstimate() {
   }
   function loadDraft(key){try{const r=localStorage.getItem(key);return r?JSON.parse(r):null;}catch(e){return null;}}
 
+  // ── UI state (which floor / which area was open) ─────────────────────────
+  // This is separate from the draft/DB data above - it's purely "where was
+  // the user looking" so that navigating away (Office/Drawings/etc.) and
+  // coming back, or closing and reopening the app on the phone, restores
+  // the same view instead of collapsing everything and jumping back to the
+  // first floor. Keyed off the project id once one exists; falls back to
+  // the lead id for a brand-new, not-yet-saved project.
+  function getUIKey(){
+    const id = projectId || savedProjectId;
+    if(id) return `ui_state_${id}`;
+    if(selectedLeadId) return `ui_state_new_${selectedLeadId}`;
+    return null;
+  }
+  function loadUIState(){
+    const key=getUIKey();
+    if(!key) return null;
+    try{ const r=localStorage.getItem(key); return r?JSON.parse(r):null; }catch(e){ return null; }
+  }
+  function saveUIState(patch){
+    const key=getUIKey();
+    if(!key) return;
+    try{
+      const cur=loadUIState()||{};
+      localStorage.setItem(key, JSON.stringify({...cur,...patch}));
+    }catch(e){}
+  }
+
   function saveDraftNow(overrideAreas,overrideFloors){
     // In edit mode, changes are auto-saved directly to the DB — no need
     // for a localStorage draft, and creating one causes a duplicate entry
@@ -1527,7 +1569,10 @@ export default function ProjectEstimate() {
       const {data:floorRows}=await supabase.from("floors").select("*").eq("project_id",projectId).order("order_index");
       if(!floorRows?.length){setLoadingProject(false);return;}
       const floorNames=[...new Set(floorRows.map(f=>f.name).filter(f=>f!=="Floor"))];
-      setFloors(floorNames); setActiveFloor(floorNames[0]);
+      const savedUIState = loadUIState();
+      const restoredFloor = (savedUIState?.activeFloor && floorNames.includes(savedUIState.activeFloor))
+        ? savedUIState.activeFloor : floorNames[0];
+      setFloors(floorNames); setActiveFloor(restoredFloor);
       const {data:areaRows}=await supabase.from("areas").select("*").eq("project_id",projectId).order("order_index");
       const areaIds=(areaRows||[]).map(a=>a.id);
       let segRows=[];
@@ -1545,7 +1590,7 @@ export default function ProjectEstimate() {
         // If no segments saved (legacy bug), synthesize one so sqft/chips display
         const measurements=rawSegs.length>0?rawSegs:(a.sqft>0?[{h:a.sqft,l:1,q:1,sqft:a.sqft}]:[]);
         const mat_lines=[{id:1,material:a.material||"",thickness_in:a.thickness_in||"",r_value:a.r_value||"",oc:a.oc||""},...combos.map((s,i)=>({id:i+2,material:s.material||"",thickness_in:s.thickness_in||"",r_value:s.r_value||"",oc:s.oc||""}))];
-        const areaCard={temp_id:a.id,floor:fl.name,area_type:a.area_type,material:combos.length>0?"__combo__":(a.material||""),thickness_in:a.thickness_in||"",r_value:a.r_value||"",oc:a.oc||"",sqft:a.sqft||0,measurements,mh:"",ml:"",mq:"1",deduct_sqft:a.deduct_sqft||"",paint_sqft:a.paint_sqft||"",price_override:a.price_override||"",phase:a.phase||null,_collapsed:true,options:Array.isArray(a.options)?a.options:(typeof a.options==="string"?JSON.parse(a.options||"[]"):[]),mat_lines,is_optional:a.is_optional||false,optional_note:a.optional_note||""};
+        const areaCard={temp_id:a.id,floor:fl.name,area_type:a.area_type,material:combos.length>0?"__combo__":(a.material||""),thickness_in:a.thickness_in||"",r_value:a.r_value||"",oc:a.oc||"",sqft:a.sqft||0,measurements,mh:"",ml:"",mq:"1",deduct_sqft:a.deduct_sqft||"",paint_sqft:a.paint_sqft||"",price_override:a.price_override||"",phase:a.phase||null,_collapsed:(savedUIState?.openAreaId!=null && String(savedUIState.openAreaId)===String(a.id))?false:true,options:Array.isArray(a.options)?a.options:(typeof a.options==="string"?JSON.parse(a.options||"[]"):[]),mat_lines,is_optional:a.is_optional||false,optional_note:a.optional_note||""};
         if(newAreas[fl.name]) newAreas[fl.name].push(areaCard);
       });
       setAreas(newAreas);
@@ -1748,7 +1793,11 @@ export default function ProjectEstimate() {
         const area={...upd.splice(idx,1)[0], _collapsed:false};
         upd.forEach((a,i)=>{ upd[i] = {...a, _collapsed:true}; });
         upd.unshift(area);
+        saveUIState({ openAreaId: area.id ?? area.temp_id ?? null });
         setTimeout(()=>{ areaListRef.current?.scrollTo({top:0,behavior:"smooth"}); }, 60);
+      }
+      if(field==="_collapsed" && value===true){
+        saveUIState({ openAreaId: null });
       }
       return {...prev,[floor]:upd};
     });
@@ -2292,7 +2341,7 @@ export default function ProjectEstimate() {
             {floors.map(floor=>{
               const act=activeFloor===floor;
               const hasAreas=(areas[floor]||[]).some(a=>isAreaComplete(a));
-              return (<button key={floor} onClick={()=>setActiveFloor(floor)} className="floor-btn" style={{padding:"8px 14px",borderRadius:8,height:"auto",border:act?"2px solid #059669":"2px solid #86efac",background:act?"#059669":(hasAreas?"#dcfce7":C.white),color:act?"#fff":"#059669",cursor:"pointer",fontSize:14,fontWeight:700,whiteSpace:"nowrap",boxShadow:act?"0 2px 8px rgba(5,150,105,.3)":"none"}}>{floor}{hasAreas&&!act&&<span style={{marginLeft:4,fontSize:10}}>✓</span>}</button>);
+              return (<button key={floor} onClick={()=>{setActiveFloor(floor); saveUIState({activeFloor:floor});}} className="floor-btn" style={{padding:"8px 14px",borderRadius:8,height:"auto",border:act?"2px solid #059669":"2px solid #86efac",background:act?"#059669":(hasAreas?"#dcfce7":C.white),color:act?"#fff":"#059669",cursor:"pointer",fontSize:14,fontWeight:700,whiteSpace:"nowrap",boxShadow:act?"0 2px 8px rgba(5,150,105,.3)":"none"}}>{floor}{hasAreas&&!act&&<span style={{marginLeft:4,fontSize:10}}>✓</span>}</button>);
             })}
             {addingFloor?(
               <div style={{display:"flex",gap:3}}>
