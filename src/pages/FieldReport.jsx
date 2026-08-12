@@ -217,7 +217,7 @@ export default function FieldReport() {
           const r = parseInt((ml.r_value||"").replace(/\D/g,""))||0;
           return sum+r;
         },0);
-        lines.push(`- *${(o.label||`Option ${o._oi+1}`).toUpperCase()}* — ${fl?.name?fl.name+" — ":""}${o._area.area_type}`);
+        lines.push(`- *${(o.label||"").toUpperCase()}* — ${fl?.name?fl.name+" — ":""}${o._area.area_type}`);
         lines.push(`  ${matLabel}${optTotalR>0?` (Total R-${optTotalR})`:""} - ${o._area.sqft}ft²`);
         if(o.note) lines.push(`  📝 ${o.note}`);
       });
@@ -611,7 +611,7 @@ export default function FieldReport() {
                         borderRadius:i===0?"6px 6px 0 0":i===subOpts.length-1?"0 0 6px 6px":"0"}}>
                       <div style={{display:"flex",justifyContent:"space-between",flexWrap:"wrap",gap:4}}>
                         <div>
-                          <span style={{fontSize:13,fontWeight:800,color:"#92400e"}}>{o.label||`Option ${o._oi+1}`}</span>
+                          <span style={{fontSize:13,fontWeight:800,color:"#92400e"}}>{o.label}</span>
                           <span style={{fontSize:11,color:"#374151",marginLeft:6}}>— {fl?.name} — {o._area.area_type}</span>
                           <div style={{fontSize:10,color:"#64748b"}}>{matLabel}{optTotalR>0&&<span style={{color:"#059669",fontWeight:700,marginLeft:6}}>Total R-{optTotalR}</span>}</div>
                           {o.note&&<div style={{fontSize:10,color:"#b45309",fontStyle:"italic"}}>📝 {o.note}</div>}
@@ -658,3 +658,4 @@ export default function FieldReport() {
     </div>
   );
 }
+
