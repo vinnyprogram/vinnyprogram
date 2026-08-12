@@ -1622,6 +1622,7 @@ export default function ProjectEstimate() {
       const sortedAreaRows=[...(areaRows||[])].sort((a,b)=>a.order_index-b.order_index);
       const primaryRows=sortedAreaRows.filter(a=>a.order_index%10===0||a.order_index===0);
       const secondaryRows=sortedAreaRows.filter(a=>a.order_index%10!==0&&a.order_index!==0);
+      const areaTypeOccurrence = {};
       primaryRows.forEach(a=>{
         const fl=floorRows.find(f=>f.id===a.floor_id);
         if(!fl) return;
@@ -1630,7 +1631,15 @@ export default function ProjectEstimate() {
         // If no segments saved (legacy bug), synthesize one so sqft/chips display
         const measurements=rawSegs.length>0?rawSegs:(a.sqft>0?[{h:a.sqft,l:1,q:1,sqft:a.sqft}]:[]);
         const mat_lines=[{id:1,material:a.material||"",thickness_in:a.thickness_in||"",r_value:a.r_value||"",oc:a.oc||""},...combos.map((s,i)=>({id:i+2,material:s.material||"",thickness_in:s.thickness_in||"",r_value:s.r_value||"",oc:s.oc||""}))];
-        const areaCard={temp_id:a.id,floor:fl.name,area_type:a.area_type,material:combos.length>0?"__combo__":(a.material||""),thickness_in:a.thickness_in||"",r_value:a.r_value||"",oc:a.oc||"",sqft:a.sqft||0,measurements,mh:"",ml:"",mq:"1",deduct_sqft:a.deduct_sqft||"",paint_sqft:a.paint_sqft||"",price_override:a.price_override||"",phase:a.phase||null,_collapsed:(savedUIState?.openAreaId!=null && String(savedUIState.openAreaId)===String(a.id))?false:true,options:Array.isArray(a.options)?a.options:(typeof a.options==="string"?JSON.parse(a.options||"[]"):[]),mat_lines,is_optional:a.is_optional||false,optional_note:a.optional_note||""};
+        // Match the previously-open area by floor + area_type + occurrence
+        // (see updateArea's "_collapsed" handler for why - not by a.id).
+        const occKey = fl.name+"||"+(a.area_type||"");
+        const occurrence = areaTypeOccurrence[occKey]||0;
+        areaTypeOccurrence[occKey] = occurrence+1;
+        const isSavedOpenArea = savedUIState?.openAreaFloor===fl.name
+          && savedUIState?.openAreaType===(a.area_type||"")
+          && savedUIState?.openAreaOccurrence===occurrence;
+        const areaCard={temp_id:a.id,floor:fl.name,area_type:a.area_type,material:combos.length>0?"__combo__":(a.material||""),thickness_in:a.thickness_in||"",r_value:a.r_value||"",oc:a.oc||"",sqft:a.sqft||0,measurements,mh:"",ml:"",mq:"1",deduct_sqft:a.deduct_sqft||"",paint_sqft:a.paint_sqft||"",price_override:a.price_override||"",phase:a.phase||null,_collapsed:isSavedOpenArea?false:true,options:Array.isArray(a.options)?a.options:(typeof a.options==="string"?JSON.parse(a.options||"[]"):[]),mat_lines,is_optional:a.is_optional||false,optional_note:a.optional_note||""};
         if(newAreas[fl.name]) newAreas[fl.name].push(areaCard);
       });
       setAreas(newAreas);
@@ -1830,14 +1839,22 @@ export default function ProjectEstimate() {
       // having several areas open at once made it easy to lose track of
       // which one you were actually editing.
       if(field==="_collapsed" && value===false){
+        // Identify the area by CONTENT (floor + area_type + which repeat of
+        // that type), not database id - every autosave fully deletes and
+        // re-inserts all area rows with brand new ids (see saveProjectInner
+        // below), so an id captured here would already be stale the moment
+        // any edit autosaves, which is why this kept failing to restore.
+        const priorList = prev[floor]||[];
+        const thisType = priorList[idx]?.area_type||"";
+        const occurrence = priorList.slice(0, idx).filter(a=>(a.area_type||"")===thisType).length;
         const area={...upd.splice(idx,1)[0], _collapsed:false};
         upd.forEach((a,i)=>{ upd[i] = {...a, _collapsed:true}; });
         upd.unshift(area);
-        saveUIState({ openAreaId: area.id ?? area.temp_id ?? null });
+        saveUIState({ openAreaFloor: floor, openAreaType: thisType, openAreaOccurrence: occurrence });
         setTimeout(()=>{ areaListRef.current?.scrollTo({top:0,behavior:"smooth"}); }, 60);
       }
       if(field==="_collapsed" && value===true){
-        saveUIState({ openAreaId: null });
+        saveUIState({ openAreaFloor: null, openAreaType: null, openAreaOccurrence: null });
       }
       return {...prev,[floor]:upd};
     });
