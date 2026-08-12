@@ -2050,6 +2050,31 @@ export default function ProjectEstimate() {
           lines.push(`  ${a.area_type} — ${spec||"(no material chosen yet)"} — ${a.sqft||0} ft²${a.is_optional?" (Optional)":""}${flag}`);
         });
       });
+      // ⚡ Sub-options ("+ Add Option" alternates) - these were missing from
+      // the backup snapshot entirely, same gap as the office email had.
+      const snapshotSubOpts = floors.flatMap(floor=>
+        (committedAreas[floor]||[]).filter(a=>a.area_type).flatMap(a=>{
+          try{
+            const opts = Array.isArray(a.options)?a.options:(typeof a.options==="string"?JSON.parse(a.options||"[]"):[]);
+            return (opts||[]).filter(o=>o.material||o.label).map((o,oi)=>({...o,_area:a,_floor:floor,_oi:oi}));
+          }catch(e){ return []; }
+        })
+      );
+      if(snapshotSubOpts.length){
+        lines.push("");
+        lines.push("SUB-OPTIONS (PRICE SEPARATELY)");
+        snapshotSubOpts.forEach(o=>{
+          const optMls=(o.mat_lines||[]).length>0?o.mat_lines:[{material:o.material||"",thickness_in:o.thickness_in||o._area?.thickness_in||"",r_value:o.r_value||o._area?.r_value||""}];
+          const matLabel=(optMls.length>1?[optMls[0]?.thickness_in,"Combo:",optMls.map(ml=>[ml.material,ml.r_value].filter(Boolean).join(" ")).join(" + ")].filter(Boolean).join(" "):[optMls[0]?.thickness_in,optMls[0]?.material,optMls[0]?.r_value].filter(Boolean).join(" "));
+          const optTotalR = optMls.reduce((sum,ml)=>{
+            const r = parseInt((ml.r_value||"").replace(/\D/g,""))||0;
+            return sum+r;
+          },0);
+          lines.push(`  *${(o.label||`Option ${o._oi+1}`).toUpperCase()}* — ${o._floor} — ${o._area.area_type}`);
+          lines.push(`    ${matLabel}${optTotalR>0?` (Total R-${optTotalR})`:""} - ${o._area.sqft||0} ft²`);
+          if(o.note) lines.push(`    📝 ${o.note}`);
+        });
+      }
       return lines.join("\n");
     }
 
