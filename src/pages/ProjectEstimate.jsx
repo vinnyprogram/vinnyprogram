@@ -846,7 +846,17 @@ function useCalcResult(field) {
                 </div>
               ):(
                 <div style={{background:"#fff7ed",borderRadius:6,padding:"6px 8px",marginBottom:4}}>
-                  <div style={{fontSize:9,fontWeight:700,color:"#92400e",marginBottom:6,display:"flex",justifyContent:"space-between"}}>⚡ Combo<button onClick={()=>{updateOpt("mat_lines",[{id:1,material:"",thickness_in:matLines[0].thickness_in||"",r_value:matLines[0].r_value||"",oc:""}]);updateOpt("material","");}} style={{border:"none",background:"none",color:"#94a3b8",cursor:"pointer",fontSize:10,padding:0}}>× remove combo</button></div>
+                  <div style={{fontSize:9,fontWeight:700,color:"#92400e",marginBottom:6,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                    <span>⚡ Combo</span>
+                    {(()=>{
+                      const optTotalR = optLines.reduce((sum,ol)=>{
+                        const r = parseInt((ol.r_value||"").replace(/\D/g,""))||0;
+                        return sum+r;
+                      },0);
+                      return optTotalR>0 ? <span style={{color:"#059669",fontWeight:800}}>Total R-{optTotalR}</span> : null;
+                    })()}
+                    <button onClick={()=>{updateOpt("mat_lines",[{id:1,material:"",thickness_in:matLines[0].thickness_in||"",r_value:matLines[0].r_value||"",oc:""}]);updateOpt("material","");}} style={{border:"none",background:"none",color:"#94a3b8",cursor:"pointer",fontSize:10,padding:0}}>× remove combo</button>
+                  </div>
                   {optLines.map((ol,li)=>(
                     <div key={li} style={{marginBottom:6,paddingBottom:6,borderBottom:li<optLines.length-1?"1px dashed #fde68a":"none"}}>
                       <div style={{display:"flex",gap:4,marginBottom:3,alignItems:"center"}}>
@@ -1155,9 +1165,16 @@ function EstimatePanel({ floors, areas, materialMap, variantMap, crewNotes, proj
                 {allSubOptions.map((o,i)=>{
                   const optMls=(o.mat_lines||[]).length>0?o.mat_lines:[{material:o.material||"",thickness_in:o.thickness_in||o._area?.thickness_in||"",r_value:o.r_value||o._area?.r_value||""}];
                   const matLabel=(optMls.length>1?[optMls[0]?.thickness_in,"Combo:",optMls.map(ml=>[ml.material,ml.r_value].filter(Boolean).join(" ")).join(" + ")].filter(Boolean).join(" "):[optMls[0]?.thickness_in,optMls[0]?.material,optMls[0]?.r_value].filter(Boolean).join(" "));
+                  const optTotalR = optMls.reduce((sum,ml)=>{
+                    const r = parseInt((ml.r_value||"").replace(/\D/g,""))||0;
+                    return sum+r;
+                  },0);
                   return (
                     <div key={i} style={{fontSize:11,color:"#92400e",marginBottom:4,paddingLeft:6,borderLeft:"2px solid #fed7aa"}}>
-                      <div style={{fontWeight:700}}>{o.label||`Option ${o._oi+1}`} — {o._area.area_type}</div>
+                      <div style={{fontWeight:800,display:"flex",justifyContent:"space-between"}}>
+                        <span>{o.label||`Option ${o._oi+1}`} <span style={{fontWeight:500}}>— {o._floor} — {o._area.area_type}</span></span>
+                        {optTotalR>0&&<span style={{color:"#059669",fontWeight:800}}>Total R-{optTotalR}</span>}
+                      </div>
                       <div style={{fontSize:10,color:C.muted}}>{matLabel} · {o._area.sqft} ft²</div>
                       {o.note&&<div style={{fontSize:10,color:"#b45309",fontStyle:"italic"}}>📝 {o.note}</div>}
                     </div>

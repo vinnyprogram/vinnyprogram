@@ -197,6 +197,32 @@ export default function FieldReport() {
       });
     }
 
+    // ⚡ Sub-options (per-area alternatives from "+ Add Option") — this was
+    // missing from the email entirely before, even though the on-screen
+    // print view already showed it correctly.
+    const emailSubOpts = areas.filter(a=>a.area_type&&a.sqft>0).flatMap(a=>{
+      try{
+        const opts = Array.isArray(a.options)?a.options:(typeof a.options==="string"?JSON.parse(a.options||"[]"):[]);
+        return (opts||[]).filter(o=>o.material||o.label).map((o,oi)=>({...o,_area:a,_oi:oi}));
+      }catch(e){ return []; }
+    });
+    if(emailSubOpts.length){
+      pushBlank();
+      lines.push("SUB-OPTIONS (PRICE SEPARATELY)");
+      emailSubOpts.forEach(o=>{
+        const fl = floors.find(f=>f.id===o._area.floor_id);
+        const optMls=(o.mat_lines||[]).length>0?o.mat_lines:[{material:o.material||"",thickness_in:o.thickness_in||o._area?.thickness_in||"",r_value:o.r_value||o._area?.r_value||""}];
+        const matLabel=(optMls.length>1?[optMls[0]?.thickness_in,"Combo:",optMls.map(ml=>[ml.material,ml.r_value].filter(Boolean).join(" ")).join(" + ")].filter(Boolean).join(" "):[optMls[0]?.thickness_in,optMls[0]?.material,optMls[0]?.r_value].filter(Boolean).join(" "));
+        const optTotalR = optMls.reduce((sum,ml)=>{
+          const r = parseInt((ml.r_value||"").replace(/\D/g,""))||0;
+          return sum+r;
+        },0);
+        lines.push(`- *${(o.label||`Option ${o._oi+1}`).toUpperCase()}* — ${fl?.name?fl.name+" — ":""}${o._area.area_type}`);
+        lines.push(`  ${matLabel}${optTotalR>0?` (Total R-${optTotalR})`:""} - ${o._area.sqft}ft²`);
+        if(o.note) lines.push(`  📝 ${o.note}`);
+      });
+    }
+
     // Manually-typed optional items (separate free-text list, if used)
     if(options.length){
       pushBlank();
@@ -575,15 +601,19 @@ export default function FieldReport() {
                   const fl = floors.find(f=>f.id===o._area.floor_id);
                   const optMls=(o.mat_lines||[]).length>0?o.mat_lines:[{material:o.material||"",thickness_in:o.thickness_in||o._area?.thickness_in||"",r_value:o.r_value||o._area?.r_value||""}];
                   const matLabel=(optMls.length>1?[optMls[0]?.thickness_in,"Combo:",optMls.map(ml=>[ml.material,ml.r_value].filter(Boolean).join(" ")).join(" + ")].filter(Boolean).join(" "):[optMls[0]?.thickness_in,optMls[0]?.material,optMls[0]?.r_value].filter(Boolean).join(" "));
+                  const optTotalR = optMls.reduce((sum,ml)=>{
+                    const r = parseInt((ml.r_value||"").replace(/\D/g,""))||0;
+                    return sum+r;
+                  },0);
                   return (
                     <div key={i} style={{padding:"8px 12px",background:i%2===0?"#fffbeb":"white",
                         border:"1px solid #fde68a",borderTop:i===0?"1px solid #fde68a":"none",
                         borderRadius:i===0?"6px 6px 0 0":i===subOpts.length-1?"0 0 6px 6px":"0"}}>
                       <div style={{display:"flex",justifyContent:"space-between",flexWrap:"wrap",gap:4}}>
                         <div>
-                          <span style={{fontSize:12,fontWeight:700,color:"#92400e"}}>{fl?.name} — {o._area.area_type}</span>
-                          <span style={{fontSize:11,color:"#374151",marginLeft:6}}>{o.label||`Option ${o._oi+1}`}</span>
-                          <div style={{fontSize:10,color:"#64748b"}}>{matLabel}</div>
+                          <span style={{fontSize:13,fontWeight:800,color:"#92400e"}}>{o.label||`Option ${o._oi+1}`}</span>
+                          <span style={{fontSize:11,color:"#374151",marginLeft:6}}>— {fl?.name} — {o._area.area_type}</span>
+                          <div style={{fontSize:10,color:"#64748b"}}>{matLabel}{optTotalR>0&&<span style={{color:"#059669",fontWeight:700,marginLeft:6}}>Total R-{optTotalR}</span>}</div>
                           {o.note&&<div style={{fontSize:10,color:"#b45309",fontStyle:"italic"}}>📝 {o.note}</div>}
                         </div>
                         <span style={{fontSize:12,fontWeight:700,color:"#92400e"}}>{o._area.sqft} ft²</span>
