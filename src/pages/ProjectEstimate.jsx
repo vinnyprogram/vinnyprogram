@@ -49,6 +49,15 @@ function fmt(n) {
 }
 
 const DEFAULT_FLOORS = ["Attic","3rd","2nd","1st","Basement","Crawlspace"];
+// Single stable slot for "a brand-new job that doesn't have a customer or
+// address attached yet." Normal drafts are keyed by leadId+address so a
+// resume link can find the right one, but that means nothing gets saved
+// until a customer exists - which loses work for anyone who fills in
+// floors/areas/job info first and picks the customer or types the address
+// last. This key is address/customer-independent so it can autosave from
+// the very first keystroke, then gets migrated into the real per-customer
+// draft (or cleared) as soon as a customer is actually attached.
+const ANON_DRAFT_KEY = "draft_estimate_anon_inprogress";
 const AREA_TYPES = [
   "Roof Rafter w/ Strapping","Roof Rafter behind knee walls","Floor",
   "Exterior Wall","Demising Wall","Rim Joist","Concrete Wall",
@@ -1309,6 +1318,7 @@ export default function ProjectEstimate() {
     try {
       const key = getDraftKey(selectedLeadId, projectAddress);
       localStorage.removeItem(key);
+      localStorage.removeItem(ANON_DRAFT_KEY);
       // Also sweep any other drafts for this same lead (orphaned from address changes)
       const prefix = `draft_estimate_${selectedLeadId}`;
       for(let i=localStorage.length-1; i>=0; i--){
@@ -1330,7 +1340,7 @@ export default function ProjectEstimate() {
     const id = projectId || savedProjectId;
     if(id) return `ui_state_${id}`;
     if(selectedLeadId) return `ui_state_new_${selectedLeadId}`;
-    return null;
+    return "ui_state_anon_inprogress";
   }
   function loadUIState(){
     const key=getUIKey();
@@ -1351,7 +1361,6 @@ export default function ProjectEstimate() {
     // for a localStorage draft, and creating one causes a duplicate entry
     // in the Estimates list that looks like a second copy of the project.
     if(isEditing) return;
-    if(!selectedLeadId) return;
     // Don't save while a resumed draft is still loading. selectedLeadId and
     // projectAddress get set from the URL immediately, but floors/areas only
     // get restored from localStorage once the customer list finishes loading
@@ -1359,15 +1368,21 @@ export default function ProjectEstimate() {
     // would overwrite the real, already-saved data with the blank initial
     // state under the SAME key - silently wiping out real measurements.
     if(resumeMode && !draftRestored) return;
-    const key=getDraftKey(selectedLeadId, projectAddress);
+    // No customer picked yet (and maybe no address either) - still save,
+    // just under the one shared "in-progress, unassigned" slot instead of
+    // a customer-keyed one, so nothing typed gets lost while those get
+    // filled in later. As soon as a customer IS attached, everything moves
+    // over to the real per-customer key and the anon slot is cleared.
+    const key = selectedLeadId ? getDraftKey(selectedLeadId, projectAddress) : ANON_DRAFT_KEY;
     try{
       localStorage.setItem(key,JSON.stringify({savedAt:new Date().toISOString(),selectedLeadId,projectName,projectAddress,crewNotes,floors:overrideFloors||floors,areas:overrideAreas||areas,editingProjectId:null}));
       if(!draftKey) setDraftKey(key);
+      if(selectedLeadId){ try{ localStorage.removeItem(ANON_DRAFT_KEY); }catch(e){} }
     }catch(e){}
   }
 
   useEffect(()=>{
-    const interval=setInterval(()=>{if(selectedLeadId&&!wasSaved.current)saveDraftNow();},30000);
+    const interval=setInterval(()=>{if(!wasSaved.current)saveDraftNow();},30000);
     return ()=>clearInterval(interval);
   },[selectedLeadId,projectName,projectAddress,crewNotes,floors,areas]);
 
@@ -1398,6 +1413,31 @@ export default function ProjectEstimate() {
       setDraftRestored(true);
     }
   },[leads,resumeMode,leadId]);
+
+  // Brand-new project, no customer/address picked yet (no leadId in the URL,
+  // not a resume link). If there's an unassigned draft sitting in the anon
+  // slot from an earlier visit, bring it back automatically.
+  const anonRestoredRef = useRef(false);
+  useEffect(()=>{
+    if(isEditing || leadId || resumeMode) return;
+    if(anonRestoredRef.current) return;
+    anonRestoredRef.current = true;
+    const draft = loadDraft(ANON_DRAFT_KEY);
+    if(draft){
+      if(draft.crewNotes) setCrewNotes(draft.crewNotes);
+      if(draft.floors?.length) setFloors([...new Set(draft.floors.filter(f=>f!=="Floor"))]);
+      if(draft.areas){
+        const merged={};
+        const allFloors=[...new Set([...DEFAULT_FLOORS,...(draft.floors||[])])];
+        allFloors.forEach(f=>{merged[f]=draft.areas[f]||[];});
+        setAreas(merged);
+      }
+      if(draft.projectName) setProjectName(draft.projectName);
+      if(draft.projectAddress) setProjectAddress(draft.projectAddress);
+      const first=(draft.floors||[]).find(f=>(draft.areas?.[f]||[]).some(a=>a.area_type||a.sqft>0));
+      if(first) setPendingFloor(first);
+    }
+  },[isEditing, leadId, resumeMode]);
 
   useEffect(()=>{ if(pendingFloor){setActiveFloor(pendingFloor);setPendingFloor(null);} },[pendingFloor]);
 
@@ -1648,7 +1688,7 @@ export default function ProjectEstimate() {
   },[selectedLeadId]);
 
   useEffect(()=>{
-    if(!isEditing&&selectedLeadId){const t=setTimeout(()=>saveDraftNow(),1500);return()=>clearTimeout(t);}
+    if(!isEditing){const t=setTimeout(()=>saveDraftNow(),1500);return()=>clearTimeout(t);}
   },[selectedLeadId,projectAddress,projectName]);
 
   useEffect(()=>{

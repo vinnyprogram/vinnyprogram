@@ -99,6 +99,11 @@ export default function FieldReport() {
         `Field Estimate - ${project?.address||project?.name||"New Project"}`
       );
     const lines = [];
+    // Avoids ever pushing two blank lines back-to-back - the SCOPE OF WORK
+    // loop below adds a spacer after every area, and the section right
+    // after it (OPTIONS / Additional Notes / sign-off) also wants a spacer
+    // before it, so without this guard those would stack into a double gap.
+    function pushBlank(){ if(lines.length && lines[lines.length-1]!=="") lines.push(""); }
     lines.push(`${project?.address||""}`);
     lines.push("");
     lines.push("CUSTOMER");
@@ -166,6 +171,7 @@ export default function FieldReport() {
         : "";
       lines.push(`${floorLabel?floorLabel+": ":""}${g.area_type} ${spec} - ${fmt(g.sqft)}ft²`);
       if(measStr) lines.push(`  ${measStr}`);
+      lines.push("");
     });
 
     // ⭐ Options (Customer Choice) — the areas marked "optional", same section
@@ -182,7 +188,7 @@ export default function FieldReport() {
           if(g.optional_note) optMerged[key].optional_note=g.optional_note;
         }
       });
-      lines.push("");
+      pushBlank();
       lines.push("OPTIONS (CUSTOMER CHOICE)");
       Object.values(optMerged).forEach(g=>{
         const matLabel = (g.materials.length>1?[g.materials[0]?.thickness_in,"Combo:",g.materials.map(ml=>[ml.material,ml.r_value].filter(Boolean).join(" ")).join(" + ")].filter(Boolean).join(" "):[g.materials[0]?.thickness_in,g.materials[0]?.material,g.materials[0]?.r_value].filter(Boolean).join(" "));
@@ -193,14 +199,14 @@ export default function FieldReport() {
 
     // Manually-typed optional items (separate free-text list, if used)
     if(options.length){
-      lines.push("");
+      pushBlank();
       lines.push("Additional Notes:");
       options.forEach(o=>{
         lines.push(`${o.label}: ${o.description}`);
       });
     }
 
-    lines.push("");
+    pushBlank();
     lines.push(`${salesRep}`);
 
     const body = encodeURIComponent(lines.join("\n"));
