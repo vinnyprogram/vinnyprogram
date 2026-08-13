@@ -1121,11 +1121,13 @@ function EstimatePanel({ floors, areas, materialMap, variantMap, crewNotes, proj
           list.forEach(a=>{
             const mls=(a.mat_lines&&a.mat_lines.length>0)?a.mat_lines:[{material:a.material||"",thickness_in:a.thickness_in||"",r_value:a.r_value||"",oc:a.oc||""}];
             const key=a.area_type+"||||"+mls.map(ml=>ml.material+"|"+ml.thickness_in+"|"+ml.r_value).join("+");
-            if(!gm[key]) gm[key]={area_type:a.area_type,floors:[],mat_lines:mls,totalSqft:0,totalCost:0,totalPaintSqft:0,floorOrder:floors.indexOf(a.floor)};
+            if(!gm[key]) gm[key]={area_type:a.area_type,floors:[],mat_lines:mls,totalSqft:0,totalCost:0,totalPaintSqft:0,deductTotal:0,measurements:[],floorOrder:floors.indexOf(a.floor)};
             const g=gm[key];
             if(!g.floors.includes(a.floor)) g.floors.push(a.floor);
             if(floors.indexOf(a.floor)<g.floorOrder) g.floorOrder=floors.indexOf(a.floor);
             g.totalSqft+=a.sqft||0; g.totalCost+=getAreaTotalCost(a,materialMap,variantMap); g.totalPaintSqft+=Number(a.paint_sqft||0);
+            g.deductTotal+=Number(a.deduct_sqft)||0;
+            g.measurements.push(...(a.measurements||[]));
           });
           return Object.values(gm).sort((a,b)=>a.floorOrder-b.floorOrder);
         }
@@ -1135,19 +1137,18 @@ function EstimatePanel({ floors, areas, materialMap, variantMap, crewNotes, proj
             const floorLabel=g.floors.sort((a,b)=>floors.indexOf(a)-floors.indexOf(b)).map(f=>f.replace(" Floor","")).join(", ");
             const matLabel=g.mat_lines.length>1?"Combo: "+g.mat_lines.map(ml=>((ml.material||"")+" "+(ml.r_value||"")).trim()).join(" + "):((g.mat_lines[0]?.material||"")+" "+(g.mat_lines[0]?.r_value||"")+" "+(g.mat_lines[0]?.oc||"")).trim();
             const {qty,unit}=calcArea(g.totalSqft,thick,materialMap[g.mat_lines[0]?.material],g.mat_lines[0]?.r_value,variantMap);
+            const measStr=g.measurements.length>0?g.measurements.map(m=>`${m.h}×${m.l}${m.q>1?`×${m.q}`:""}`).join("  "):"";
             return (
               <div key={i} style={{paddingBottom:5,marginBottom:5,borderBottom:`1px solid ${C.chip}`}}>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
-                  <div style={{flex:1,paddingRight:4,lineHeight:1.5}}>
-                    <div style={{fontWeight:700,fontSize:12,color:C.ink}}>{floorLabel} — {g.area_type}</div>
-                    <div style={{fontSize:10,color:C.muted,lineHeight:1.5}}>
-                      {thick&&<span>{thick} </span>}{matLabel}{" · "}{fmt(g.totalSqft)} ft²
-                      {qty>0&&` → ${fmt(qty)} ${unit?.replace("_"," ")}`}
-                      {g.totalSqft===0&&<span style={{color:"#b45309",fontWeight:700}}> — ⚠ INCOMPLETE, not yet measured</span>}
-                    </div>
-                    {g.totalPaintSqft>0&&<div style={{fontSize:10,color:"#c2410c"}}>🎨 Paint {fmt(g.totalPaintSqft)} ft²</div>}
+                <div style={{flex:1,paddingRight:4,lineHeight:1.5}}>
+                  <div style={{fontWeight:700,fontSize:12,color:C.ink}}>{floorLabel} — {g.area_type}</div>
+                  <div style={{fontSize:10,color:C.muted,lineHeight:1.5}}>
+                    {thick&&<span>{thick} </span>}{matLabel}{" · "}{fmt(g.totalSqft)} ft²
+                    {qty>0&&` → ${fmt(qty)} ${unit?.replace("_"," ")}`}
+                    {g.totalSqft===0&&<span style={{color:"#b45309",fontWeight:700}}> — ⚠ INCOMPLETE, not yet measured</span>}
                   </div>
-                  {g.totalCost>0&&<span style={{fontWeight:700,color:C.green,fontSize:12,flexShrink:0,paddingTop:2}}>${fmt(g.totalCost)}</span>}
+                  {measStr&&<div style={{fontSize:10,color:C.faint,lineHeight:1.5}}>{measStr}{g.deductTotal>0&&<span style={{color:"#ef4444",fontWeight:700,marginLeft:6}}>−{fmt(g.deductTotal)} ft² deducted</span>}</div>}
+                  {g.totalPaintSqft>0&&<div style={{fontSize:10,color:"#c2410c"}}>🎨 Paint {fmt(g.totalPaintSqft)} ft²</div>}
                 </div>
               </div>
             );
@@ -1180,21 +1181,19 @@ function EstimatePanel({ floors, areas, materialMap, variantMap, crewNotes, proj
               ⭐ Options
             </div>
             {optionalAreas.map((a,i)=>{
-              const cost=getAreaTotalCost(a,materialMap,variantMap);
               const mls=(a.mat_lines&&a.mat_lines.length>0)?a.mat_lines:[{material:a.material||"",thickness_in:a.thickness_in||"",r_value:a.r_value||""}];
               const matLabel=(mls.length>1?[mls[0]?.thickness_in,"Combo:",mls.map(ml=>[ml.material,ml.r_value].filter(Boolean).join(" ")).join(" + ")].filter(Boolean).join(" "):[mls[0]?.thickness_in,mls[0]?.material,mls[0]?.r_value].filter(Boolean).join(" "));
+              const measStr=(a.measurements||[]).length>0?a.measurements.map(m=>`${m.h}×${m.l}${m.q>1?`×${m.q}`:""}`).join("  "):"";
               return (
                 <div key={i} style={{paddingBottom:5,marginBottom:5,borderBottom:`1px solid ${C.chip}`}}>
-                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
-                    <div style={{flex:1,paddingRight:4,lineHeight:1.5}}>
-                      <div style={{fontWeight:700,fontSize:12,color:C.ink}}>{a.floor.replace(" Floor","")} — {a.area_type}</div>
-                      <div style={{fontSize:10,color:C.muted,lineHeight:1.5}}>
-                        {matLabel}{" · "}{fmt(a.sqft)} ft²
-                        {!(a.sqft>0)&&<span style={{color:"#b45309",fontWeight:700}}> — ⚠ INCOMPLETE, not yet measured</span>}
-                      </div>
-                  {a.optional_note&&<div style={{fontSize:10,color:"#92400e",fontStyle:"italic",marginTop:1}}>📝 {a.optional_note}</div>}
+                  <div style={{flex:1,paddingRight:4,lineHeight:1.5}}>
+                    <div style={{fontWeight:700,fontSize:12,color:C.ink}}>{a.floor.replace(" Floor","")} — {a.area_type}</div>
+                    <div style={{fontSize:10,color:C.muted,lineHeight:1.5}}>
+                      {matLabel}{" · "}{fmt(a.sqft)} ft²
+                      {!(a.sqft>0)&&<span style={{color:"#b45309",fontWeight:700}}> — ⚠ INCOMPLETE, not yet measured</span>}
                     </div>
-                    {cost>0&&<span style={{fontWeight:700,color:"#f59e0b",fontSize:12,flexShrink:0,paddingTop:2}}>+${fmt(cost)}</span>}
+                    {measStr&&<div style={{fontSize:10,color:C.faint,lineHeight:1.5}}>{measStr}{Number(a.deduct_sqft)>0&&<span style={{color:"#ef4444",fontWeight:700,marginLeft:6}}>−{fmt(a.deduct_sqft)} ft² deducted</span>}</div>}
+                {a.optional_note&&<div style={{fontSize:10,color:"#92400e",fontStyle:"italic",marginTop:1}}>📝 {a.optional_note}</div>}
                   </div>
                 </div>
               );
@@ -1228,8 +1227,8 @@ function EstimatePanel({ floors, areas, materialMap, variantMap, crewNotes, proj
       })()}
 
       <div style={{ display:"flex", justifyContent:"space-between", paddingTop:6, borderTop:`2px solid ${C.ink}`, fontWeight:700 }}>
-        <span style={{fontSize:12}}>Total</span>
-        <span style={{fontSize:17,color:C.green}}>${fmt(total)}</span>
+        <span style={{fontSize:12}}>Total measured</span>
+        <span style={{fontSize:15,color:C.ink}}>{fmt(floors.reduce((s,f)=>s+(areas[f]||[]).filter(a=>a.area_type).reduce((s2,a)=>s2+(a.sqft||0),0),0))} ft²</span>
       </div>
 
     </div>
@@ -2585,7 +2584,6 @@ export default function ProjectEstimate() {
         <div onClick={()=>setPanelOpen(p=>!p)} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"5px 12px",cursor:"pointer",borderBottom:panelOpen?`1px solid ${C.border}`:"none"}}>
           <span style={{fontSize:10,fontWeight:800,color:C.faint,textTransform:"uppercase",letterSpacing:0.5}}>Estimate</span>
           <div style={{display:"flex",alignItems:"center",gap:8}}>
-            <span style={{fontSize:13,fontWeight:800,color:C.green}}>${fmt(projectTotal)}</span>
             <button onClick={(e)=>{e.stopPropagation();window.print();}} title="Save as backup PDF"
               style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:14,padding:0}}>
               🖨️
