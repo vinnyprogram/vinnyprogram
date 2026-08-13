@@ -336,10 +336,12 @@ async function saveNew() {
 }
 
 // ── AreaRow ───────────────────────────────────────────────────────────────────
-function AreaRow({ area, matTypesLive, materials, materialMap, variantMap, onChange, onDelete, onMove, floors, activeFloor, saveOptionsOnly, onMaterialAdded, customAreaTypes, baseAreaTypes, onSaveCustomAreaType, dbThickOpts, dbRVals }) {
+function AreaRow({ area, matTypesLive, materials, materialMap, variantMap, onChange, onDelete, onMove, onCopy, floors, activeFloor, saveOptionsOnly, onMaterialAdded, customAreaTypes, baseAreaTypes, onSaveCustomAreaType, dbThickOpts, dbRVals }) {
   const effectiveThickOpts = (dbThickOpts&&dbThickOpts.length>0) ? dbThickOpts : THICK_OPTS;
   const effectiveRVals     = (dbRVals&&dbRVals.length>0) ? dbRVals : R_VALS;
   const [expanded, setExpanded] = useState(!area._collapsed);
+  const [copyMenuOpen, setCopyMenuOpen] = useState(false);
+  const [copyTargets, setCopyTargets] = useState([]);
 
   const [thickOpts, setThickOpts] = useState(()=>loadCustomList("custom_thick_opts", THICK_OPTS));
   const [rValOpts, setRValOpts] = useState(()=>loadCustomList("custom_rval_opts", R_VALS));
@@ -529,6 +531,39 @@ function useCalcResult(field) {
           style={{ display:"flex", alignItems:"center", gap:6, cursor:"pointer" }}>
           {isOverridden && <span style={{fontSize:9,color:"#7c3aed",fontWeight:700}}>✏️ custom</span>}
           <span style={{ fontSize:11, fontWeight:700, color:"#059669" }}>${fmt(totalCost)}</span>
+          {onCopy && floors.length>1 && (
+            <div style={{position:"relative"}} onClick={e=>e.stopPropagation()}>
+              <span
+                onClick={()=>{ setCopyTargets([]); setCopyMenuOpen(o=>!o); }}
+                title="Copy this area's material/spec to another floor"
+                style={{ color:"#2563eb", fontSize:13, padding:"0 2px", cursor:"pointer" }}>
+                📋
+              </span>
+              {copyMenuOpen && (
+                <div style={{position:"absolute",top:"120%",right:0,zIndex:20,background:"#fff",
+                    border:`1px solid ${C.border}`,borderRadius:8,padding:8,minWidth:150,
+                    boxShadow:"0 6px 18px rgba(0,0,0,.15)"}}>
+                  <div style={{fontSize:10,fontWeight:700,color:C.muted,marginBottom:6}}>Copy to floor(s):</div>
+                  {floors.filter(f=>f!==activeFloor).map(f=>(
+                    <label key={f} style={{display:"flex",alignItems:"center",gap:6,fontSize:11,color:C.ink,padding:"3px 0",cursor:"pointer"}}>
+                      <input type="checkbox" checked={copyTargets.includes(f)}
+                        onChange={()=>setCopyTargets(t=>t.includes(f)?t.filter(x=>x!==f):[...t,f])} />
+                      {f}
+                    </label>
+                  ))}
+                  <div style={{display:"flex",gap:6,marginTop:6}}>
+                    <button onClick={()=>setCopyMenuOpen(false)} style={{flex:1,border:`1px solid ${C.border}`,background:"#fff",color:C.muted,borderRadius:6,padding:"4px 0",fontSize:10,cursor:"pointer"}}>Cancel</button>
+                    <button
+                      disabled={copyTargets.length===0}
+                      onClick={()=>{ onCopy(copyTargets); setCopyMenuOpen(false); setCopyTargets([]); }}
+                      style={{flex:1,border:"none",background:copyTargets.length?"#2563eb":"#cbd5e1",color:"#fff",borderRadius:6,padding:"4px 0",fontSize:10,fontWeight:700,cursor:copyTargets.length?"pointer":"default"}}>
+                      Copy
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
           <span style={{ color:"#059669", fontSize:14, padding:"0 2px" }}>✏️</span>
         </div>
       </div>
@@ -1172,7 +1207,7 @@ function EstimatePanel({ floors, areas, materialMap, variantMap, crewNotes, proj
                   return (
                     <div key={i} style={{fontSize:11,color:"#92400e",marginBottom:4,paddingLeft:6,borderLeft:"2px solid #fed7aa"}}>
                       <div style={{fontWeight:800,display:"flex",justifyContent:"space-between"}}>
-                        <span>{o.label||`Option ${o._oi+1}`} <span style={{fontWeight:500}}>— {o._floor} — {o._area.area_type}</span></span>
+                        <span>{o.label} <span style={{fontWeight:500}}>— {o._floor} — {o._area.area_type}</span></span>
                         {optTotalR>0&&<span style={{color:"#059669",fontWeight:800}}>Total R-{optTotalR}</span>}
                       </div>
                       <div style={{fontSize:10,color:C.muted}}>{matLabel} · {o._area.sqft} ft²</div>
@@ -1891,6 +1926,33 @@ export default function ProjectEstimate() {
     });
   }
 
+  // Duplicates an area's material/thickness/R-value/combo/options to one or
+  // more other floors, but clears the measurements/sqft so each floor gets
+  // its own numbers - for jobs where the same spec repeats across several
+  // floors and only the measurements actually change.
+  function copyAreaToFloors(fromFloor, idx, toFloors){
+    if(!toFloors || toFloors.length===0) return;
+    setAreas(prev=>{
+      const source = prev[fromFloor]?.[idx];
+      if(!source) return prev;
+      const next = {...prev};
+      toFloors.forEach((toFloor,i)=>{
+        const copy = {
+          ...source,
+          temp_id: Date.now()+i+1,
+          measurements: [],
+          sqft: 0,
+          mh: "", ml: "", mq: "1",
+          deduct_sqft: "",
+          price_override: "",
+          _collapsed: false, // opens ready for the measurements to be typed in
+        };
+        next[toFloor] = [...(next[toFloor]||[]), copy];
+      });
+      return next;
+    });
+  }
+
   async function saveNewCustomer(form){
     let companyId=null;
     try{const {data:{user}}=await supabase.auth.getUser();const {data:cd}=await supabase.from("companies").select("id").eq("user_id",user.id).maybeSingle();companyId=cd?.id||null;}catch(e){}
@@ -2070,7 +2132,7 @@ export default function ProjectEstimate() {
             const r = parseInt((ml.r_value||"").replace(/\D/g,""))||0;
             return sum+r;
           },0);
-          lines.push(`  *${(o.label||`Option ${o._oi+1}`).toUpperCase()}* — ${o._floor} — ${o._area.area_type}`);
+          lines.push(`  *${(o.label||"").toUpperCase()}* — ${o._floor} — ${o._area.area_type}`);
           lines.push(`    ${matLabel}${optTotalR>0?` (Total R-${optTotalR})`:""} - ${o._area.sqft||0} ft²`);
           if(o.note) lines.push(`    📝 ${o.note}`);
         });
@@ -2478,11 +2540,11 @@ export default function ProjectEstimate() {
           ):(
             <>
               {currentAreas.map((area,idx)=>({area,idx})).filter(({area})=>!isAreaComplete(area)).map(({area,idx})=>(
-                <AreaRow key={area.id||area.temp_id} area={area} matTypesLive={matTypesLive} materials={materials} materialMap={materialMap} variantMap={variantMap} onChange={(field,value)=>updateArea(activeFloor,idx,field,value)} onDelete={()=>deleteArea(activeFloor,idx)} onMove={(toFloor)=>{const realI=(areas[activeFloor]||[]).indexOf(area);moveArea(activeFloor,realI>=0?realI:idx,toFloor);}} floors={floors} activeFloor={activeFloor} saveOptionsOnly={saveOptionsOnly} onMaterialAdded={loadMaterials} customAreaTypes={customAreaTypes} baseAreaTypes={companyAreaTypes.length?companyAreaTypes:AREA_TYPES} onSaveCustomAreaType={saveCustomAreaType} dbThickOpts={dbThickOpts} dbRVals={dbRVals} />
+                <AreaRow key={area.id||area.temp_id} area={area} matTypesLive={matTypesLive} materials={materials} materialMap={materialMap} variantMap={variantMap} onChange={(field,value)=>updateArea(activeFloor,idx,field,value)} onDelete={()=>deleteArea(activeFloor,idx)} onMove={(toFloor)=>{const realI=(areas[activeFloor]||[]).indexOf(area);moveArea(activeFloor,realI>=0?realI:idx,toFloor);}} onCopy={(toFloors)=>{const realI=(areas[activeFloor]||[]).indexOf(area);copyAreaToFloors(activeFloor,realI>=0?realI:idx,toFloors);}} floors={floors} activeFloor={activeFloor} saveOptionsOnly={saveOptionsOnly} onMaterialAdded={loadMaterials} customAreaTypes={customAreaTypes} baseAreaTypes={companyAreaTypes.length?companyAreaTypes:AREA_TYPES} onSaveCustomAreaType={saveCustomAreaType} dbThickOpts={dbThickOpts} dbRVals={dbRVals} />
               ))}
               {currentAreas.some(a=>isAreaComplete(a))&&(<div style={{fontSize:9,fontWeight:700,color:"#059669",textTransform:"uppercase",letterSpacing:0.5,marginBottom:4,marginTop:2,paddingLeft:2}}>✓ Completed areas</div>)}
               {currentAreas.map((area,idx)=>({area,idx})).filter(({area})=>isAreaComplete(area)).map(({area,idx})=>(
-                <AreaRow key={area.id||area.temp_id} area={area} matTypesLive={matTypesLive} materials={materials} materialMap={materialMap} variantMap={variantMap} onChange={(field,value)=>updateArea(activeFloor,idx,field,value)} onDelete={()=>deleteArea(activeFloor,idx)} onMove={(toFloor)=>{const realI=(areas[activeFloor]||[]).indexOf(area);moveArea(activeFloor,realI>=0?realI:idx,toFloor);}} floors={floors} activeFloor={activeFloor} saveOptionsOnly={saveOptionsOnly} onMaterialAdded={loadMaterials} customAreaTypes={customAreaTypes} baseAreaTypes={companyAreaTypes.length?companyAreaTypes:AREA_TYPES} onSaveCustomAreaType={saveCustomAreaType} dbThickOpts={dbThickOpts} dbRVals={dbRVals} />
+                <AreaRow key={area.id||area.temp_id} area={area} matTypesLive={matTypesLive} materials={materials} materialMap={materialMap} variantMap={variantMap} onChange={(field,value)=>updateArea(activeFloor,idx,field,value)} onDelete={()=>deleteArea(activeFloor,idx)} onMove={(toFloor)=>{const realI=(areas[activeFloor]||[]).indexOf(area);moveArea(activeFloor,realI>=0?realI:idx,toFloor);}} onCopy={(toFloors)=>{const realI=(areas[activeFloor]||[]).indexOf(area);copyAreaToFloors(activeFloor,realI>=0?realI:idx,toFloors);}} floors={floors} activeFloor={activeFloor} saveOptionsOnly={saveOptionsOnly} onMaterialAdded={loadMaterials} customAreaTypes={customAreaTypes} baseAreaTypes={companyAreaTypes.length?companyAreaTypes:AREA_TYPES} onSaveCustomAreaType={saveCustomAreaType} dbThickOpts={dbThickOpts} dbRVals={dbRVals} />
               ))}
             </>
           )}
