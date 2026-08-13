@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from "react";
+import { createPortal } from "react-dom";
 import { useSearchParams, useNavigate, useParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { enqueue, flushQueue } from "../utils/offlineQueue";
@@ -532,37 +533,12 @@ function useCalcResult(field) {
           {isOverridden && <span style={{fontSize:9,color:"#7c3aed",fontWeight:700}}>✏️ custom</span>}
           <span style={{ fontSize:11, fontWeight:700, color:"#059669" }}>${fmt(totalCost)}</span>
           {onCopy && floors.length>1 && (
-            <div style={{position:"relative"}} onClick={e=>e.stopPropagation()}>
-              <span
-                onClick={()=>{ setCopyTargets([]); setCopyMenuOpen(o=>!o); }}
-                title="Copy this area's material/spec to another floor"
-                style={{ color:"#2563eb", fontSize:13, padding:"0 2px", cursor:"pointer" }}>
-                📋
-              </span>
-              {copyMenuOpen && (
-                <div style={{position:"absolute",top:"120%",right:0,zIndex:20,background:"#fff",
-                    border:`1px solid ${C.border}`,borderRadius:8,padding:8,minWidth:150,
-                    boxShadow:"0 6px 18px rgba(0,0,0,.15)"}}>
-                  <div style={{fontSize:10,fontWeight:700,color:C.muted,marginBottom:6}}>Copy to floor(s):</div>
-                  {floors.filter(f=>f!==activeFloor).map(f=>(
-                    <label key={f} style={{display:"flex",alignItems:"center",gap:6,fontSize:11,color:C.ink,padding:"3px 0",cursor:"pointer"}}>
-                      <input type="checkbox" checked={copyTargets.includes(f)}
-                        onChange={()=>setCopyTargets(t=>t.includes(f)?t.filter(x=>x!==f):[...t,f])} />
-                      {f}
-                    </label>
-                  ))}
-                  <div style={{display:"flex",gap:6,marginTop:6}}>
-                    <button onClick={()=>setCopyMenuOpen(false)} style={{flex:1,border:`1px solid ${C.border}`,background:"#fff",color:C.muted,borderRadius:6,padding:"4px 0",fontSize:10,cursor:"pointer"}}>Cancel</button>
-                    <button
-                      disabled={copyTargets.length===0}
-                      onClick={()=>{ onCopy(copyTargets); setCopyMenuOpen(false); setCopyTargets([]); }}
-                      style={{flex:1,border:"none",background:copyTargets.length?"#2563eb":"#cbd5e1",color:"#fff",borderRadius:6,padding:"4px 0",fontSize:10,fontWeight:700,cursor:copyTargets.length?"pointer":"default"}}>
-                      Copy
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
+            <span
+              onClick={e=>{ e.stopPropagation(); setCopyTargets([]); setCopyMenuOpen(true); }}
+              title="Copy this area's material/spec to another floor"
+              style={{ color:"#2563eb", fontSize:13, padding:"0 2px", cursor:"pointer" }}>
+              📋
+            </span>
           )}
           <span style={{ color:"#059669", fontSize:14, padding:"0 2px" }}>✏️</span>
         </div>
@@ -594,6 +570,36 @@ function useCalcResult(field) {
         );
       })}
       </div>
+      {copyMenuOpen && createPortal(
+        <div
+          onClick={()=>setCopyMenuOpen(false)}
+          style={{position:"fixed",inset:0,zIndex:9999,background:"rgba(15,23,42,0.45)",
+            display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+          <div onClick={e=>e.stopPropagation()}
+            style={{background:"#fff",borderRadius:12,padding:16,width:"100%",maxWidth:280,
+              maxHeight:"70vh",overflowY:"auto",boxShadow:"0 12px 32px rgba(0,0,0,.25)"}}>
+            <div style={{fontSize:13,fontWeight:800,color:C.ink,marginBottom:2}}>Copy "{area.area_type}"</div>
+            <div style={{fontSize:11,color:C.muted,marginBottom:10}}>Same material, thickness &amp; R-value — just fill in measurements on the floors you pick.</div>
+            {floors.filter(f=>f!==activeFloor).map(f=>(
+              <label key={f} style={{display:"flex",alignItems:"center",gap:8,fontSize:13,color:C.ink,padding:"6px 2px",cursor:"pointer",borderBottom:`1px solid ${C.border}`}}>
+                <input type="checkbox" checked={copyTargets.includes(f)}
+                  onChange={()=>setCopyTargets(t=>t.includes(f)?t.filter(x=>x!==f):[...t,f])} />
+                {f}
+              </label>
+            ))}
+            <div style={{display:"flex",gap:8,marginTop:12}}>
+              <button onClick={()=>setCopyMenuOpen(false)} style={{flex:1,border:`1px solid ${C.border}`,background:"#fff",color:C.muted,borderRadius:7,padding:"8px 0",fontSize:12,fontWeight:600,cursor:"pointer"}}>Cancel</button>
+              <button
+                disabled={copyTargets.length===0}
+                onClick={()=>{ onCopy(copyTargets); setCopyMenuOpen(false); setCopyTargets([]); }}
+                style={{flex:1,border:"none",background:copyTargets.length?"#2563eb":"#cbd5e1",color:"#fff",borderRadius:7,padding:"8px 0",fontSize:12,fontWeight:700,cursor:copyTargets.length?"pointer":"default"}}>
+                Copy to {copyTargets.length||""} floor{copyTargets.length===1?"":"s"}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
     </div>
   );
 
@@ -2501,7 +2507,13 @@ export default function ProjectEstimate() {
           <div style={{display:"flex",flexWrap:"wrap",gap:4,marginBottom:5}} className={currentAreas.some(a=>!isAreaComplete(a))?"area-focus-bg":""}>
             {floors.map(floor=>{
               const act=activeFloor===floor;
-              const hasAreas=(areas[floor]||[]).some(a=>isAreaComplete(a));
+              // Any area with a type set counts as "content on this floor" -
+              // not just fully-measured ones. Otherwise a freshly copied
+              // area (material set, measurements still blank) wouldn't turn
+              // the floor tab green until you'd already gone and measured it,
+              // which defeats the point of seeing at a glance where you still
+              // need to fill something in.
+              const hasAreas=(areas[floor]||[]).some(a=>a.area_type);
               return (<button key={floor} onClick={()=>{setActiveFloor(floor); saveUIState({activeFloor:floor});}} className="floor-btn" style={{padding:"8px 14px",borderRadius:8,height:"auto",border:act?"2px solid #059669":"2px solid #86efac",background:act?"#059669":(hasAreas?"#dcfce7":C.white),color:act?"#fff":"#059669",cursor:"pointer",fontSize:14,fontWeight:700,whiteSpace:"nowrap",boxShadow:act?"0 2px 8px rgba(5,150,105,.3)":"none"}}>{floor}{hasAreas&&!act&&<span style={{marginLeft:4,fontSize:10}}>✓</span>}</button>);
             })}
             {addingFloor?(
