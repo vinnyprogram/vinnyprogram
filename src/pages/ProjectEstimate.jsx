@@ -1823,6 +1823,21 @@ export default function ProjectEstimate() {
     setActiveFloor(name);setNewFloorName("");setAddingFloor(false);
   }
 
+  function deleteFloor(floor){
+    const areaCount = (areas[floor]||[]).filter(a=>a.area_type).length;
+    if(areaCount>0){
+      alert(`Can't delete "${floor}" - it still has ${areaCount} area${areaCount===1?"":"s"} on it. Delete the areas on this floor first, then delete the floor.`);
+      return;
+    }
+    if(!window.confirm(`Delete the empty "${floor}" floor?`)) return;
+    setFloors(p=>p.filter(f=>f!==floor));
+    setAreas(p=>{ const next={...p}; delete next[floor]; return next; });
+    if(activeFloor===floor){
+      const remaining = floors.filter(f=>f!==floor);
+      if(remaining.length) setActiveFloor(remaining[0]);
+    }
+  }
+
   // When connection returns, save any pending changes to the DB
   useEffect(()=>{
     const handleOnline = ()=>{
@@ -2513,7 +2528,15 @@ export default function ProjectEstimate() {
               // which defeats the point of seeing at a glance where you still
               // need to fill something in.
               const hasAreas=(areas[floor]||[]).some(a=>a.area_type);
-              return (<button key={floor} onClick={()=>{setActiveFloor(floor); saveUIState({activeFloor:floor});}} className="floor-btn" style={{padding:"8px 14px",borderRadius:8,height:"auto",border:act?"2px solid #059669":"2px solid #86efac",background:act?"#059669":(hasAreas?"#dcfce7":C.white),color:act?"#fff":"#059669",cursor:"pointer",fontSize:14,fontWeight:700,whiteSpace:"nowrap",boxShadow:act?"0 2px 8px rgba(5,150,105,.3)":"none"}}>{floor}{hasAreas&&!act&&<span style={{marginLeft:4,fontSize:10}}>✓</span>}</button>);
+              return (
+                <div key={floor} className="floor-btn" style={{display:"inline-flex",alignItems:"center",borderRadius:8,border:act?"2px solid #059669":"2px solid #86efac",background:act?"#059669":(hasAreas?"#dcfce7":C.white),boxShadow:act?"0 2px 8px rgba(5,150,105,.3)":"none",overflow:"hidden"}}>
+                  <button onClick={()=>{setActiveFloor(floor); saveUIState({activeFloor:floor});}} style={{border:"none",background:"none",padding:"8px 6px 8px 14px",cursor:"pointer",fontSize:14,fontWeight:700,whiteSpace:"nowrap",color:act?"#fff":"#059669"}}>{floor}{hasAreas&&!act&&<span style={{marginLeft:4,fontSize:10}}>✓</span>}</button>
+                  <button onClick={()=>deleteFloor(floor)} title={`Delete ${floor} floor`}
+                    style={{border:"none",background:"none",cursor:"pointer",padding:"8px 10px 8px 4px",fontSize:12,color:act?"rgba(255,255,255,0.75)":"#94a3b8",lineHeight:1}}>
+                    ✕
+                  </button>
+                </div>
+              );
             })}
             {addingFloor?(
               <div style={{display:"flex",gap:3}}>
