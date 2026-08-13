@@ -2530,11 +2530,13 @@ export default function ProjectEstimate() {
               const hasAreas=(areas[floor]||[]).some(a=>a.area_type);
               return (
                 <div key={floor} className="floor-btn" style={{display:"inline-flex",alignItems:"center",borderRadius:8,border:act?"2px solid #059669":"2px solid #86efac",background:act?"#059669":(hasAreas?"#dcfce7":C.white),boxShadow:act?"0 2px 8px rgba(5,150,105,.3)":"none",overflow:"hidden"}}>
-                  <button onClick={()=>{setActiveFloor(floor); saveUIState({activeFloor:floor});}} style={{border:"none",background:"none",padding:"8px 6px 8px 14px",cursor:"pointer",fontSize:14,fontWeight:700,whiteSpace:"nowrap",color:act?"#fff":"#059669"}}>{floor}{hasAreas&&!act&&<span style={{marginLeft:4,fontSize:10}}>✓</span>}</button>
-                  <button onClick={()=>deleteFloor(floor)} title={`Delete ${floor} floor`}
-                    style={{border:"none",background:"none",cursor:"pointer",padding:"8px 10px 8px 4px",fontSize:12,color:act?"rgba(255,255,255,0.75)":"#94a3b8",lineHeight:1}}>
-                    ✕
-                  </button>
+                  <button onClick={()=>{setActiveFloor(floor); saveUIState({activeFloor:floor});}} style={{border:"none",background:"none",padding:hasAreas?"8px 14px":"8px 6px 8px 14px",cursor:"pointer",fontSize:14,fontWeight:700,whiteSpace:"nowrap",color:act?"#fff":"#059669"}}>{floor}{hasAreas&&!act&&<span style={{marginLeft:4,fontSize:10}}>✓</span>}</button>
+                  {!hasAreas && (
+                    <button onClick={()=>deleteFloor(floor)} title={`Delete ${floor} floor`}
+                      style={{border:"none",background:"none",cursor:"pointer",padding:"8px 10px 8px 4px",fontSize:12,color:act?"rgba(255,255,255,0.75)":"#94a3b8",lineHeight:1}}>
+                      ✕
+                    </button>
+                  )}
                 </div>
               );
             })}
