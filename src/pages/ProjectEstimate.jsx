@@ -86,6 +86,23 @@ const OC_OPTS    = ['3"cc','7"oc','8"oc','12"oc','16"oc','24"oc','open cell'];
 const CONST_TYPES = ["New Construction","Remodeling","Addition","Existing Construction","Renovation","Commercial","Other"];
 const LADDER_OPTS = ["5ft","7ft","10ft","12ft","16ft","20ft","Lift","No ladder needed"];
 
+// Scope-of-work print/panel ordering - roughly "most structurally important
+// first" rather than floor order, so someone scanning the report sees the
+// big-picture items (roof, exterior walls) before the smaller ones. Matches
+// by keyword against the area_type text since custom/typed-in area types
+// ("Demising and Corridor", "Basement — Elevator") need to sort sensibly too.
+function areaTypePriority(areaType){
+  const t=(areaType||"").toLowerCase();
+  if(t.includes("roof")) return 0;
+  if(t.includes("exterior")) return 1;
+  if(t.includes("concrete")) return 2;
+  if(t.includes("demising")) return 3;
+  if(t.includes("interior")) return 4;
+  if(t.includes("garage")) return 5;
+  if(t.includes("basement")) return 6;
+  return 7;
+}
+
 function parseRValueNumber(rValue){
   if(!rValue) return 0;
   const m = String(rValue).match(/(\d+(\.\d+)?)/);
@@ -1129,7 +1146,7 @@ function EstimatePanel({ floors, areas, materialMap, variantMap, crewNotes, proj
             g.deductTotal+=Number(a.deduct_sqft)||0;
             g.measurements.push(...(a.measurements||[]));
           });
-          return Object.values(gm).sort((a,b)=>a.floorOrder-b.floorOrder);
+          return Object.values(gm).sort((a,b)=>areaTypePriority(a.area_type)-areaTypePriority(b.area_type)||a.floorOrder-b.floorOrder);
         }
         function renderGroups(groups){
           return groups.map((g,i)=>{

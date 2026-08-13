@@ -2,6 +2,21 @@ import React, { useState, useEffect, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 
+// Scope-of-work ordering - roughly "most structurally important first"
+// rather than floor order, matching the same priority used in the estimate
+// panel so the office report and the working panel read in the same order.
+function areaTypePriority(areaType){
+  const t=(areaType||"").toLowerCase();
+  if(t.includes("roof")) return 0;
+  if(t.includes("exterior")) return 1;
+  if(t.includes("concrete")) return 2;
+  if(t.includes("demising")) return 3;
+  if(t.includes("interior")) return 4;
+  if(t.includes("garage")) return 5;
+  if(t.includes("basement")) return 6;
+  return 7;
+}
+
 const COMPANY = {
   name:         "Bright Choice Insulation",
   address:      "69 Watson Street | Brockton, Massachusetts 02301",
@@ -157,7 +172,7 @@ export default function FieldReport() {
       g.deduct += Number(a.deduct_sqft)||0;
       g.segs.push(...segments.filter(s=>s.area_id===a.id));
     });
-    const groups = Object.values(groupMap).sort((a,b)=>a.floorOrder-b.floorOrder);
+    const groups = Object.values(groupMap).sort((a,b)=>areaTypePriority(a.area_type)-areaTypePriority(b.area_type)||a.floorOrder-b.floorOrder);
     groups.forEach(g=>{
       const thick = g.mat_lines[0]?.thickness_in || "";
       const specs = g.mat_lines.map(ml=>[ml.material,ml.r_value].filter(Boolean).join(" ")).filter(Boolean);
@@ -475,7 +490,7 @@ export default function FieldReport() {
                 mg.segs = [...mg.segs, ...g.segs];
               });
 
-              const groups = Object.values(mergedMap).sort((a,b)=>a.floorOrder-b.floorOrder);
+              const groups = Object.values(mergedMap).sort((a,b)=>areaTypePriority(a.area_type)-areaTypePriority(b.area_type)||a.floorOrder-b.floorOrder);
 
               return groups.map((g,i)=>{
                 const thick = g.materials[0]?.thickness_in||"";
