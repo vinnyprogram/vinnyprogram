@@ -1949,7 +1949,16 @@ export default function ProjectEstimate() {
     });
   }
 
-  function deleteArea(floor,idx){setAreas(prev=>({...prev,[floor]:prev[floor].filter((_,i)=>i!==idx)}));}
+  function deleteArea(floor,idx){
+    const area = areas[floor]?.[idx];
+    // If there's real data in it (material, R-value, measurements already
+    // entered), confirm first - an accidental tap on delete otherwise wipes
+    // out everything with no way back, which is exactly what happened here.
+    if(area && isAreaComplete(area)){
+      if(!window.confirm(`Delete "${area.area_type}"? It already has ${fmt(area.sqft||0)} ft² measured and priced - this can't be undone.`)) return;
+    }
+    setAreas(prev=>({...prev,[floor]:prev[floor].filter((_,i)=>i!==idx)}));
+  }
   function moveArea(fromFloor, idx, toFloor){
     if(fromFloor===toFloor) return;
     setAreas(prev=>{

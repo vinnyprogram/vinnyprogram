@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { logEvent as sharedLogEvent } from "../utils/debugLog";
@@ -183,6 +184,50 @@ export default function BoardPlasterEstimate(){
   const [activeFloor, setActiveFloor] = useState("");
   const [importing, setImporting] = useState(false);
   const [importCandidates, setImportCandidates] = useState(null); // null = not showing picker; array = showing it
+
+  // Copy-to-floor: duplicate an area's material/thickness/finish onto other
+  // floors, clearing only the measurements - same feature as Insulation.
+  const [copyMenuAreaId, setCopyMenuAreaId] = useState(null);
+  const [copyTargets, setCopyTargets] = useState([]);
+
+  // Calculator - matches Insulation's. Only one can be open at a time since
+  // this page (unlike Insulation) doesn't split areas into their own
+  // components, so a single shared calc state is enough.
+  const CALC_KEY = "bp_calc_state";
+  const [calcOpenId, setCalcOpenId] = useState(()=>{
+    try{ return JSON.parse(localStorage.getItem(CALC_KEY)||"null")?.areaId || null; }catch(e){ return null; }
+  });
+  const [calcExpr, setCalcExpr] = useState(()=>{
+    try{ return JSON.parse(localStorage.getItem(CALC_KEY)||"null")?.expr || ""; }catch(e){ return ""; }
+  });
+  const [calcError, setCalcError] = useState(false);
+  useEffect(()=>{
+    try{
+      if(calcOpenId) localStorage.setItem(CALC_KEY, JSON.stringify({areaId:calcOpenId, expr:calcExpr}));
+      else localStorage.removeItem(CALC_KEY);
+    }catch(e){}
+  },[calcOpenId, calcExpr]);
+  function calcPress(val){
+    if(val==="C"){ setCalcExpr(""); setCalcError(false); return; }
+    if(val==="⌫"){ setCalcExpr(p=>p.slice(0,-1)); setCalcError(false); return; }
+    if(val==="="){
+      try{
+        const safe = calcExpr.replace(/[^0-9+\-*/.()]/g,"");
+        const result = Function(`"use strict";return (${safe||0})`)();
+        setCalcExpr(String(Math.round(result*100)/100));
+        setCalcError(false);
+      }catch(e){ setCalcError(true); }
+      return;
+    }
+    setCalcExpr(p=>p+val);
+    setCalcError(false);
+  }
+  function useCalcResult(id, field){
+    const n = parseFloat(calcExpr);
+    if(!isNaN(n)) updateArea(id, field, String(n));
+    setCalcOpenId(null);
+    setCalcExpr("");
+  }
 
   // line items
   const [lineItems, setLineItems] = useState([{ id: uid(), service_name:"", price:"", qty:"1" }]);
@@ -436,8 +481,38 @@ export default function BoardPlasterEstimate(){
     }));
   }
   function removeArea(id){
-    if(!window.confirm("Remove this area?")) return;
+    const area = areas.find(a=>a.id===id);
+    // Only confirm (with real detail) when there's actually something to
+    // lose - an empty, just-added area deletes instantly with no friction,
+    // but one with real measurements gets a clear warning first.
+    const hasData = area && (Number(area.sqft)>0 || (area.measurements||[]).length>0);
+    if(hasData){
+      if(!window.confirm(`Delete "${area.area_type}"? It already has ${fmt(area.sqft||0)} ft² measured - this can't be undone.`)) return;
+    }
     setAreas(p=>p.filter(a=>a.id!==id));
+  }
+
+  // Duplicates an area's thickness/finish/note to one or more other floors,
+  // clearing only the measurements - same feature as Insulation's, for jobs
+  // where the same spec repeats across floors and only the numbers change.
+  function copyAreaToFloors(id, toFloors){
+    if(!toFloors || toFloors.length===0) return;
+    setAreas(prev=>{
+      const source = prev.find(a=>a.id===id);
+      if(!source) return prev;
+      const copies = toFloors.map(toFloor=>({
+        ...source,
+        id: uid(),
+        floor: toFloor,
+        measurements: [],
+        sqft: "",
+        mh: "", ml: "", mq: "1",
+        deduct: "",
+        _expanded: true, // opens ready for measurements to be typed in
+        _from_import: false,
+      }));
+      return [...prev, ...copies];
+    });
   }
 
   // On-site measuring: an area can be built up from multiple H×L segments
@@ -789,6 +864,11 @@ export default function BoardPlasterEstimate(){
                       )}
                       {!expanded && <span style={{fontSize:12,fontWeight:700,color:"#059669",whiteSpace:"nowrap"}}>{fmt(a.sqft||0)} ft²</span>}
                       <span style={{fontSize:11,color:C.faint,marginLeft:expanded?6:0}}>{expanded?"▲":"✏️"}</span>
+                      {floorNames.length>1 && (
+                        <button onClick={(e)=>{e.stopPropagation();setCopyTargets([]);setCopyMenuAreaId(a.id);}}
+                          title="Copy this area's thickness/finish to another floor"
+                          style={{border:"none",background:"none",color:"#2563eb",cursor:"pointer",fontSize:14,marginLeft:4}}>📋</button>
+                      )}
                       <button onClick={(e)=>{e.stopPropagation();removeArea(a.id);}} style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:15,marginLeft:4}}>✕</button>
                     </div>
                     {expanded && (
@@ -797,7 +877,41 @@ export default function BoardPlasterEstimate(){
                     {/* On-site measuring: add one or more H×L segments; total sqft is computed automatically.
                         Commit only fires when leaving the LAST field (L) - or hitting Enter anywhere -
                         so tabbing Qty -> H -> L lets you set Qty first before anything commits. */}
+                    <div style={{position:"relative"}}>
+                      {calcOpenId===a.id && (
+                        <div style={{position:"absolute",bottom:"100%",left:0,right:0,zIndex:50,
+                            background:"#fff",border:`2px solid ${C.ink}`,borderRadius:10,
+                            padding:8,boxShadow:"0 -4px 16px rgba(0,0,0,.2)",marginBottom:4}}>
+                          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+                            <span style={{fontSize:10,fontWeight:700,color:C.muted}}>🧮 Calculator</span>
+                            <button onClick={()=>{setCalcOpenId(null);setCalcExpr("");}}
+                              style={{border:"none",background:"none",color:C.faint,fontSize:16,cursor:"pointer",padding:0}}>✕</button>
+                          </div>
+                          {calcError && <div style={{color:"#dc2626",fontSize:10,fontWeight:600,marginBottom:2}}>⚠️ Not a valid expression — check for a trailing +, ×, etc. and fix it below, nothing was lost</div>}
+                          <input readOnly value={calcExpr||"0"}
+                            style={{...I,width:"100%",marginBottom:6,textAlign:"right",fontSize:18,fontWeight:700,height:36,boxSizing:"border-box"}} />
+                          <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:4,marginBottom:6}}>
+                            {["7","8","9","÷","4","5","6","×","1","2","3","−","C","0",".","+"].map(k=>(
+                              <button key={k} onClick={()=>calcPress(k==="÷"?"/":k==="×"?"*":k==="−"?"-":k)}
+                                style={{height:32,borderRadius:6,border:`1px solid ${C.border}`,background:"#f8fafc",
+                                  fontSize:14,fontWeight:600,cursor:"pointer",color:C.ink}}>{k}</button>
+                            ))}
+                          </div>
+                          <div style={{display:"flex",gap:4,marginBottom:6}}>
+                            <button onClick={()=>calcPress("⌫")} style={{flex:1,height:32,borderRadius:6,border:`1px solid ${C.border}`,background:"#f8fafc",fontSize:13,fontWeight:600,cursor:"pointer"}}>⌫</button>
+                            <button onClick={()=>calcPress("=")} style={{flex:1,height:32,borderRadius:6,border:"none",background:C.ink,color:"#fff",fontSize:13,fontWeight:700,cursor:"pointer"}}>=</button>
+                          </div>
+                          <div style={{display:"flex",gap:4}}>
+                            <button onClick={()=>useCalcResult(a.id,"mh")} style={{flex:1,height:30,borderRadius:6,border:"none",background:"#059669",color:"#fff",fontSize:11,fontWeight:700,cursor:"pointer"}}>→ Use as H</button>
+                            <button onClick={()=>useCalcResult(a.id,"ml")} style={{flex:1,height:30,borderRadius:6,border:"none",background:"#059669",color:"#fff",fontSize:11,fontWeight:700,cursor:"pointer"}}>→ Use as L</button>
+                          </div>
+                        </div>
+                      )}
                     <div style={{display:"flex",alignItems:"center",gap:4,marginBottom:6}}>
+                      <button onClick={()=>{setCalcExpr("");setCalcError(false);setCalcOpenId(p=>p===a.id?null:a.id);}} type="button"
+                        style={{border:`1px solid ${C.border}`,background:calcOpenId===a.id?C.ink:"#f8fafc",
+                          color:calcOpenId===a.id?"#fff":C.muted,borderRadius:5,width:26,height:26,
+                          cursor:"pointer",fontSize:12,flexShrink:0,padding:0}}>🧮</button>
                       <input placeholder="Qty" inputMode="decimal" value={a.mq||"1"}
                         onChange={e=>updateArea(a.id,"mq",e.target.value)}
                         onKeyDown={e=>e.key==="Enter"&&commitMeasurement(a.id)}
@@ -815,6 +929,7 @@ export default function BoardPlasterEstimate(){
                       <span style={{fontSize:11,fontWeight:700,color:C.green,whiteSpace:"nowrap",marginLeft:2}}>
                         {fmt(a.sqft||0)} ft²
                       </span>
+                    </div>
                     </div>
                     {(a.measurements||[]).length>0 && (
                       <div style={{marginBottom:6}}>
@@ -856,6 +971,44 @@ export default function BoardPlasterEstimate(){
 
           <button onClick={addArea} style={{...Btn,width:"100%",justifyContent:"center"}}>+ Add Area to {activeFloor}</button>
         </div>
+
+        {copyMenuAreaId && createPortal(
+          <div onClick={()=>setCopyMenuAreaId(null)}
+            style={{position:"fixed",inset:0,zIndex:9999,background:"rgba(15,23,42,0.45)",
+              display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+            <div onClick={e=>e.stopPropagation()}
+              style={{background:"#fff",borderRadius:12,padding:16,width:"100%",maxWidth:280,
+                maxHeight:"70vh",overflowY:"auto",boxShadow:"0 12px 32px rgba(0,0,0,.25)"}}>
+              {(()=>{
+                const src = areas.find(a=>a.id===copyMenuAreaId);
+                if(!src) return null;
+                return (
+                  <>
+                    <div style={{fontSize:13,fontWeight:800,color:C.ink,marginBottom:2}}>Copy "{src.area_type}"</div>
+                    <div style={{fontSize:11,color:C.muted,marginBottom:10}}>Same thickness &amp; finish — just fill in measurements on the floors you pick.</div>
+                    {floorNames.filter(f=>f!==src.floor).map(f=>(
+                      <label key={f} style={{display:"flex",alignItems:"center",gap:8,fontSize:13,color:C.ink,padding:"6px 2px",cursor:"pointer",borderBottom:`1px solid ${C.border}`}}>
+                        <input type="checkbox" checked={copyTargets.includes(f)}
+                          onChange={()=>setCopyTargets(t=>t.includes(f)?t.filter(x=>x!==f):[...t,f])} />
+                        {f}
+                      </label>
+                    ))}
+                    <div style={{display:"flex",gap:8,marginTop:12}}>
+                      <button onClick={()=>setCopyMenuAreaId(null)} style={{flex:1,border:`1px solid ${C.border}`,background:"#fff",color:C.muted,borderRadius:7,padding:"8px 0",fontSize:12,fontWeight:600,cursor:"pointer"}}>Cancel</button>
+                      <button
+                        disabled={copyTargets.length===0}
+                        onClick={()=>{ copyAreaToFloors(copyMenuAreaId, copyTargets); setCopyMenuAreaId(null); setCopyTargets([]); }}
+                        style={{flex:1,border:"none",background:copyTargets.length?"#2563eb":"#cbd5e1",color:"#fff",borderRadius:7,padding:"8px 0",fontSize:12,fontWeight:700,cursor:copyTargets.length?"pointer":"default"}}>
+                        Copy to {copyTargets.length||""} floor{copyTargets.length===1?"":"s"}
+                      </button>
+                    </div>
+                  </>
+                );
+              })()}
+            </div>
+          </div>,
+          document.body
+        )}
 
         {/* Line Items */}
         <div style={CARD}>
