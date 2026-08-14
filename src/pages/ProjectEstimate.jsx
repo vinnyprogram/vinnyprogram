@@ -1981,6 +1981,7 @@ export default function ProjectEstimate() {
           sqft: 0,
           mh: "", ml: "", mq: "1",
           deduct_sqft: "",
+          paint_sqft: "",
           price_override: "",
           _collapsed: false, // opens ready for the measurements to be typed in
         };
