@@ -1044,8 +1044,8 @@ export default function BoardPlasterEstimate(){
                       Do you still want to delete it?
                     </div>
                     <div style={{display:"flex",gap:8}}>
-                      <button onClick={()=>setDeleteConfirmId(null)} style={{flex:1,border:`1px solid ${C.border}`,background:"#fff",color:C.muted,borderRadius:7,padding:"9px 0",fontSize:12,fontWeight:600,cursor:"pointer"}}>No</button>
-                      <button onClick={confirmDeleteArea} style={{flex:1,border:"none",background:"#dc2626",color:"#fff",borderRadius:7,padding:"9px 0",fontSize:12,fontWeight:700,cursor:"pointer"}}>Yes, delete</button>
+                      <button autoFocus onClick={()=>setDeleteConfirmId(null)} style={{flex:1,border:"none",background:"#dc2626",color:"#fff",borderRadius:7,padding:"9px 0",fontSize:12,fontWeight:700,cursor:"pointer"}}>No</button>
+                      <button onClick={confirmDeleteArea} style={{flex:1,border:`1px solid ${C.border}`,background:"#fff",color:C.muted,borderRadius:7,padding:"9px 0",fontSize:12,fontWeight:600,cursor:"pointer"}}>Yes, delete</button>
                     </div>
                   </>
                 );
