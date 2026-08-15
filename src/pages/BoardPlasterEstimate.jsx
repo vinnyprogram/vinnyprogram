@@ -96,8 +96,9 @@ function SummaryPanel({ areas }){
     const tg = fg.thickGroups[thickKey];
     tg.total += Number(a.sqft);
     const itemKey = `${a.area_type}||${a.finish}`;
-    if(!tg.items[itemKey]){ tg.items[itemKey] = { area_type:a.area_type, finish:a.finish, sqft:0 }; tg.order.push(itemKey); }
+    if(!tg.items[itemKey]){ tg.items[itemKey] = { area_type:a.area_type, finish:a.finish, sqft:0, measurements:[] }; tg.order.push(itemKey); }
     tg.items[itemKey].sqft += Number(a.sqft);
+    tg.items[itemKey].measurements.push(...(a.measurements||[]));
   });
   const floorNames = Object.keys(floorGroups).sort((a,b)=>{
     const ai=FLOOR_ORDER.indexOf(a), bi=FLOOR_ORDER.indexOf(b);
@@ -132,10 +133,16 @@ function SummaryPanel({ areas }){
                   </div>
                   {itemKeys.map(ik=>{
                     const it = tg.items[ik];
+                    const measStr = (it.measurements||[]).length>0
+                      ? it.measurements.map(m=>m.h==="imported"?"imported":`${m.h}×${m.l}${m.q>1?`×${m.q}`:""}`).join("  ")
+                      : "";
                     return (
-                      <div key={ik} style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#64748b",paddingLeft:8,marginBottom:1}}>
-                        <span>{it.area_type} · {it.finish}</span>
-                        <span style={{color:"#0f172a",fontWeight:600}}>{fmt(it.sqft)} ft²</span>
+                      <div key={ik} style={{paddingLeft:8,marginBottom:3}}>
+                        <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#64748b"}}>
+                          <span>{it.area_type} · {it.finish}</span>
+                          <span style={{color:"#0f172a",fontWeight:600}}>{fmt(it.sqft)} ft²</span>
+                        </div>
+                        {measStr && <div style={{fontSize:9,color:"#94a3b8",paddingLeft:2}}>{measStr}</div>}
                       </div>
                     );
                   })}
@@ -867,7 +874,7 @@ export default function BoardPlasterEstimate(){
                           <div style={{fontSize:10,color:"#64748b"}}>
                             {thickLabel} · {a.finish} · {fmt(a.sqft||0)} ft²
                             {(a.measurements||[]).length>0 && (
-                              <span> ({a.measurements.map(m=>m.h==="imported"?"imported":`${m.h}×${m.l}`).join(" ")})</span>
+                              <span> ({a.measurements.map(m=>m.h==="imported"?"imported":`${m.h}×${m.l}${m.q>1?`×${m.q}`:""}`).join(" ")})</span>
                             )}
                           </div>
                         </div>
