@@ -189,6 +189,7 @@ export default function BoardPlasterEstimate(){
   // floors, clearing only the measurements - same feature as Insulation.
   const [copyMenuAreaId, setCopyMenuAreaId] = useState(null);
   const [copyTargets, setCopyTargets] = useState([]);
+  const [deleteConfirmId, setDeleteConfirmId] = useState(null); // in-app delete confirmation
 
   // Calculator - matches Insulation's. Only one can be open at a time since
   // this page (unlike Insulation) doesn't split areas into their own
@@ -484,12 +485,21 @@ export default function BoardPlasterEstimate(){
     const area = areas.find(a=>a.id===id);
     // Only confirm (with real detail) when there's actually something to
     // lose - an empty, just-added area deletes instantly with no friction,
-    // but one with real measurements gets a clear warning first.
+    // but one with real measurements gets an in-app confirmation dialog
+    // first. Not window.confirm() - that native popup gets silently
+    // blocked/auto-dismissed in some mobile/PWA contexts, which made
+    // delete look like it just didn't work at all.
     const hasData = area && (Number(area.sqft)>0 || (area.measurements||[]).length>0);
     if(hasData){
-      if(!window.confirm(`Delete "${area.area_type}"? It already has ${fmt(area.sqft||0)} ft² measured - this can't be undone.`)) return;
+      setDeleteConfirmId(id);
+      return;
     }
     setAreas(p=>p.filter(a=>a.id!==id));
+  }
+  function confirmDeleteArea(){
+    if(!deleteConfirmId) return;
+    setAreas(p=>p.filter(a=>a.id!==deleteConfirmId));
+    setDeleteConfirmId(null);
   }
 
   // Duplicates an area's thickness/finish/note to one or more other floors,
@@ -1001,6 +1011,34 @@ export default function BoardPlasterEstimate(){
                         style={{flex:1,border:"none",background:copyTargets.length?"#2563eb":"#cbd5e1",color:"#fff",borderRadius:7,padding:"8px 0",fontSize:12,fontWeight:700,cursor:copyTargets.length?"pointer":"default"}}>
                         Copy to {copyTargets.length||""} floor{copyTargets.length===1?"":"s"}
                       </button>
+                    </div>
+                  </>
+                );
+              })()}
+            </div>
+          </div>,
+          document.body
+        )}
+
+        {deleteConfirmId && createPortal(
+          <div onClick={()=>setDeleteConfirmId(null)}
+            style={{position:"fixed",inset:0,zIndex:9999,background:"rgba(15,23,42,0.45)",
+              display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+            <div onClick={e=>e.stopPropagation()}
+              style={{background:"#fff",borderRadius:12,padding:16,width:"100%",maxWidth:300,
+                boxShadow:"0 12px 32px rgba(0,0,0,.25)"}}>
+              {(()=>{
+                const area = areas.find(a=>a.id===deleteConfirmId);
+                if(!area) return null;
+                return (
+                  <>
+                    <div style={{fontSize:13,fontWeight:800,color:C.ink,marginBottom:6}}>"{area.area_type}" already has {fmt(area.sqft||0)} ft² measured.</div>
+                    <div style={{fontSize:12,color:C.muted,marginBottom:14,lineHeight:1.5}}>
+                      Do you still want to delete it?
+                    </div>
+                    <div style={{display:"flex",gap:8}}>
+                      <button onClick={()=>setDeleteConfirmId(null)} style={{flex:1,border:`1px solid ${C.border}`,background:"#fff",color:C.muted,borderRadius:7,padding:"9px 0",fontSize:12,fontWeight:600,cursor:"pointer"}}>No</button>
+                      <button onClick={confirmDeleteArea} style={{flex:1,border:"none",background:"#dc2626",color:"#fff",borderRadius:7,padding:"9px 0",fontSize:12,fontWeight:700,cursor:"pointer"}}>Yes, delete</button>
                     </div>
                   </>
                 );

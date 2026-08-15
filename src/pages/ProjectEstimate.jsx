@@ -1356,6 +1356,7 @@ export default function ProjectEstimate() {
   const [selectedRep,setSelectedRep]=useState("");
   const [newFloorName,setNewFloorName]=useState("");
   const [addingFloor,setAddingFloor]=useState(false);
+  const [deleteConfirmInfo,setDeleteConfirmInfo]=useState(null); // {floor, idx, area} - in-app delete confirmation
   const [panelOpen,setPanelOpen]=useState(false);
   const [loadingProject,setLoadingProject]=useState(isEditing);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
@@ -1953,11 +1954,20 @@ export default function ProjectEstimate() {
     const area = areas[floor]?.[idx];
     // If there's real data in it (material, R-value, measurements already
     // entered), confirm first - an accidental tap on delete otherwise wipes
-    // out everything with no way back, which is exactly what happened here.
+    // out everything with no way back. Uses an in-app dialog, not
+    // window.confirm() - that native popup gets silently blocked/auto-
+    // dismissed in some mobile/PWA contexts, which made delete look broken.
     if(area && isAreaComplete(area)){
-      if(!window.confirm(`Delete "${area.area_type}"? It already has ${fmt(area.sqft||0)} ft² measured and priced - this can't be undone.`)) return;
+      setDeleteConfirmInfo({floor, idx, area});
+      return;
     }
     setAreas(prev=>({...prev,[floor]:prev[floor].filter((_,i)=>i!==idx)}));
+  }
+  function confirmDeleteArea(){
+    if(!deleteConfirmInfo) return;
+    const {floor, idx} = deleteConfirmInfo;
+    setAreas(prev=>({...prev,[floor]:prev[floor].filter((_,i)=>i!==idx)}));
+    setDeleteConfirmInfo(null);
   }
   function moveArea(fromFloor, idx, toFloor){
     if(fromFloor===toFloor) return;
@@ -2678,6 +2688,25 @@ export default function ProjectEstimate() {
         input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
         @media (max-width: 899px) { input, select, textarea { font-size: 16px !important; } }
       `}</style>
+      {deleteConfirmInfo && createPortal(
+        <div onClick={()=>setDeleteConfirmInfo(null)}
+          style={{position:"fixed",inset:0,zIndex:9999,background:"rgba(15,23,42,0.45)",
+            display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+          <div onClick={e=>e.stopPropagation()}
+            style={{background:"#fff",borderRadius:12,padding:16,width:"100%",maxWidth:300,
+              boxShadow:"0 12px 32px rgba(0,0,0,.25)"}}>
+            <div style={{fontSize:13,fontWeight:800,color:C.ink,marginBottom:6}}>"{deleteConfirmInfo.area.area_type}" already has {fmt(deleteConfirmInfo.area.sqft||0)} ft² measured and priced.</div>
+            <div style={{fontSize:12,color:C.muted,marginBottom:14,lineHeight:1.5}}>
+              Do you still want to delete it?
+            </div>
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={()=>setDeleteConfirmInfo(null)} style={{flex:1,border:`1px solid ${C.border}`,background:"#fff",color:C.muted,borderRadius:7,padding:"9px 0",fontSize:12,fontWeight:600,cursor:"pointer"}}>No</button>
+              <button onClick={confirmDeleteArea} style={{flex:1,border:"none",background:"#dc2626",color:"#fff",borderRadius:7,padding:"9px 0",fontSize:12,fontWeight:700,cursor:"pointer"}}>Yes, delete</button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
     </div>
   );
 }
