@@ -101,6 +101,9 @@ export default function MainLayout() {
           <Link to="/crm" style={linkStyle("/crm")} onClick={()=>setMenuOpen(false)}>
             CRM
           </Link>
+          <Link to="/clients" style={linkStyle("/clients")} onClick={()=>setMenuOpen(false)}>
+            👤 Clients
+          </Link>
           <Link to="/projects" style={linkStyle("/projects")} onClick={()=>setMenuOpen(false)}>
             🏠 Projects
           </Link>

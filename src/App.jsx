@@ -4,6 +4,7 @@ import MainLayout from "./Layout/MainLayout";
 import Login from "./pages/Login";
 import Onboarding from "./pages/Onboarding";
 import CRM from "./pages/CRM";
+import Clients from "./pages/Clients";
 import ProjectEstimate from "./pages/ProjectEstimate";
 import EstimateStart from "./pages/EstimateStart";
 import QuotePDF from "./pages/QuotePDF";
@@ -84,6 +85,7 @@ function ProtectedApp() {
       <Route path="/" element={<MainLayout />}>
         <Route index element={<Dashboard />} />
         <Route path="crm" element={<CRM />} />
+        <Route path="clients" element={<Clients />} />
         <Route path="jobs" element={<Jobs />} />
         <Route path="estimates/search" element={<EstimateSearch />} />
         <Route path="estimates" element={<EstimateStart />} />
