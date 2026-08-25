@@ -68,6 +68,7 @@ export default function Clients() {
   const [openId, setOpenId] = useState(null); // which client row is expanded
   const [editForm, setEditForm] = useState(EMPTY_FORM);
   const [editSaving, setEditSaving] = useState(false);
+  const [prefillCompany, setPrefillCompany] = useState(null); // {id, name} - set when "+ Add colleague" is clicked
 
   const offersInsulation   = company?.offers_insulation !== false;
   const offersHers         = company?.offers_hers       !== false;
@@ -106,6 +107,15 @@ export default function Clients() {
     return customers.filter(c=>c.client_company_id===clientCompanyId && c.id!==excludeId);
   }
 
+  // One-click "add another client at this same company" - skips having to
+  // reopen the add form and search/retype the company name from scratch.
+  function addColleague(companyId, companyName){
+    setAddForm({...EMPTY_FORM, client_company_id:companyId, company_name:companyName});
+    setPrefillCompany({id:companyId, name:companyName});
+    setShowAddForm(true);
+    window.scrollTo({top:0, behavior:"smooth"});
+  }
+
   const filtered = customers.filter(c=>{
     const s = search.trim().toLowerCase();
     if(!s) return true;
@@ -129,6 +139,7 @@ export default function Clients() {
     if(error){ alert("Could not add client: "+error.message); return; }
     setAddForm(EMPTY_FORM);
     setShowAddForm(false);
+    setPrefillCompany(null);
     setCustomers(p=>[data, ...p]);
     setOpenId(data.id); // jump straight into it so a trade can be picked immediately
     setEditForm({name:data.name||"",phone:data.phone||"",email:data.email||"",company_name:data.company_name||"",client_company_id:data.client_company_id||null,address:data.address||""});
@@ -167,12 +178,17 @@ export default function Clients() {
         value={search} onChange={e=>setSearch(e.target.value)}
         style={{...I,padding:12,fontSize:15,marginBottom:12}} />
 
-      <button onClick={()=>setShowAddForm(p=>!p)} style={{...Btn,marginBottom:12}}>
+      <button onClick={()=>{ setShowAddForm(p=>!p); setPrefillCompany(null); if(showAddForm) setAddForm(EMPTY_FORM); }} style={{...Btn,marginBottom:12}}>
         {showAddForm ? "✕ Cancel" : "+ Add Client"}
       </button>
 
       {showAddForm && (
         <div style={CARD}>
+          {prefillCompany && (
+            <div style={{fontSize:12,color:"#2563eb",fontWeight:600,marginBottom:10}}>
+              Adding a colleague at {prefillCompany.name}
+            </div>
+          )}
           <div style={{display:"grid",gap:8,marginBottom:10}}>
             <input placeholder="Name *" value={addForm.name} onChange={e=>setAddForm(p=>({...p,name:e.target.value}))} style={I} />
             <input placeholder="Phone *" value={addForm.phone} onChange={e=>setAddForm(p=>({...p,phone:e.target.value}))} style={I} />
@@ -224,9 +240,15 @@ export default function Clients() {
                   onPick={(id,name)=>setEditForm(p=>({...p,client_company_id:id,company_name:name}))}
                   onCreateNew={(name)=>createNewCompany(name,setEditForm)} />
                 {editForm.client_company_id && colleaguesAt(editForm.client_company_id, c.id).length>0 && (
-                  <div style={{fontSize:11,color:"#64748b",marginTop:-4}}>
-                    Also at this company: {colleaguesAt(editForm.client_company_id, c.id).map(cc=>cc.name).join(", ")}
+                  <div style={{fontSize:11,color:"#64748b",marginTop:-4,display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}>
+                    <span>Also at this company: {colleaguesAt(editForm.client_company_id, c.id).map(cc=>cc.name).join(", ")}</span>
                   </div>
+                )}
+                {editForm.client_company_id && (
+                  <button onClick={()=>addColleague(editForm.client_company_id, editForm.company_name)}
+                    style={{...Btn,fontSize:11,padding:"5px 10px",alignSelf:"flex-start"}}>
+                    + Add another client at {editForm.company_name}
+                  </button>
                 )}
                 <input placeholder="Address" value={editForm.address} onChange={e=>setEditForm(p=>({...p,address:e.target.value}))} style={I} />
               </div>
