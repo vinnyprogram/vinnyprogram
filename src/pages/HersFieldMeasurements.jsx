@@ -164,14 +164,14 @@ function FloorsEditor({ floors, onChange, onCommit, unitLabel }) {
               style={{padding:"5px 12px",borderRadius:16,fontSize:12,fontWeight:600,cursor:"pointer",
                 border:`1px solid ${label===activeLabel?C.green:C.border}`,
                 background:label===activeLabel?C.green:"#fff",
-                color:label===activeLabel?"#fff":C.muted}}>
-              {label}
+                color:label===activeLabel?"#fff":(label?C.muted:"#dc2626")}}>
+              {label || "(unnamed)"}
             </button>
           ))}
         </div>
       )}
 
-      {activeLabel && (
+      {activeRows.length>0 && (
         <div style={{border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 12px",marginBottom:10}}>
           <div style={{display:"flex",gap:6,marginBottom:10,alignItems:"center"}}>
             <input value={activeLabel} onChange={e=>renameFloor(activeLabel,e.target.value)} onBlur={onCommit}
