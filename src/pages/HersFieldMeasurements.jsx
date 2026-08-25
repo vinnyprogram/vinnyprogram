@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { logEvent as sharedLogEvent } from "../utils/debugLog";
@@ -589,10 +589,23 @@ function WindowsEditor({ windows, onChange, onCommit, floorOptions, unitLabel })
     return (oi - SIDE_OFFSET[learned.elevation] + 8) % 8;
   });
 
+  // Tracks which window was just added so we can focus its first field the
+  // moment it renders - added at the TOP of the list (see add()), so without
+  // this the person would have to scroll up and click in themselves for
+  // every single window, which defeats the point of adding it up top.
+  const pendingFocusId = useRef(null);
+  useEffect(()=>{
+    if(pendingFocusId.current){
+      const el = document.querySelector(`[data-window-first="${pendingFocusId.current}"]`);
+      if(el) el.focus();
+      pendingFocusId.current = null;
+    }
+  },[windows]);
+
   function add(){
-    const last = windows[windows.length-1];
-    onChange([...windows, last ? {
-      ...last,
+    const first = windows[0];
+    const newWin = first ? {
+      ...first,
       id:uid(),
       label:`Window ${windows.length+1}`,
     } : {
@@ -600,7 +613,9 @@ function WindowsEditor({ windows, onChange, onCommit, floorOptions, unitLabel })
       width:"", height:"",
       u_factor:"", shgc:"",
       top_to_overhang:"", bottom_to_overhang:"", overhang_depth:"",
-    }]);
+    };
+    pendingFocusId.current = newWin.id;
+    onChange([newWin, ...windows]);
     if(onCommit) onCommit();
   }
   function upd(idx,f,v){
@@ -665,6 +680,7 @@ function WindowsEditor({ windows, onChange, onCommit, floorOptions, unitLabel })
         .no-spinner { -moz-appearance: textfield; }
       `}</style>
       <div style={{fontSize:11,fontWeight:700,color:C.faint,textTransform:"uppercase",letterSpacing:0.4,marginBottom:10}}>Windows</div>
+      <button onClick={add} style={{...Btn,width:"100%",justifyContent:"center",marginBottom:10}}>+ Add Window{unitLabel?` (${unitLabel})`:""}</button>
       <datalist id="window-floor-options">
         {(floorOptions||[]).map(fl=><option key={fl} value={fl} />)}
       </datalist>
@@ -673,7 +689,7 @@ function WindowsEditor({ windows, onChange, onCommit, floorOptions, unitLabel })
 
           {/* Row 1: Floor, Side, Orientation, U-Factor, SHGC, Qty */}
           <div style={{display:"flex",gap:5,marginBottom:6,alignItems:"center",flexWrap:"wrap"}}>
-            <input list="window-floor-options" value={w.floor||""} onChange={e=>updAndCommit(idx,"floor",e.target.value)}
+            <input data-window-first={w.id} list="window-floor-options" value={w.floor||""} onChange={e=>updAndCommit(idx,"floor",e.target.value)}
               title="Which floor/level this window is on — type any name, or pick a suggestion"
               placeholder="Floor…" style={{...I,width:60,height:28,fontSize:11,flexShrink:0}} />
             <select value={w.elevation||""} onChange={e=>pickSide(idx,e.target.value)}
@@ -687,7 +703,7 @@ function WindowsEditor({ windows, onChange, onCommit, floorOptions, unitLabel })
             </select>
             <select value={w.orientation} onChange={e=>pickOrientation(idx,e.target.value,w.elevation)}
               title="Compass orientation (for Ekotrope)"
-              style={{...I,width:48,height:28,fontSize:12,flexShrink:0}}>
+              style={{...I,width:60,height:28,fontSize:12,flexShrink:0}}>
               {ORIENTATIONS.map(o=><option key={o} value={o}>{o}</option>)}
             </select>
             <div style={{width:54,flexShrink:0}}>
@@ -744,7 +760,6 @@ function WindowsEditor({ windows, onChange, onCommit, floorOptions, unitLabel })
           </div>
         </div>
       ))}
-      <button onClick={add} style={Btn}>+ Add Window{unitLabel?` (${unitLabel})`:""}</button>
     </div>
   );
 }
@@ -936,6 +951,20 @@ export default function HersFieldMeasurements() {
     setActiveFloor(name);
     setAddingFloor(false);
     setNewFloorName("");
+  }
+  function deleteFloor(floor){
+    const areaCount = (areas[floor]||[]).filter(a=>a.area_type).length;
+    if(areaCount>0){
+      alert(`Can't delete "${floor}" - it still has ${areaCount} area${areaCount===1?"":"s"} on it. Delete the areas on this floor first, then delete the floor.`);
+      return;
+    }
+    if(!window.confirm(`Delete the empty "${floor}" floor?`)) return;
+    setFloors(p=>p.filter(f=>f!==floor));
+    setAreas(p=>{ const next={...p}; delete next[floor]; return next; });
+    if(activeFloor===floor){
+      const remaining = floors.filter(f=>f!==floor);
+      if(remaining.length) setActiveFloor(remaining[0]);
+    }
   }
 
   const currentAreas = areas[activeFloor]||[];
@@ -1489,14 +1518,24 @@ export default function HersFieldMeasurements() {
               const act = activeFloor===floor;
               const hasAreas = (areas[floor]||[]).some(a=>a.area_type&&a.sqft>0);
               return (
-                <button key={floor} onClick={()=>setActiveFloor(floor)}
-                  style={{padding:"7px 14px",borderRadius:8,height:"auto",
+                <div key={floor} style={{display:"inline-flex",alignItems:"center",borderRadius:8,
                     border:act?"2px solid #059669":"2px solid #86efac",
                     background:act?"#059669":(hasAreas?"#dcfce7":C.white),
-                    color:act?"#fff":"#059669",cursor:"pointer",fontSize:13,fontWeight:700,whiteSpace:"nowrap",
-                    boxShadow:act?"0 2px 8px rgba(5,150,105,.3)":"none"}}>
-                  {floor}{hasAreas&&!act&&<span style={{marginLeft:4,fontSize:10}}>✓</span>}
-                </button>
+                    boxShadow:act?"0 2px 8px rgba(5,150,105,.3)":"none",overflow:"hidden"}}>
+                  <button onClick={()=>setActiveFloor(floor)}
+                    style={{border:"none",background:"none",
+                      padding:hasAreas?"7px 14px":"7px 4px 7px 14px",cursor:"pointer",fontSize:13,fontWeight:700,
+                      whiteSpace:"nowrap",color:act?"#fff":"#059669"}}>
+                    {floor}{hasAreas&&!act&&<span style={{marginLeft:4,fontSize:10}}>✓</span>}
+                  </button>
+                  {!hasAreas && (
+                    <button onClick={()=>deleteFloor(floor)} title={`Delete ${floor} floor`}
+                      style={{border:"none",background:"none",cursor:"pointer",padding:"7px 10px 7px 4px",
+                        fontSize:12,color:act?"rgba(255,255,255,0.75)":"#94a3b8",lineHeight:1}}>
+                      ✕
+                    </button>
+                  )}
+                </div>
               );
             })}
             {addingFloor ? (

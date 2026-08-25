@@ -638,6 +638,8 @@ export default function GCEstimate(){
               <div>
                 <div style={{fontWeight:700,fontSize:14}}>{selectedLead.name}</div>
                 {selectedLead.phone && <div style={{fontSize:12,color:C.muted}}>{selectedLead.phone}</div>}
+                {selectedLead.company_name && <div style={{fontSize:12,color:C.muted}}>{selectedLead.company_name}</div>}
+                {selectedLead.email && <div style={{fontSize:12,color:C.faint}}>{selectedLead.email}</div>}
               </div>
               <button onClick={()=>{setSelectedLeadId("");setCustMode("search");}} style={Btn}>Change</button>
             </div>

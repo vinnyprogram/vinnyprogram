@@ -471,6 +471,20 @@ export default function BoardPlasterEstimate(){
     setImporting(false);
   }
 
+  function deleteFloorBP(floor){
+    const areaCount = areas.filter(a=>a.floor===floor && a.area_type).length;
+    if(areaCount>0){
+      alert(`Can't delete "${floor}" - it still has ${areaCount} area${areaCount===1?"":"s"} on it. Delete the areas on this floor first, then delete the floor.`);
+      return;
+    }
+    if(!window.confirm(`Delete the empty "${floor}" floor?`)) return;
+    setFloorNames(prev=>prev.filter(f=>f!==floor));
+    if(activeFloor===floor){
+      const remaining = floorNames.filter(f=>f!==floor);
+      if(remaining.length) setActiveFloor(remaining[0]);
+    }
+  }
+
   function addArea(){
     const newArea = { id: uid(), floor:activeFloor, area_type:"Exterior Wall", sqft:"", thickness:'1/2"', thicknessOther:"", layers:1, measurements:[], mh:"", ml:"", mq:"1", deduct:"", note:"", finish: FINISH_OPTIONS[0], _expanded:true };
     setAreas(p=>[newArea, ...p.map(a=>a.floor===activeFloor?{...a,_expanded:false}:a)]);
@@ -724,6 +738,7 @@ export default function BoardPlasterEstimate(){
                 <div style={{fontWeight:700,fontSize:14}}>{selectedLead.name}</div>
                 {selectedLead.phone && <div style={{fontSize:12,color:C.muted}}>{selectedLead.phone}</div>}
                 {selectedLead.company_name && <div style={{fontSize:12,color:C.muted}}>{selectedLead.company_name}</div>}
+                {selectedLead.email && <div style={{fontSize:12,color:C.faint}}>{selectedLead.email}</div>}
               </div>
               <button onClick={()=>{setSelectedLeadId("");setCustMode("search");}} style={Btn}>Change</button>
             </div>
@@ -794,13 +809,24 @@ export default function BoardPlasterEstimate(){
             {floorNames.map(fn=>{
               const hasAreas = areas.some(a=>a.floor===fn);
               return (
-                <button key={fn} onClick={()=>setActiveFloor(fn)}
-                  style={{border:`1.5px solid ${activeFloor===fn?"#059669":hasAreas?"#86efac":C.border}`,
+                <div key={fn} style={{display:"inline-flex",alignItems:"center",
+                    border:`1.5px solid ${activeFloor===fn?"#059669":hasAreas?"#86efac":C.border}`,
                     background:activeFloor===fn?"#059669":hasAreas?"#f0fdf4":C.white,
-                    color:activeFloor===fn?"#fff":hasAreas?"#059669":C.muted,
-                    borderRadius:20,padding:"5px 12px",fontSize:12,fontWeight:700,cursor:"pointer"}}>
-                  {fn}{hasAreas && activeFloor!==fn ? " ✓" : ""}
-                </button>
+                    borderRadius:20,overflow:"hidden"}}>
+                  <button onClick={()=>setActiveFloor(fn)}
+                    style={{border:"none",background:"none",
+                      color:activeFloor===fn?"#fff":hasAreas?"#059669":C.muted,
+                      padding:hasAreas?"5px 12px":"5px 4px 5px 12px",fontSize:12,fontWeight:700,cursor:"pointer"}}>
+                    {fn}{hasAreas && activeFloor!==fn ? " ✓" : ""}
+                  </button>
+                  {!hasAreas && (
+                    <button onClick={()=>deleteFloorBP(fn)} title={`Delete ${fn} floor`}
+                      style={{border:"none",background:"none",cursor:"pointer",padding:"5px 10px 5px 2px",
+                        fontSize:11,color:activeFloor===fn?"rgba(255,255,255,0.75)":"#94a3b8",lineHeight:1}}>
+                      ✕
+                    </button>
+                  )}
+                </div>
               );
             })}
             <button onClick={()=>{

@@ -455,6 +455,7 @@ export default function CRM() {
                           </div>
                           <div style={{fontSize:12,color:"#666",lineHeight:1.8}}>
                             {customer.phone   && <div>📞 {customer.phone}</div>}
+                            {customer.email   && <div>✉️ {customer.email}</div>}
                             {customer.address && <div>📍 {customer.address}</div>}
                             {customer.company_name && <div>🏢 {customer.company_name}</div>}
                             {customer.scope   && <div>🏗 {customer.scope}</div>}

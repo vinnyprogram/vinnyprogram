@@ -242,6 +242,7 @@ async function saveNew() {
               <span style={{ fontWeight:700 }}>{selectedLead.name}</span>
               {selectedLead.phone && <span style={{ color:C.muted, fontSize:10, marginLeft:6 }}>{selectedLead.phone}</span>}
               {selectedLead.company_name && <span style={{ color:C.muted, fontSize:10, marginLeft:6 }}>· {selectedLead.company_name}</span>}
+              {selectedLead.email && <div style={{ color:C.faint, fontSize:10 }}>{selectedLead.email}</div>}
             </div>
             <button onClick={clear} style={{ border:"none", background:"none", color:C.faint, fontSize:13, cursor:"pointer", padding:"0 4px", flexShrink:0 }}>✕</button>
           </div>

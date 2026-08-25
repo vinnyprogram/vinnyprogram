@@ -138,6 +138,7 @@ function CustomerSection({ leads, selectedLead, selectedLeadId, jobAddress,
               <span style={{ fontWeight:700 }}>{selectedLead.name}</span>
               {selectedLead.phone && <span style={{ color:C.muted, fontSize:11, marginLeft:6 }}>{selectedLead.phone}</span>}
               {selectedLead.company_name && <span style={{ color:C.muted, fontSize:11, marginLeft:6 }}>· {selectedLead.company_name}</span>}
+              {selectedLead.email && <div style={{ color:C.faint, fontSize:11 }}>{selectedLead.email}</div>}
             </div>
             <div style={{display:"flex",gap:6}}>
               <button onClick={()=>{ setEditForm({name:selectedLead.name||"",phone:selectedLead.phone||"",email:selectedLead.email||"",company_name:selectedLead.company_name||"",address:selectedLead.address||""}); setMode("edit"); }}
