@@ -567,6 +567,24 @@ export default function BoardPlasterEstimate(){
       return {...a, measurements:meas, sqft:total, mh:"", ml:"", mq:"1"};
     }));
   }
+  // Lets an already-committed measurement's qty be edited in place (clicking
+  // the little number in the chip), instead of the only option being delete
+  // the whole chip and re-enter H/L/Qty from scratch.
+  function updateMeasurementQty(id, idx, newQty){
+    setAreas(p=>p.map(a=>{
+      if(a.id!==id) return a;
+      const meas = (a.measurements||[]).map((m,i)=>{
+        if(i!==idx) return m;
+        const q = Math.max(1, parseFloat(newQty)||1);
+        const h = parseFloat(m.h)||0, l = parseFloat(m.l)||0;
+        const sqft = m.h==="imported" ? m.sqft : Math.round(h*l*q*100)/100;
+        return {...m, q, sqft};
+      });
+      const d = parseFloat(a.deduct)||0;
+      const total = Math.max(0, Math.round((meas.reduce((s,m)=>s+m.sqft,0)-d)*100)/100);
+      return {...a, measurements:meas, sqft:total};
+    }));
+  }
   function delMeasurement(id, idx){
     setAreas(p=>p.map(a=>{
       if(a.id!==id) return a;
@@ -920,36 +938,7 @@ export default function BoardPlasterEstimate(){
                     {/* On-site measuring: add one or more H×L segments; total sqft is computed automatically.
                         Commit only fires when leaving the LAST field (L) - or hitting Enter anywhere -
                         so tabbing Qty -> H -> L lets you set Qty first before anything commits. */}
-                    <div style={{position:"relative"}}>
-                      {calcOpenId===a.id && (
-                        <div style={{position:"absolute",bottom:"100%",left:0,right:0,zIndex:50,
-                            background:"#fff",border:`2px solid ${C.ink}`,borderRadius:10,
-                            padding:8,boxShadow:"0 -4px 16px rgba(0,0,0,.2)",marginBottom:4}}>
-                          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
-                            <span style={{fontSize:10,fontWeight:700,color:C.muted}}>🧮 Calculator</span>
-                            <button onClick={()=>{setCalcOpenId(null);setCalcExpr("");}}
-                              style={{border:"none",background:"none",color:C.faint,fontSize:16,cursor:"pointer",padding:0}}>✕</button>
-                          </div>
-                          {calcError && <div style={{color:"#dc2626",fontSize:10,fontWeight:600,marginBottom:2}}>⚠️ Not a valid expression — check for a trailing +, ×, etc. and fix it below, nothing was lost</div>}
-                          <input readOnly value={calcExpr||"0"}
-                            style={{...I,width:"100%",marginBottom:6,textAlign:"right",fontSize:18,fontWeight:700,height:36,boxSizing:"border-box"}} />
-                          <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:4,marginBottom:6}}>
-                            {["7","8","9","÷","4","5","6","×","1","2","3","−","C","0",".","+"].map(k=>(
-                              <button key={k} onClick={()=>calcPress(k==="÷"?"/":k==="×"?"*":k==="−"?"-":k)}
-                                style={{height:32,borderRadius:6,border:`1px solid ${C.border}`,background:"#f8fafc",
-                                  fontSize:14,fontWeight:600,cursor:"pointer",color:C.ink}}>{k}</button>
-                            ))}
-                          </div>
-                          <div style={{display:"flex",gap:4,marginBottom:6}}>
-                            <button onClick={()=>calcPress("⌫")} style={{flex:1,height:32,borderRadius:6,border:`1px solid ${C.border}`,background:"#f8fafc",fontSize:13,fontWeight:600,cursor:"pointer"}}>⌫</button>
-                            <button onClick={()=>calcPress("=")} style={{flex:1,height:32,borderRadius:6,border:"none",background:C.ink,color:"#fff",fontSize:13,fontWeight:700,cursor:"pointer"}}>=</button>
-                          </div>
-                          <div style={{display:"flex",gap:4}}>
-                            <button onClick={()=>useCalcResult(a.id,"mh")} style={{flex:1,height:30,borderRadius:6,border:"none",background:"#059669",color:"#fff",fontSize:11,fontWeight:700,cursor:"pointer"}}>→ Use as H</button>
-                            <button onClick={()=>useCalcResult(a.id,"ml")} style={{flex:1,height:30,borderRadius:6,border:"none",background:"#059669",color:"#fff",fontSize:11,fontWeight:700,cursor:"pointer"}}>→ Use as L</button>
-                          </div>
-                        </div>
-                      )}
+                    <div>
                     <div style={{display:"flex",alignItems:"center",gap:4,marginBottom:6}}>
                       <button onClick={()=>{setCalcExpr("");setCalcError(false);setCalcOpenId(p=>p===a.id?null:a.id);}} type="button"
                         style={{border:`1px solid ${C.border}`,background:calcOpenId===a.id?C.ink:"#f8fafc",
@@ -974,14 +963,57 @@ export default function BoardPlasterEstimate(){
                       </span>
                     </div>
                     </div>
+                    {calcOpenId===a.id && createPortal(
+                      <div onClick={()=>{setCalcOpenId(null);setCalcExpr("");}}
+                        style={{position:"fixed",inset:0,zIndex:9999,background:"rgba(15,23,42,0.45)",
+                          display:"flex",alignItems:"flex-end",justifyContent:"center"}}>
+                        <div onClick={e=>e.stopPropagation()}
+                          style={{background:"#fff",borderRadius:"14px 14px 0 0",padding:12,width:"100%",maxWidth:420,
+                            boxShadow:"0 -4px 24px rgba(0,0,0,.25)"}}>
+                          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                            <span style={{fontSize:12,fontWeight:700,color:C.muted}}>🧮 Calculator</span>
+                            <button onClick={()=>{setCalcOpenId(null);setCalcExpr("");}}
+                              style={{border:"none",background:"none",color:C.faint,fontSize:20,cursor:"pointer",padding:0}}>✕</button>
+                          </div>
+                          {calcError && <div style={{color:"#dc2626",fontSize:11,fontWeight:600,marginBottom:6}}>⚠️ Not a valid expression — check for a trailing +, ×, etc. and fix it below, nothing was lost</div>}
+                          <input readOnly value={calcExpr||"0"}
+                            style={{...I,width:"100%",marginBottom:8,textAlign:"right",fontSize:20,fontWeight:700,height:40,boxSizing:"border-box"}} />
+                          <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:6,marginBottom:8}}>
+                            {["7","8","9","÷","4","5","6","×","1","2","3","−","C","0",".","+"].map(k=>(
+                              <button key={k} onClick={()=>calcPress(k==="÷"?"/":k==="×"?"*":k==="−"?"-":k)}
+                                style={{height:40,borderRadius:8,border:`1px solid ${C.border}`,background:"#f8fafc",
+                                  fontSize:16,fontWeight:600,cursor:"pointer",color:C.ink}}>{k}</button>
+                            ))}
+                          </div>
+                          <div style={{display:"flex",gap:6,marginBottom:8}}>
+                            <button onClick={()=>calcPress("⌫")} style={{flex:1,height:40,borderRadius:8,border:`1px solid ${C.border}`,background:"#f8fafc",fontSize:14,fontWeight:600,cursor:"pointer"}}>⌫</button>
+                            <button onClick={()=>calcPress("=")} style={{flex:1,height:40,borderRadius:8,border:"none",background:C.ink,color:"#fff",fontSize:14,fontWeight:700,cursor:"pointer"}}>=</button>
+                          </div>
+                          <div style={{display:"flex",gap:6}}>
+                            <button onClick={()=>useCalcResult(a.id,"mh")} style={{flex:1,height:36,borderRadius:8,border:"none",background:"#059669",color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer"}}>→ Use as H</button>
+                            <button onClick={()=>useCalcResult(a.id,"ml")} style={{flex:1,height:36,borderRadius:8,border:"none",background:"#059669",color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer"}}>→ Use as L</button>
+                          </div>
+                        </div>
+                      </div>,
+                      document.body
+                    )}
                     {(a.measurements||[]).length>0 && (
                       <div style={{marginBottom:6}}>
                         {a.measurements.map((m,mi)=>(
                           <span key={mi} style={{display:"inline-flex",alignItems:"center",gap:2,
                               background:"#f8fafc",borderRadius:4,padding:"3px 7px",marginRight:4,marginBottom:3,fontSize:10}}>
-                            <span style={{color:C.muted,whiteSpace:"nowrap"}}>
-                              {m.h==="imported" ? "Imported total" : `${m.h}×${m.l}${m.q>1?`×${m.q}`:""}`}
-                            </span>
+                            {m.h==="imported" ? (
+                              <span style={{color:C.muted,whiteSpace:"nowrap"}}>Imported total</span>
+                            ) : (
+                              <span style={{color:C.muted,whiteSpace:"nowrap",display:"inline-flex",alignItems:"center",gap:2}}>
+                                {m.h}×{m.l}×
+                                <input type="number" min="1" value={m.q||1}
+                                  onClick={e=>e.stopPropagation()}
+                                  onChange={e=>updateMeasurementQty(a.id,mi,e.target.value)}
+                                  style={{width:26,height:16,border:`1px solid ${C.border}`,borderRadius:3,
+                                    textAlign:"center",fontSize:10,padding:0}} />
+                              </span>
+                            )}
                             <b style={{color:C.ink,whiteSpace:"nowrap"}}>&nbsp;{fmt(m.sqft)}</b>
                             <button onClick={()=>delMeasurement(a.id,mi)}
                               style={{border:"none",background:"none",cursor:"pointer",color:C.faint,fontSize:11,padding:0,lineHeight:1,marginLeft:2}}>✕</button>
