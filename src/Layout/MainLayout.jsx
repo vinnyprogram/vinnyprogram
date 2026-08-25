@@ -2,6 +2,7 @@ import { Link, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { useState } from "react";
 import OfflineBanner from "../components/OfflineBanner";
+import UpdateBanner from "../components/UpdateBanner";
 
 export default function MainLayout() {
   const location = useLocation();
@@ -374,6 +375,7 @@ export default function MainLayout() {
         </div>
       </div>
       <OfflineBanner />
+      <UpdateBanner />
     </div>
   );
 }
