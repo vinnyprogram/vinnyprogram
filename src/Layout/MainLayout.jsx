@@ -4,6 +4,13 @@ import { useState } from "react";
 import OfflineBanner from "../components/OfflineBanner";
 import UpdateBanner from "../components/UpdateBanner";
 
+function formatVersion(v){
+  const d = new Date(Number(v));
+  if(isNaN(d.getTime())) return "";
+  const pad = n => String(n).padStart(2,"0");
+  return `v${pad(d.getMonth()+1)}${pad(d.getDate())}.${pad(d.getHours())}${pad(d.getMinutes())}`;
+}
+
 export default function MainLayout() {
   const location = useLocation();
   const { company, signOut } = useAuth();
@@ -68,7 +75,7 @@ export default function MainLayout() {
         <div style={{ display:"flex", justifyContent:"space-between",
             alignItems:"center", marginBottom:24 }}>
           <div style={{ fontSize:16, fontWeight:800, color:"white" }}>
-            CUB
+            CUB <span style={{ fontSize:10, fontWeight:500, color:"#64748b" }}>{formatVersion(__APP_VERSION__)}</span>
           </div>
           <button onClick={()=>setMenuOpen(false)}
             style={{ border:"none", background:"none", color:"#94a3b8",
@@ -365,6 +372,9 @@ export default function MainLayout() {
           </button>
           <span style={{ color:"white", fontWeight:700, fontSize:15 }}>
             CUB
+          </span>
+          <span style={{ color:"#64748b", fontSize:10, fontWeight:500 }}>
+            {formatVersion(__APP_VERSION__)}
           </span>
         </div>
 
