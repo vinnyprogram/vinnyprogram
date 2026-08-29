@@ -804,6 +804,28 @@ export default function HersFieldMeasurements() {
   const [materials, setMaterials] = useState([]);
   const [section, setSection]   = useState("overview"); // overview | measurements | windows
 
+  // Remembers which section/floor was open so navigating away (Office,
+  // Drawings, another app) and back doesn't dump you back on Overview with
+  // everything collapsed - same fix already made for the Insulation
+  // estimate page, applied here too.
+  function getUIKey(){
+    const id = estimateId || invoiceId;
+    return id ? `ui_state_hersfm_${id}${unitLabel?"_"+unitLabel:""}` : null;
+  }
+  function loadUIState(){
+    const key = getUIKey();
+    if(!key) return null;
+    try{ const r = localStorage.getItem(key); return r?JSON.parse(r):null; }catch(e){ return null; }
+  }
+  function saveUIState(patch){
+    const key = getUIKey();
+    if(!key) return;
+    try{
+      const cur = loadUIState()||{};
+      localStorage.setItem(key, JSON.stringify({...cur,...patch}));
+    }catch(e){}
+  }
+
   const [photos, setPhotos]             = useState([]);
   const [docs, setDocs]                 = useState([]);
   const [uploading, setUploading]       = useState(false);
@@ -882,11 +904,14 @@ export default function HersFieldMeasurements() {
 
       // Load floor-structured measurement data from areas column
       const savedAreas = parseArr(fmToUse.areas);
+      const savedUIState = loadUIState();
       // Detect v2 format: array of {floor_name, areas: [...]}
       if(savedAreas.length && savedAreas[0]?.floor_name){
         const floorNames = savedAreas.map(f=>f.floor_name);
         setFloors(floorNames);
-        setActiveFloor(floorNames[0]);
+        const restoredFloor = (savedUIState?.activeFloor && floorNames.includes(savedUIState.activeFloor))
+          ? savedUIState.activeFloor : floorNames[0];
+        setActiveFloor(restoredFloor);
         const newAreas = {};
         savedAreas.forEach(f=>{
           newAreas[f.floor_name] = (f.areas||[]).map(a=>({...withId(a),mh:"",ml:"",mq:"1"}));
@@ -897,6 +922,7 @@ export default function HersFieldMeasurements() {
         const legacyAreas = savedAreas.map(a=>({...withId(a),mh:"",ml:"",mq:"1"}));
         setAreas({"Attic":legacyAreas});
       }
+      if(savedUIState?.section) setSection(savedUIState.section);
     }
 
     const photoFilter = mode==="invoice"
@@ -1460,7 +1486,7 @@ export default function HersFieldMeasurements() {
           {key:"measurements", label:"🏗 Insulation", desc:"Area measurements"},
           {key:"windows",      label:"🪟 Windows",    desc:"Window shading"},
         ].map(t=>(
-          <button key={t.key} onClick={()=>setSection(t.key)} title={t.desc}
+          <button key={t.key} onClick={()=>{setSection(t.key); saveUIState({section:t.key});}} title={t.desc}
             style={{padding:"7px 16px",borderRadius:8,
               border: section===t.key ? "2px solid #059669" : "2px solid transparent",
               background: section===t.key ? "#dcfce7" : "#f8fafc",
@@ -1522,7 +1548,7 @@ export default function HersFieldMeasurements() {
                     border:act?"2px solid #059669":"2px solid #86efac",
                     background:act?"#059669":(hasAreas?"#dcfce7":C.white),
                     boxShadow:act?"0 2px 8px rgba(5,150,105,.3)":"none",overflow:"hidden"}}>
-                  <button onClick={()=>setActiveFloor(floor)}
+                  <button onClick={()=>{setActiveFloor(floor); saveUIState({activeFloor:floor});}}
                     style={{border:"none",background:"none",
                       padding:hasAreas?"7px 14px":"7px 4px 7px 14px",cursor:"pointer",fontSize:13,fontWeight:700,
                       whiteSpace:"nowrap",color:act?"#fff":"#059669"}}>

@@ -189,6 +189,28 @@ export default function BoardPlasterEstimate(){
   const [areas, setAreas] = useState([]); // [{id, floor, area_type, sqft, thickness, finish}]
   const [floorNames, setFloorNames] = useState([]); // which floor tabs exist, independent of whether they have areas yet
   const [activeFloor, setActiveFloor] = useState("");
+
+  // Same fix as Insulation/HERS: remember which floor/area was open so
+  // navigating away and back doesn't dump everything closed on floor 1.
+  // Unlike Insulation, B&P's areas are a JSON blob (not a relational table
+  // that gets deleted/reinserted on save), so a.id stays stable across
+  // saves - safe to match on directly, no content-based workaround needed.
+  function getUIKey(){
+    return estimateId ? `ui_state_bp_${estimateId}` : null;
+  }
+  function loadUIState(){
+    const key = getUIKey();
+    if(!key) return null;
+    try{ const r = localStorage.getItem(key); return r?JSON.parse(r):null; }catch(e){ return null; }
+  }
+  function saveUIState(patch){
+    const key = getUIKey();
+    if(!key) return;
+    try{
+      const cur = loadUIState()||{};
+      localStorage.setItem(key, JSON.stringify({...cur,...patch}));
+    }catch(e){}
+  }
   const [importing, setImporting] = useState(false);
   const [importCandidates, setImportCandidates] = useState(null); // null = not showing picker; array = showing it
 
@@ -274,10 +296,14 @@ export default function BoardPlasterEstimate(){
         if(est){
           setSelectedLeadId(String(est.customer_id||""));
           setAddress(est.address||"");
-          setAreas((est.areas||[]).map(a=>({...a,_expanded:false})));
+          const savedUIState = loadUIState();
+          setAreas((est.areas||[]).map(a=>({...a,_expanded: savedUIState?.openAreaId!=null && a.id===savedUIState.openAreaId})));
           const existingFloors = [...new Set((est.areas||[]).map(a=>a.floor).filter(Boolean))];
-          setFloorNames(sortFloors(existingFloors.length?existingFloors:["Attic"]));
-          setActiveFloor(sortFloors(existingFloors)[0] || "Attic");
+          const sortedFloors = sortFloors(existingFloors.length?existingFloors:["Attic"]);
+          setFloorNames(sortedFloors);
+          const restoredFloor = (savedUIState?.activeFloor && sortedFloors.includes(savedUIState.activeFloor))
+            ? savedUIState.activeFloor : (sortFloors(existingFloors)[0] || "Attic");
+          setActiveFloor(restoredFloor);
           setLineItems(est.line_items?.length?est.line_items:[{ id: uid(), service_name:"", price:"", qty:"1" }]);
           setNotes(est.notes||"");
           setStatus(est.status||"Draft");
@@ -831,7 +857,7 @@ export default function BoardPlasterEstimate(){
                     border:`1.5px solid ${activeFloor===fn?"#059669":hasAreas?"#86efac":C.border}`,
                     background:activeFloor===fn?"#059669":hasAreas?"#f0fdf4":C.white,
                     borderRadius:20,overflow:"hidden"}}>
-                  <button onClick={()=>setActiveFloor(fn)}
+                  <button onClick={()=>{setActiveFloor(fn); saveUIState({activeFloor:fn});}}
                     style={{border:"none",background:"none",
                       color:activeFloor===fn?"#fff":hasAreas?"#059669":C.muted,
                       padding:hasAreas?"5px 12px":"5px 4px 5px 12px",fontSize:12,fontWeight:700,cursor:"pointer"}}>
@@ -886,8 +912,9 @@ export default function BoardPlasterEstimate(){
                   <div key={a.id} style={{border:`1.5px solid #cbd5e1`,borderRadius:10,padding:0,
                       marginBottom:14,background:C.white,boxShadow:"0 1px 4px rgba(0,0,0,.06)",overflow:"hidden"}}>
                     <div onClick={()=>{
-                        if(expanded){ updateArea(a.id,"_expanded",false); return; }
+                        if(expanded){ updateArea(a.id,"_expanded",false); saveUIState({openAreaId:null}); return; }
                         setAreas(p=>p.map(x=>x.floor===a.floor?{...x,_expanded:x.id===a.id}:x));
+                        saveUIState({openAreaId:a.id});
                       }}
                       style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap",padding:"8px 10px",background:"#f1f5f9",
                         borderBottom:expanded?"1px solid #e2e8f0":"none",cursor:"pointer"}}>
@@ -906,7 +933,7 @@ export default function BoardPlasterEstimate(){
                               onChange={e=>updateArea(a.id,"thicknessOther",e.target.value)}
                               style={{...I,width:44,flexShrink:0,height:26,fontSize:10,padding:"0 4px"}} />
                           )}
-                          <button onClick={(e)=>{e.stopPropagation();updateArea(a.id,"_expanded",false);}}
+                          <button onClick={(e)=>{e.stopPropagation();updateArea(a.id,"_expanded",false);saveUIState({openAreaId:null});}}
                             style={{border:"1px solid #059669",background:"#f0fdf4",color:"#059669",cursor:"pointer",
                               fontSize:10,fontWeight:700,padding:"4px 8px",borderRadius:6,marginLeft:"auto",marginRight:12}}>
                             ✓ Done

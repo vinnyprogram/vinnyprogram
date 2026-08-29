@@ -168,6 +168,24 @@ export default function GCEstimate(){
   const [status, setStatus] = useState("Draft");
   const [floorNames, setFloorNames] = useState(["1st"]);
   const [activeFloor, setActiveFloor] = useState("1st");
+
+  // Same activeFloor-remembering fix as Insulation/HERS/B&P.
+  function getUIKey(){
+    return estimateId ? `ui_state_gc_${estimateId}` : null;
+  }
+  function loadUIState(){
+    const key = getUIKey();
+    if(!key) return null;
+    try{ const r = localStorage.getItem(key); return r?JSON.parse(r):null; }catch(e){ return null; }
+  }
+  function saveUIState(patch){
+    const key = getUIKey();
+    if(!key) return;
+    try{
+      const cur = loadUIState()||{};
+      localStorage.setItem(key, JSON.stringify({...cur,...patch}));
+    }catch(e){}
+  }
   const [areas, setAreas] = useState([]);
   const [notes, setNotes] = useState("");
 
@@ -224,7 +242,13 @@ export default function GCEstimate(){
           if(Number(est.deposit_value)>0){ setDepositOpen(true); setDepositType(est.deposit_type||"percent"); setDepositValue(String(est.deposit_value)); }
           if((est.payment_schedule||[]).length){ setScheduleOpen(true); setPaymentSchedule(est.payment_schedule); }
           const fls = sortFloors([...new Set((est.areas||[]).map(a=>a.floor).filter(Boolean))]);
-          if(fls.length){ setFloorNames(fls); setActiveFloor(fls[0]); }
+          if(fls.length){
+            setFloorNames(fls);
+            const savedUIState = loadUIState();
+            const restoredFloor = (savedUIState?.activeFloor && fls.includes(savedUIState.activeFloor))
+              ? savedUIState.activeFloor : fls[0];
+            setActiveFloor(restoredFloor);
+          }
         }
         setLoading(false);
       }
@@ -718,7 +742,7 @@ export default function GCEstimate(){
             {floorNames.map(fn=>{
               const hasAreas = areas.some(a=>a.floor===fn);
               return (
-                <button key={fn} onClick={()=>setActiveFloor(fn)}
+                <button key={fn} onClick={()=>{setActiveFloor(fn); saveUIState({activeFloor:fn});}}
                   style={{border:`1.5px solid ${activeFloor===fn?C.amber:hasAreas?"#fcd34d":C.border}`,
                     background:activeFloor===fn?C.amber:hasAreas?"#fffbeb":C.white,
                     color:activeFloor===fn?"#fff":hasAreas?C.amber:C.muted,
