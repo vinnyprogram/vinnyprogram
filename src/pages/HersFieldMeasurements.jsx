@@ -236,7 +236,7 @@ function FloorsEditor({ floors, onChange, onCommit, unitLabel }) {
 }
 
 // ── Single area row — mirrors AreaRow from insulation estimate, no pricing ──
-function AreaRow({ area, materials, onChange, onDelete, onCommit }) {
+function AreaRow({ area, materials, onChange, onDelete, onCommit, areaTypes, thickOpts, rVals }) {
   const [calcOpen, setCalcOpen] = useState(false);
   const [calcExpr, setCalcExpr] = useState("");
   const meas = area.measurements||[];
@@ -359,7 +359,7 @@ function AreaRow({ area, materials, onChange, onDelete, onCommit }) {
         <select value={area.area_type||""} onChange={e=>onChange("area_type",e.target.value)}
           style={{...GS,flex:1}}>
           <option value="">Area type…</option>
-          {AREA_TYPES.map(t=><option key={t} value={t}>{t}</option>)}
+          {(areaTypes||AREA_TYPES).map(t=><option key={t} value={t}>{t}</option>)}
         </select>
         {!isComplete && (
           <button onClick={onDelete} style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:18,padding:"0 4px",lineHeight:1,flexShrink:0}}>✕</button>
@@ -398,13 +398,13 @@ function AreaRow({ area, materials, onChange, onDelete, onCommit }) {
               value={matLines[0].thickness_in||""}
               onChange={e=>updateMatLine(0,"thickness_in",e.target.value)}>
               <option value="">Thick</option>
-              {THICK_OPTS.map(t=><option key={t}>{t}</option>)}
+              {(thickOpts||THICK_OPTS).map(t=><option key={t}>{t}</option>)}
             </select>
             <select style={{...GS,width:80,flexShrink:0}}
               value={matLines[0].r_value||""}
               onChange={e=>updateMatLine(0,"r_value",e.target.value)}>
               <option value="">R-Val</option>
-              {R_VALS.map(r=><option key={r}>{r}</option>)}
+              {(rVals||R_VALS).map(r=><option key={r}>{r}</option>)}
             </select>
           </div>
           {area.material==="__custom_mat__" && (
@@ -445,10 +445,10 @@ function AreaRow({ area, materials, onChange, onDelete, onCommit }) {
               </div>
               <div style={{display:"flex",gap:4}}>
                 <select style={{...GS,flex:1}} value={ml.thickness_in||""} onChange={e=>updateMatLine(idx,"thickness_in",e.target.value)}>
-                  <option value="">Thick</option>{THICK_OPTS.map(t=><option key={t}>{t}</option>)}
+                  <option value="">Thick</option>{(thickOpts||THICK_OPTS).map(t=><option key={t}>{t}</option>)}
                 </select>
                 <select style={{...GS,flex:1}} value={ml.r_value||""} onChange={e=>updateMatLine(idx,"r_value",e.target.value)}>
-                  <option value="">R-Val</option>{R_VALS.map(r=><option key={r}>{r}</option>)}
+                  <option value="">R-Val</option>{(rVals||R_VALS).map(r=><option key={r}>{r}</option>)}
                 </select>
               </div>
             </div>
@@ -776,6 +776,32 @@ export default function HersFieldMeasurements() {
   // means "the only unit" - existing single-unit jobs work exactly as
   // before with no visible change.
   const unitLabel = searchParams.get("unit") || "";
+
+  // HERS's own copies of the area type / thickness / R-value lists, kept
+  // separate from Insulation's even though they use the same Settings
+  // mechanism (see Settings.jsx "lists" tab) - each trade is sold and
+  // customized independently.
+  const [dbAreaTypesHers, setDbAreaTypesHers] = useState([]);
+  const [dbThickOptsHers, setDbThickOptsHers] = useState([]);
+  const [dbRValsHers, setDbRValsHers] = useState([]);
+  useEffect(()=>{
+    if(!company?.id) return;
+    (async()=>{
+      const { data:listRows } = await supabase.from("cost_settings").select("*")
+        .eq("company_id", company.id)
+        .in("period",["list_area_type_hers","list_thick_opt_hers","list_r_val_hers"])
+        .order("sort_order");
+      if(listRows?.length){
+        setDbAreaTypesHers(listRows.filter(r=>r.period==="list_area_type_hers").map(r=>r.name));
+        setDbThickOptsHers(listRows.filter(r=>r.period==="list_thick_opt_hers").map(r=>r.name));
+        setDbRValsHers(listRows.filter(r=>r.period==="list_r_val_hers").map(r=>r.name));
+      }
+    })();
+  },[company?.id]);
+  const effectiveAreaTypes = dbAreaTypesHers.length ? dbAreaTypesHers : AREA_TYPES;
+  const effectiveThickOpts = dbThickOptsHers.length ? dbThickOptsHers : THICK_OPTS;
+  const effectiveRVals     = dbRValsHers.length ? dbRValsHers : R_VALS;
+
 
   const [loading, setLoading]     = useState(true);
   const [saving, setSaving]       = useState(false);
@@ -1600,6 +1626,7 @@ export default function HersFieldMeasurements() {
                 const realIdx = currentAreas.indexOf(area);
                 return (
                   <AreaRow key={area.id} area={area} materials={materials}
+                    areaTypes={effectiveAreaTypes} thickOpts={effectiveThickOpts} rVals={effectiveRVals}
                     onChange={(f,v)=>updateArea(activeFloor,realIdx,f,v)}
                     onDelete={()=>deleteArea(activeFloor,realIdx)}
                     onCommit={()=>setAutoSaveTick(t=>t+1)} />
@@ -1614,6 +1641,7 @@ export default function HersFieldMeasurements() {
                 const realIdx = currentAreas.indexOf(area);
                 return (
                   <AreaRow key={area.id} area={area} materials={materials}
+                    areaTypes={effectiveAreaTypes} thickOpts={effectiveThickOpts} rVals={effectiveRVals}
                     onChange={(f,v)=>updateArea(activeFloor,realIdx,f,v)}
                     onDelete={()=>deleteArea(activeFloor,realIdx)}
                     onCommit={()=>setAutoSaveTick(t=>t+1)} />

@@ -86,6 +86,17 @@ export default function Settings() {
   const [newAreaType,   setNewAreaType]   = useState("");
   const [newThickOpt,   setNewThickOpt]   = useState("");
   const [newRVal,       setNewRVal]       = useState("");
+  // HERS gets its OWN copies of these same lists. Insulation and HERS are
+  // sold as separate trades (offers_insulation / offers_hers) - sharing one
+  // set of rows would mean a company running only one of them inherits (or
+  // corrupts) the other's customizations. Same mechanism, same starting
+  // defaults, separate stored data.
+  const [listAreaTypesHers, setListAreaTypesHers] = useState(DEFAULT_AREA_TYPES);
+  const [listThickOptsHers, setListThickOptsHers] = useState(DEFAULT_THICK_OPTS);
+  const [listRValsHers,     setListRValsHers]     = useState(DEFAULT_R_VALS);
+  const [newAreaTypeHers,   setNewAreaTypeHers]   = useState("");
+  const [newThickOptHers,   setNewThickOptHers]   = useState("");
+  const [newRValHers,       setNewRValHers]       = useState("");
 
   // Overhead
   const [costs, setCosts] = useState([]);
@@ -246,7 +257,7 @@ export default function Settings() {
     // load configurable lists (area types, thickness, R-values)
     const { data:listRows } = await supabase.from("cost_settings").select("*")
       .eq("company_id",company.id)
-      .in("period",["list_area_type","list_thick_opt","list_r_val"])
+      .in("period",["list_area_type","list_thick_opt","list_r_val","list_area_type_hers","list_thick_opt_hers","list_r_val_hers"])
       .order("sort_order");
     if(listRows?.length){
       const at = listRows.filter(r=>r.period==="list_area_type").map(r=>r.name);
@@ -255,6 +266,12 @@ export default function Settings() {
       if(at.length) setListAreaTypes(at);
       if(th.length) setListThickOpts(th);
       if(rv.length) setListRVals(rv);
+      const atH = listRows.filter(r=>r.period==="list_area_type_hers").map(r=>r.name);
+      const thH = listRows.filter(r=>r.period==="list_thick_opt_hers").map(r=>r.name);
+      const rvH = listRows.filter(r=>r.period==="list_r_val_hers").map(r=>r.name);
+      if(atH.length) setListAreaTypesHers(atH);
+      if(thH.length) setListThickOptsHers(thH);
+      if(rvH.length) setListRValsHers(rvH);
     }
     setSettingsLoaded(true);
     settingsLog("Settings finished loading - safe to save now");
@@ -336,6 +353,83 @@ export default function Settings() {
   function updateVariant(idx, field, value) {
     setMaterialVariants(p=>p.map((v,i)=> i===idx ? {...v,[field]:value} : v));
   }
+  // Renders one draggable/editable list card (Area Types, Thickness, or
+  // R-Values) - shared between the Insulation and HERS list groups so the
+  // UI stays identical between them even though the underlying data is kept
+  // completely separate per trade.
+  function renderListCard({id,label,description,list,setList,newVal,setNew,placeholder}){
+    return (
+      <div key={id} style={{background:C.white,borderRadius:10,border:`1px solid ${C.border}`,marginBottom:16,overflow:"hidden"}}>
+        <div style={{background:"#f8fafc",borderBottom:`1px solid ${C.border}`,padding:"10px 14px"}}>
+          <div style={{fontWeight:700,fontSize:14,color:C.ink}}>{label}</div>
+          <div style={{fontSize:11,color:C.muted,marginTop:2}}>{description}</div>
+        </div>
+        <div style={{padding:"10px 14px"}}>
+          <DragDropContext onDragEnd={result=>{
+            if(!result.destination) return;
+            const from=result.source.index, to=result.destination.index;
+            if(from===to) return;
+            setList(prev=>{
+              const arr=[...prev];
+              const [moved]=arr.splice(from,1);
+              arr.splice(to,0,moved);
+              return arr;
+            });
+          }}>
+            <Droppable droppableId={id}>
+              {provided=>(
+                <div ref={provided.innerRef} {...provided.droppableProps}
+                  style={{marginBottom:10}}>
+                  {list.map((item,i)=>(
+                    <Draggable key={item+i} draggableId={id+i} index={i}>
+                      {(prov,snap)=>(
+                        <div ref={prov.innerRef} {...prov.draggableProps}
+                          style={{...prov.draggableProps.style,
+                            display:"flex",alignItems:"center",gap:6,
+                            background:snap.isDragging?"#e0f2fe":"#f1f5f9",
+                            border:`1px solid ${snap.isDragging?"#38bdf8":C.border}`,
+                            borderRadius:6,padding:"6px 8px",marginBottom:4,
+                            boxShadow:snap.isDragging?"0 4px 12px rgba(0,0,0,0.15)":"none"}}>
+                          {/* drag handle */}
+                          <span {...prov.dragHandleProps}
+                            style={{color:C.faint,cursor:"grab",fontSize:14,padding:"0 2px",userSelect:"none",touchAction:"none"}}>
+                            ☰
+                          </span>
+                          <span style={{flex:1,fontSize:12,color:C.ink}}>{item}</span>
+                          {/* up/down for mobile */}
+                          <button onClick={()=>setList(p=>{if(i===0)return p;const a=[...p];[a[i-1],a[i]]=[a[i],a[i-1]];return a;})}
+                            disabled={i===0}
+                            style={{border:"none",background:"none",color:i===0?C.chip:C.muted,cursor:i===0?"default":"pointer",fontSize:13,padding:"0 2px",lineHeight:1}}>↑</button>
+                          <button onClick={()=>setList(p=>{if(i===p.length-1)return p;const a=[...p];[a[i],a[i+1]]=[a[i+1],a[i]];return a;})}
+                            disabled={i===list.length-1}
+                            style={{border:"none",background:"none",color:i===list.length-1?C.chip:C.muted,cursor:i===list.length-1?"default":"pointer",fontSize:13,padding:"0 2px",lineHeight:1}}>↓</button>
+                          <button onClick={()=>setList(p=>p.filter((_,j)=>j!==i))}
+                            style={{border:"none",background:"none",color:"#ef4444",cursor:"pointer",fontSize:14,padding:"0 2px",lineHeight:1}}>✕</button>
+                        </div>
+                      )}
+                    </Draggable>
+                  ))}
+                  {provided.placeholder}
+                </div>
+              )}
+            </Droppable>
+          </DragDropContext>
+          <div style={{display:"flex",gap:6}}>
+            <input placeholder={placeholder} value={newVal}
+              onChange={e=>setNew(e.target.value)}
+              onKeyDown={e=>{ if(e.key==="Enter"&&newVal.trim()&&!list.includes(newVal.trim())){ setList(p=>[newVal.trim(),...p]); setNew(""); } }}
+              style={{...I,flex:1,fontSize:12}} />
+            <button onClick={()=>{ if(newVal.trim()&&!list.includes(newVal.trim())){ setList(p=>[newVal.trim(),...p]); setNew(""); } }}
+              style={{...BtnG,height:32,padding:"0 14px",fontSize:12}}>
+              + Add to top
+            </button>
+          </div>
+          <div style={{fontSize:10,color:C.faint,marginTop:4}}>New items are added to the top. Drag ☰ or use ↑↓ to reorder.</div>
+        </div>
+      </div>
+    );
+  }
+
   function addVariant() {
     setMaterialVariants(p=>[...p,{id:null,material_name:"",thickness_in:"",r_value:"",facing:"",cost_per_sqft:0,markup_pct:20,sort_order:p.length}]);
   }
@@ -892,11 +986,14 @@ export default function Settings() {
 
       // save configurable lists
       await supabase.from("cost_settings").delete().eq("company_id",company.id)
-        .in("period",["list_area_type","list_thick_opt","list_r_val"]);
+        .in("period",["list_area_type","list_thick_opt","list_r_val","list_area_type_hers","list_thick_opt_hers","list_r_val_hers"]);
       const listInserts = [
         ...listAreaTypes.filter(Boolean).map((name,i)=>({company_id:company.id,category:"Lists",name,period:"list_area_type",amount:0,sort_order:i})),
         ...listThickOpts.filter(Boolean).map((name,i)=>({company_id:company.id,category:"Lists",name,period:"list_thick_opt",amount:0,sort_order:i})),
         ...listRVals.filter(Boolean).map((name,i)=>({company_id:company.id,category:"Lists",name,period:"list_r_val",amount:0,sort_order:i})),
+        ...listAreaTypesHers.filter(Boolean).map((name,i)=>({company_id:company.id,category:"Lists",name,period:"list_area_type_hers",amount:0,sort_order:i})),
+        ...listThickOptsHers.filter(Boolean).map((name,i)=>({company_id:company.id,category:"Lists",name,period:"list_thick_opt_hers",amount:0,sort_order:i})),
+        ...listRValsHers.filter(Boolean).map((name,i)=>({company_id:company.id,category:"Lists",name,period:"list_r_val_hers",amount:0,sort_order:i})),
       ];
       if(listInserts.length>0) await supabase.from("cost_settings").insert(listInserts);
 
@@ -1393,84 +1490,39 @@ export default function Settings() {
         {tab==="lists" && (
           <div>
             <div style={{fontSize:12,color:C.muted,marginBottom:16,lineHeight:1.6}}>
-              These lists appear in the estimate and HERS field measurement dropdowns.
-              <b> Drag ☰ to reorder</b>, or use ↑↓ buttons. Changes take effect after saving.
+              <b>Drag ☰ to reorder</b>, or use ↑↓ buttons. Changes take effect after saving.
+              Insulation and HERS keep their own separate lists below, since they're sold as
+              separate trades — customizing one never affects the other.
             </div>
 
-            {[
-              {id:"area",  label:"Area Types", description:"Location/type of insulation areas", list:listAreaTypes, setList:setListAreaTypes, newVal:newAreaType, setNew:setNewAreaType, placeholder:"e.g. Cathedral Ceiling"},
-              {id:"thick", label:"Thickness / Stud Size", description:"Stud cavity and joist sizes", list:listThickOpts, setList:setListThickOpts, newVal:newThickOpt, setNew:setNewThickOpt, placeholder:"e.g. I-joist 11in"},
-              {id:"rval",  label:"R-Values", description:"R-value options for the area dropdown", list:listRVals, setList:setListRVals, newVal:newRVal, setNew:setNewRVal, placeholder:"e.g. R-25"},
-            ].map(({id,label,description,list,setList,newVal,setNew,placeholder})=>(
-              <div key={id} style={{background:C.white,borderRadius:10,border:`1px solid ${C.border}`,marginBottom:16,overflow:"hidden"}}>
-                <div style={{background:"#f8fafc",borderBottom:`1px solid ${C.border}`,padding:"10px 14px"}}>
-                  <div style={{fontWeight:700,fontSize:14,color:C.ink}}>{label}</div>
-                  <div style={{fontSize:11,color:C.muted,marginTop:2}}>{description}</div>
+            {offersInsulation && (
+              <>
+                <div style={{fontSize:12,fontWeight:800,color:C.ink,textTransform:"uppercase",letterSpacing:0.4,marginBottom:8,marginTop:4}}>
+                  🧰 Insulation
                 </div>
-                <div style={{padding:"10px 14px"}}>
-                  <DragDropContext onDragEnd={result=>{
-                    if(!result.destination) return;
-                    const from=result.source.index, to=result.destination.index;
-                    if(from===to) return;
-                    setList(prev=>{
-                      const arr=[...prev];
-                      const [moved]=arr.splice(from,1);
-                      arr.splice(to,0,moved);
-                      return arr;
-                    });
-                  }}>
-                    <Droppable droppableId={id}>
-                      {provided=>(
-                        <div ref={provided.innerRef} {...provided.droppableProps}
-                          style={{marginBottom:10}}>
-                          {list.map((item,i)=>(
-                            <Draggable key={item+i} draggableId={id+i} index={i}>
-                              {(prov,snap)=>(
-                                <div ref={prov.innerRef} {...prov.draggableProps}
-                                  style={{...prov.draggableProps.style,
-                                    display:"flex",alignItems:"center",gap:6,
-                                    background:snap.isDragging?"#e0f2fe":"#f1f5f9",
-                                    border:`1px solid ${snap.isDragging?"#38bdf8":C.border}`,
-                                    borderRadius:6,padding:"6px 8px",marginBottom:4,
-                                    boxShadow:snap.isDragging?"0 4px 12px rgba(0,0,0,0.15)":"none"}}>
-                                  {/* drag handle */}
-                                  <span {...prov.dragHandleProps}
-                                    style={{color:C.faint,cursor:"grab",fontSize:14,padding:"0 2px",userSelect:"none",touchAction:"none"}}>
-                                    ☰
-                                  </span>
-                                  <span style={{flex:1,fontSize:12,color:C.ink}}>{item}</span>
-                                  {/* up/down for mobile */}
-                                  <button onClick={()=>setList(p=>{if(i===0)return p;const a=[...p];[a[i-1],a[i]]=[a[i],a[i-1]];return a;})}
-                                    disabled={i===0}
-                                    style={{border:"none",background:"none",color:i===0?C.chip:C.muted,cursor:i===0?"default":"pointer",fontSize:13,padding:"0 2px",lineHeight:1}}>↑</button>
-                                  <button onClick={()=>setList(p=>{if(i===p.length-1)return p;const a=[...p];[a[i],a[i+1]]=[a[i+1],a[i]];return a;})}
-                                    disabled={i===list.length-1}
-                                    style={{border:"none",background:"none",color:i===list.length-1?C.chip:C.muted,cursor:i===list.length-1?"default":"pointer",fontSize:13,padding:"0 2px",lineHeight:1}}>↓</button>
-                                  <button onClick={()=>setList(p=>p.filter((_,j)=>j!==i))}
-                                    style={{border:"none",background:"none",color:"#ef4444",cursor:"pointer",fontSize:14,padding:"0 2px",lineHeight:1}}>✕</button>
-                                </div>
-                              )}
-                            </Draggable>
-                          ))}
-                          {provided.placeholder}
-                        </div>
-                      )}
-                    </Droppable>
-                  </DragDropContext>
-                  <div style={{display:"flex",gap:6}}>
-                    <input placeholder={placeholder} value={newVal}
-                      onChange={e=>setNew(e.target.value)}
-                      onKeyDown={e=>{ if(e.key==="Enter"&&newVal.trim()&&!list.includes(newVal.trim())){ setList(p=>[newVal.trim(),...p]); setNew(""); } }}
-                      style={{...I,flex:1,fontSize:12}} />
-                    <button onClick={()=>{ if(newVal.trim()&&!list.includes(newVal.trim())){ setList(p=>[newVal.trim(),...p]); setNew(""); } }}
-                      style={{...BtnG,height:32,padding:"0 14px",fontSize:12}}>
-                      + Add to top
-                    </button>
-                  </div>
-                  <div style={{fontSize:10,color:C.faint,marginTop:4}}>New items are added to the top. Drag ☰ or use ↑↓ to reorder.</div>
+                {[
+                  {id:"area",  label:"Area Types", description:"Location/type of insulation areas", list:listAreaTypes, setList:setListAreaTypes, newVal:newAreaType, setNew:setNewAreaType, placeholder:"e.g. Cathedral Ceiling"},
+                  {id:"thick", label:"Thickness / Stud Size", description:"Stud cavity and joist sizes", list:listThickOpts, setList:setListThickOpts, newVal:newThickOpt, setNew:setNewThickOpt, placeholder:"e.g. I-joist 11in"},
+                  {id:"rval",  label:"R-Values", description:"R-value options for the area dropdown", list:listRVals, setList:setListRVals, newVal:newRVal, setNew:setNewRVal, placeholder:"e.g. R-25"},
+                ].map(renderListCard)}
+              </>
+            )}
+
+            {offersHers && (
+              <>
+                <div style={{fontSize:12,fontWeight:800,color:C.ink,textTransform:"uppercase",letterSpacing:0.4,marginBottom:8,marginTop:offersInsulation?24:4}}>
+                  📋 HERS — Insulation Measurements
                 </div>
-              </div>
-            ))}
+                <div style={{fontSize:11,color:C.muted,marginBottom:10,marginTop:-4}}>
+                  Used on the "🏗 Insulation" tab inside HERS field measurements.
+                </div>
+                {[
+                  {id:"area-hers",  label:"Area Types", description:"Location/type of insulation areas", list:listAreaTypesHers, setList:setListAreaTypesHers, newVal:newAreaTypeHers, setNew:setNewAreaTypeHers, placeholder:"e.g. Cathedral Ceiling"},
+                  {id:"thick-hers", label:"Thickness / Stud Size", description:"Stud cavity and joist sizes", list:listThickOptsHers, setList:setListThickOptsHers, newVal:newThickOptHers, setNew:setNewThickOptHers, placeholder:"e.g. I-joist 11in"},
+                  {id:"rval-hers",  label:"R-Values", description:"R-value options for the area dropdown", list:listRValsHers, setList:setListRValsHers, newVal:newRValHers, setNew:setNewRValHers, placeholder:"e.g. R-25"},
+                ].map(renderListCard)}
+              </>
+            )}
           </div>
         )}
 
