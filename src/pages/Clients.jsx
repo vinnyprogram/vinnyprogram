@@ -265,6 +265,9 @@ export default function Clients() {
                     {t.label}
                   </button>
                 ))}
+                <button onClick={()=>navigate(`/customer/${c.id}/hub`)} style={Btn}>
+                  💬 Communication Hub
+                </button>
               </div>
             </div>
           )}

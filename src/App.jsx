@@ -12,6 +12,7 @@ import FieldReport from "./pages/FieldReport";
 import EstimateSearch from "./pages/EstimateSearch";
 import HowToUse from "./pages/HowToUse";
 import CustomerProfile from "./pages/CustomerProfile";
+import CustomerHub from "./pages/CustomerHub";
 import Settings from "./pages/Settings";
 import QuotePricing from "./pages/QuotePricing";
 import EstimateDrawings from "./pages/EstimateDrawings";
@@ -96,6 +97,7 @@ function ProtectedApp() {
         <Route path="quote/:projectId" element={<QuotePDF />} />
         <Route path="field-report/:projectId" element={<FieldReport />} />
         <Route path="customer/:customerId" element={<CustomerProfile />} />
+        <Route path="customer/:customerId/hub" element={<CustomerHub />} />
         <Route path="settings" element={<Settings />} />
         <Route path="quote-pricing/:projectId" element={<QuotePricing />} />
         <Route path="project/drawings/:projectId" element={<EstimateDrawings />} />
