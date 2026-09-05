@@ -49,6 +49,14 @@ function fmt(n) {
   return Number(n || 0).toLocaleString("en-US", { maximumFractionDigits: 0 });
 }
 
+// Display-only formatting: "R-30" -> "R30". Only strips the dash for how
+// it's SHOWN (estimate panel, print report, email) - the actual stored
+// value and dropdown options keep the dash internally, so existing saved
+// jobs and the Settings-driven R-value list keep working exactly the same.
+function formatRValue(v) {
+  return (v || "").replace(/-/g, "");
+}
+
 const DEFAULT_FLOORS = ["Attic","3rd","2nd","1st","Basement","Crawlspace"];
 // Single stable slot for "a brand-new job that doesn't have a customer or
 // address attached yet." Normal drafts are keyed by leadId+address so a
@@ -564,7 +572,7 @@ function useCalcResult(field) {
       <div onClick={()=>{ setExpanded(true); onChange("_collapsed",false); }} style={{cursor:"pointer"}}>
       {matLines.map((ml,i)=>(
         <div key={i} style={{ fontSize:10, color:C.muted, lineHeight:1.6 }}>
-          {[ml.material, ml.thickness_in, ml.r_value, ml.oc].filter(Boolean).join(" · ")}
+          {[ml.material, ml.thickness_in, formatRValue(ml.r_value), ml.oc].filter(Boolean).join(" · ")}
           {i===0 && (
             <span style={{ marginLeft:6, color:C.faint }}>
               {fmt(computedSqft)} ft²
@@ -583,7 +591,7 @@ function useCalcResult(field) {
         const optLines=(opt.mat_lines||[]).length>0?opt.mat_lines:[{material:opt.material||"",thickness_in:opt.thickness_in||area.thickness_in||"",r_value:opt.r_value||"",oc:opt.oc||""}];
         return (
           <div key={i} style={{fontSize:10,color:"#f97316",marginTop:2}}>
-            ⚡ Option {i+1}: {optLines.map(ol=>[ol.material,ol.thickness_in,ol.r_value,ol.oc].filter(Boolean).join(" ")).join(" + ")}
+            ⚡ Option {i+1}: {optLines.map(ol=>[ol.material,ol.thickness_in,formatRValue(ol.r_value),ol.oc].filter(Boolean).join(" ")).join(" + ")}
           </div>
         );
       })}
@@ -790,7 +798,7 @@ function useCalcResult(field) {
                 const r = parseInt((ml.r_value||"").replace(/\D/g,""))||0;
                 return sum+r;
               },0);
-              return totalR>0 ? <span style={{color:"#059669",fontWeight:800}}>Total R-{totalR}</span> : null;
+              return totalR>0 ? <span style={{color:"#059669",fontWeight:800}}>Total R{totalR}</span> : null;
             })()}
             <button onClick={()=>{ onChange("mat_lines",[{id:1,material:"",thickness_in:"",r_value:"",oc:""}]); onChange("material",""); }}
               style={{border:"none",background:"none",color:"#94a3b8",cursor:"pointer",fontSize:11,marginLeft:8,padding:0}}>× remove combo</button>
@@ -912,7 +920,7 @@ function useCalcResult(field) {
                         const r = parseInt((ol.r_value||"").replace(/\D/g,""))||0;
                         return sum+r;
                       },0);
-                      return optTotalR>0 ? <span style={{color:"#059669",fontWeight:800}}>Total R-{optTotalR}</span> : null;
+                      return optTotalR>0 ? <span style={{color:"#059669",fontWeight:800}}>Total R{optTotalR}</span> : null;
                     })()}
                     <button onClick={()=>{updateOpt("mat_lines",[{id:1,material:"",thickness_in:matLines[0].thickness_in||"",r_value:matLines[0].r_value||"",oc:""}]);updateOpt("material","");}} style={{border:"none",background:"none",color:"#94a3b8",cursor:"pointer",fontSize:10,padding:0}}>× remove combo</button>
                   </div>
@@ -1093,6 +1101,17 @@ function useCalcResult(field) {
             </div>
           );
         })()}
+
+        {/* Per-area note - shown in the estimate panel, office print, and
+            office email under this area, for anything the crew or office
+            needs to know that doesn't fit into the material/measurement
+            fields (e.g. "access from attic only", "customer wants extra
+            care around recessed lights"). */}
+        <div style={{marginTop:4}}>
+          <input placeholder="📝 Note for this area (optional) — shows on panel, print & email"
+            value={area.note||""} onChange={e=>onChange("note",e.target.value)}
+            style={{...I,width:"100%",fontSize:11,color:"#92400e",background:"#fffbeb",borderColor:"#fde68a"}} />
+        </div>
       </div>
     </div>
   );
@@ -1139,13 +1158,14 @@ function EstimatePanel({ floors, areas, materialMap, variantMap, crewNotes, proj
           list.forEach(a=>{
             const mls=(a.mat_lines&&a.mat_lines.length>0)?a.mat_lines:[{material:a.material||"",thickness_in:a.thickness_in||"",r_value:a.r_value||"",oc:a.oc||""}];
             const key=a.area_type+"||||"+mls.map(ml=>ml.material+"|"+ml.thickness_in+"|"+ml.r_value).join("+");
-            if(!gm[key]) gm[key]={area_type:a.area_type,floors:[],mat_lines:mls,totalSqft:0,totalCost:0,totalPaintSqft:0,deductTotal:0,measurements:[],floorOrder:floors.indexOf(a.floor)};
+            if(!gm[key]) gm[key]={area_type:a.area_type,floors:[],mat_lines:mls,totalSqft:0,totalCost:0,totalPaintSqft:0,deductTotal:0,measurements:[],notes:[],floorOrder:floors.indexOf(a.floor)};
             const g=gm[key];
             if(!g.floors.includes(a.floor)) g.floors.push(a.floor);
             if(floors.indexOf(a.floor)<g.floorOrder) g.floorOrder=floors.indexOf(a.floor);
             g.totalSqft+=a.sqft||0; g.totalCost+=getAreaTotalCost(a,materialMap,variantMap); g.totalPaintSqft+=Number(a.paint_sqft||0);
             g.deductTotal+=Number(a.deduct_sqft)||0;
             g.measurements.push(...(a.measurements||[]));
+            if(a.note&&a.note.trim()) g.notes.push({floor:a.floor,text:a.note.trim()});
           });
           return Object.values(gm).sort((a,b)=>areaTypePriority(a.area_type)-areaTypePriority(b.area_type)||a.floorOrder-b.floorOrder);
         }
@@ -1153,9 +1173,10 @@ function EstimatePanel({ floors, areas, materialMap, variantMap, crewNotes, proj
           return groups.map((g,i)=>{
             const thick=g.mat_lines[0]?.thickness_in||"";
             const floorLabel=g.floors.sort((a,b)=>floors.indexOf(a)-floors.indexOf(b)).map(f=>f.replace(" Floor","")).join(", ");
-            const matLabel=g.mat_lines.length>1?"Combo: "+g.mat_lines.map(ml=>((ml.material||"")+" "+(ml.r_value||"")).trim()).join(" + "):((g.mat_lines[0]?.material||"")+" "+(g.mat_lines[0]?.r_value||"")+" "+(g.mat_lines[0]?.oc||"")).trim();
+            const matLabel=g.mat_lines.length>1?"Combo: "+g.mat_lines.map(ml=>((ml.material||"")+" "+formatRValue(ml.r_value||"")).trim()).join(" + "):((g.mat_lines[0]?.material||"")+" "+formatRValue(g.mat_lines[0]?.r_value||"")+" "+(g.mat_lines[0]?.oc||"")).trim();
             const {qty,unit}=calcArea(g.totalSqft,thick,materialMap[g.mat_lines[0]?.material],g.mat_lines[0]?.r_value,variantMap);
             const measStr=g.measurements.length>0?g.measurements.map(m=>`${m.h}×${m.l}${m.q>1?`×${m.q}`:""}`).join("  "):"";
+            const showFloorOnNote = g.floors.length>1;
             return (
               <div key={i} style={{paddingBottom:5,marginBottom:5,borderBottom:`1px solid ${C.chip}`}}>
                 <div style={{flex:1,paddingRight:4,lineHeight:1.5}}>
@@ -1167,6 +1188,11 @@ function EstimatePanel({ floors, areas, materialMap, variantMap, crewNotes, proj
                   </div>
                   {measStr&&<div style={{fontSize:10,color:C.faint,lineHeight:1.5}}>{measStr}{g.deductTotal>0&&<span style={{color:"#ef4444",fontWeight:700,marginLeft:6}}>−{fmt(g.deductTotal)} ft² deducted</span>}</div>}
                   {g.totalPaintSqft>0&&<div style={{fontSize:10,color:"#c2410c"}}>🎨 Paint {fmt(g.totalPaintSqft)} ft²</div>}
+                  {g.notes.map((n,ni)=>(
+                    <div key={ni} style={{fontSize:10,color:"#92400e",fontStyle:"italic",marginTop:1}}>
+                      📝 {showFloorOnNote?`${n.floor.replace(" Floor","")}: `:""}{n.text}
+                    </div>
+                  ))}
                 </div>
               </div>
             );
@@ -1200,7 +1226,7 @@ function EstimatePanel({ floors, areas, materialMap, variantMap, crewNotes, proj
             </div>
             {optionalAreas.map((a,i)=>{
               const mls=(a.mat_lines&&a.mat_lines.length>0)?a.mat_lines:[{material:a.material||"",thickness_in:a.thickness_in||"",r_value:a.r_value||""}];
-              const matLabel=(mls.length>1?[mls[0]?.thickness_in,"Combo:",mls.map(ml=>[ml.material,ml.r_value].filter(Boolean).join(" ")).join(" + ")].filter(Boolean).join(" "):[mls[0]?.thickness_in,mls[0]?.material,mls[0]?.r_value].filter(Boolean).join(" "));
+              const matLabel=(mls.length>1?[mls[0]?.thickness_in,"Combo:",mls.map(ml=>[ml.material,formatRValue(ml.r_value)].filter(Boolean).join(" ")).join(" + ")].filter(Boolean).join(" "):[mls[0]?.thickness_in,mls[0]?.material,formatRValue(mls[0]?.r_value)].filter(Boolean).join(" "));
               const measStr=(a.measurements||[]).length>0?a.measurements.map(m=>`${m.h}×${m.l}${m.q>1?`×${m.q}`:""}`).join("  "):"";
               return (
                 <div key={i} style={{paddingBottom:5,marginBottom:5,borderBottom:`1px solid ${C.chip}`}}>
@@ -1222,7 +1248,7 @@ function EstimatePanel({ floors, areas, materialMap, variantMap, crewNotes, proj
                 <div style={{fontSize:10,fontWeight:800,color:"#92400e",textTransform:"uppercase",letterSpacing:0.4,marginBottom:4}}>⚡ Sub-Options</div>
                 {allSubOptions.map((o,i)=>{
                   const optMls=(o.mat_lines||[]).length>0?o.mat_lines:[{material:o.material||"",thickness_in:o.thickness_in||o._area?.thickness_in||"",r_value:o.r_value||o._area?.r_value||""}];
-                  const matLabel=(optMls.length>1?[optMls[0]?.thickness_in,"Combo:",optMls.map(ml=>[ml.material,ml.r_value].filter(Boolean).join(" ")).join(" + ")].filter(Boolean).join(" "):[optMls[0]?.thickness_in,optMls[0]?.material,optMls[0]?.r_value].filter(Boolean).join(" "));
+                  const matLabel=(optMls.length>1?[optMls[0]?.thickness_in,"Combo:",optMls.map(ml=>[ml.material,formatRValue(ml.r_value)].filter(Boolean).join(" ")).join(" + ")].filter(Boolean).join(" "):[optMls[0]?.thickness_in,optMls[0]?.material,formatRValue(optMls[0]?.r_value)].filter(Boolean).join(" "));
                   const optTotalR = optMls.reduce((sum,ml)=>{
                     const r = parseInt((ml.r_value||"").replace(/\D/g,""))||0;
                     return sum+r;
@@ -1231,7 +1257,7 @@ function EstimatePanel({ floors, areas, materialMap, variantMap, crewNotes, proj
                     <div key={i} style={{fontSize:11,color:"#92400e",marginBottom:4,paddingLeft:6,borderLeft:"2px solid #fed7aa"}}>
                       <div style={{fontWeight:800,display:"flex",justifyContent:"space-between"}}>
                         <span>{o.label} <span style={{fontWeight:500}}>— {o._floor} — {o._area.area_type}</span></span>
-                        {optTotalR>0&&<span style={{color:"#059669",fontWeight:800}}>Total R-{optTotalR}</span>}
+                        {optTotalR>0&&<span style={{color:"#059669",fontWeight:800}}>Total R{optTotalR}</span>}
                       </div>
                       <div style={{fontSize:10,color:C.muted}}>{matLabel} · {o._area.sqft} ft²</div>
                       {o.note&&<div style={{fontSize:10,color:"#b45309",fontStyle:"italic"}}>📝 {o.note}</div>}
@@ -1331,6 +1357,8 @@ export default function ProjectEstimate() {
   const [companyAreaTypes,setCompanyAreaTypes]=useState([]);  // this company's configured list from Settings (list_area_type) — authoritative when present
   const [dbThickOpts,setDbThickOpts]=useState([]);  // DB-driven thickness options
   const [dbRVals,setDbRVals]=useState([]);           // DB-driven R-value options
+  const [dbConstTypes,setDbConstTypes]=useState([]); // DB-driven job/construction type options
+  const [dbLadderOpts,setDbLadderOpts]=useState([]); // DB-driven ladder size options
   const [matCostsLive,setMatCostsLive]=useState([]);
   const [variantsLive,setVariantsLive]=useState([]);
   const [matTypesLive,setMatTypesLive]=useState([]);      // Layer 1
@@ -1559,7 +1587,7 @@ export default function ProjectEstimate() {
       const {data:cats}=await supabase.from("cost_settings").select("*").eq("company_id",cd.id).eq("period","custom_area_type").order("sort_order");
       if(cats?.length) setCustomAreaTypes(cats.map(c=>c.name).filter(Boolean));
       const {data:listRows}=await supabase.from("cost_settings").select("name,period").eq("company_id",cd.id)
-        .in("period",["list_area_type","list_thick_opt","list_r_val"]).order("sort_order");
+        .in("period",["list_area_type","list_thick_opt","list_r_val","list_const_type","list_ladder_opt"]).order("sort_order");
       if(listRows?.length){
         const th=listRows.filter(r=>r.period==="list_thick_opt").map(r=>r.name);
         const rv=listRows.filter(r=>r.period==="list_r_val").map(r=>r.name);
@@ -1567,6 +1595,10 @@ export default function ProjectEstimate() {
         if(rv.length) setDbRVals(rv);
         const at=listRows.filter(r=>r.period==="list_area_type").map(r=>r.name);
         if(at.length) setCompanyAreaTypes(at);
+        const ct=listRows.filter(r=>r.period==="list_const_type").map(r=>r.name);
+        if(ct.length) setDbConstTypes(ct);
+        const lo=listRows.filter(r=>r.period==="list_ladder_opt").map(r=>r.name);
+        if(lo.length) setDbLadderOpts(lo);
       }
     });
   },[]);
@@ -1715,7 +1747,7 @@ export default function ProjectEstimate() {
         const isSavedOpenArea = savedUIState?.openAreaFloor===fl.name
           && savedUIState?.openAreaType===(a.area_type||"")
           && savedUIState?.openAreaOccurrence===occurrence;
-        const areaCard={temp_id:a.id,floor:fl.name,area_type:a.area_type,material:combos.length>0?"__combo__":(a.material||""),thickness_in:a.thickness_in||"",r_value:a.r_value||"",oc:a.oc||"",sqft:a.sqft||0,measurements,mh:"",ml:"",mq:"1",deduct_sqft:a.deduct_sqft||"",paint_sqft:a.paint_sqft||"",price_override:a.price_override||"",phase:a.phase||null,_collapsed:isSavedOpenArea?false:true,options:Array.isArray(a.options)?a.options:(typeof a.options==="string"?JSON.parse(a.options||"[]"):[]),mat_lines,is_optional:a.is_optional||false,optional_note:a.optional_note||""};
+        const areaCard={temp_id:a.id,floor:fl.name,area_type:a.area_type,material:combos.length>0?"__combo__":(a.material||""),thickness_in:a.thickness_in||"",r_value:a.r_value||"",oc:a.oc||"",sqft:a.sqft||0,measurements,mh:"",ml:"",mq:"1",deduct_sqft:a.deduct_sqft||"",paint_sqft:a.paint_sqft||"",price_override:a.price_override||"",phase:a.phase||null,_collapsed:isSavedOpenArea?false:true,options:Array.isArray(a.options)?a.options:(typeof a.options==="string"?JSON.parse(a.options||"[]"):[]),mat_lines,is_optional:a.is_optional||false,optional_note:a.optional_note||"",note:a.note||""};
         if(newAreas[fl.name]) newAreas[fl.name].push(areaCard);
       });
       setAreas(newAreas);
@@ -2163,11 +2195,12 @@ export default function ProjectEstimate() {
           const hasSqft = (a.sqft>0)||(a.measurements?.length>0);
           const flag = !hasSqft ? " — ⚠ INCOMPLETE, not yet measured" : "";
           const thick = mls[0]?.thickness_in || "";
-          const specs = mls.map(ml=>[ml.material,ml.r_value].filter(Boolean).join(" ")).filter(Boolean);
+          const specs = mls.map(ml=>[ml.material,formatRValue(ml.r_value)].filter(Boolean).join(" ")).filter(Boolean);
           const spec = mls.length>1
             ? [thick,"Combo:",specs.join(" + ")].filter(Boolean).join(" ")
             : [thick,specs[0]].filter(Boolean).join(" ");
           lines.push(`  ${a.area_type} — ${spec||"(no material chosen yet)"} — ${a.sqft||0} ft²${a.is_optional?" (Optional)":""}${flag}`);
+          if(a.note&&a.note.trim()) lines.push(`    📝 ${a.note.trim()}`);
         });
       });
       // ⚡ Sub-options ("+ Add Option" alternates) - these were missing from
@@ -2185,13 +2218,13 @@ export default function ProjectEstimate() {
         lines.push("SUB-OPTIONS (PRICE SEPARATELY)");
         snapshotSubOpts.forEach(o=>{
           const optMls=(o.mat_lines||[]).length>0?o.mat_lines:[{material:o.material||"",thickness_in:o.thickness_in||o._area?.thickness_in||"",r_value:o.r_value||o._area?.r_value||""}];
-          const matLabel=(optMls.length>1?[optMls[0]?.thickness_in,"Combo:",optMls.map(ml=>[ml.material,ml.r_value].filter(Boolean).join(" ")).join(" + ")].filter(Boolean).join(" "):[optMls[0]?.thickness_in,optMls[0]?.material,optMls[0]?.r_value].filter(Boolean).join(" "));
+          const matLabel=(optMls.length>1?[optMls[0]?.thickness_in,"Combo:",optMls.map(ml=>[ml.material,formatRValue(ml.r_value)].filter(Boolean).join(" ")).join(" + ")].filter(Boolean).join(" "):[optMls[0]?.thickness_in,optMls[0]?.material,formatRValue(optMls[0]?.r_value)].filter(Boolean).join(" "));
           const optTotalR = optMls.reduce((sum,ml)=>{
             const r = parseInt((ml.r_value||"").replace(/\D/g,""))||0;
             return sum+r;
           },0);
           lines.push(`  *${(o.label||"").toUpperCase()}* — ${o._floor} — ${o._area.area_type}`);
-          lines.push(`    ${matLabel}${optTotalR>0?` (Total R-${optTotalR})`:""} - ${o._area.sqft||0} ft²`);
+          lines.push(`    ${matLabel}${optTotalR>0?` (Total R${optTotalR})`:""} - ${o._area.sqft||0} ft²`);
           if(o.note) lines.push(`    📝 ${o.note}`);
         });
       }
@@ -2288,7 +2321,7 @@ export default function ProjectEstimate() {
        return mls.map((ml,mi)=>{
          const mat=materialMap[ml.material];
          const {qty,unit,unit_price,line_total}=calcAreaForSave(a,ml,mi,mat,variantMap);
-         return {project_id:targetProjectId,floor_id:floorMap[floor],area_type:a.area_type,material:ml.material,thickness_in:ml.thickness_in||null,r_value:ml.r_value,sqft:a.sqft,qty,unit,unit_price,line_total,order_index:i*10+mi,company_id:companyId,options:mi===0?(a.options||[]):[],paint_sqft:mi===0?Number(a.paint_sqft||0):0,deduct_sqft:mi===0?Number(a.deduct_sqft||0):0,price_override:mi===0?(a.price_override||null):null,phase:mi===0?(a.phase||null):null,is_optional:mi===0?(a.is_optional||false):false,optional_note:mi===0?(a.optional_note||""):""};
+         return {project_id:targetProjectId,floor_id:floorMap[floor],area_type:a.area_type,material:ml.material,thickness_in:ml.thickness_in||null,r_value:ml.r_value,sqft:a.sqft,qty,unit,unit_price,line_total,order_index:i*10+mi,company_id:companyId,options:mi===0?(a.options||[]):[],paint_sqft:mi===0?Number(a.paint_sqft||0):0,deduct_sqft:mi===0?Number(a.deduct_sqft||0):0,price_override:mi===0?(a.price_override||null):null,phase:mi===0?(a.phase||null):null,is_optional:mi===0?(a.is_optional||false):false,optional_note:mi===0?(a.optional_note||""):"",note:mi===0?(a.note||""):""};
        });
      }));
 
@@ -2383,7 +2416,7 @@ export default function ProjectEstimate() {
       const allAreas=uniqueNewFloors.flatMap(floor=>(committedAreas[floor]||[]).filter(a=>a.area_type).flatMap((a)=>{
         const i=_newAreaIdx++;
         const mls=(a.mat_lines&&a.mat_lines.length>0)?a.mat_lines:[{material:a.material||"",thickness_in:a.thickness_in||"",r_value:a.r_value||"",oc:a.oc||""}];
-        return mls.map((ml,mi)=>{const mat=materialMap[ml.material];const {qty,unit,unit_price,line_total}=calcAreaForSave(a,ml,mi,mat,variantMap);return {project_id:proj.id,floor_id:floorMap[floor],area_type:a.area_type,material:ml.material,thickness_in:ml.thickness_in||null,r_value:ml.r_value,sqft:a.sqft,qty,unit,unit_price,line_total,order_index:i*10+mi,company_id:companyId,options:mi===0?(a.options||[]):[],paint_sqft:mi===0?Number(a.paint_sqft||0):0,deduct_sqft:mi===0?Number(a.deduct_sqft||0):0,price_override:mi===0?(a.price_override||null):null,phase:mi===0?(a.phase||null):null,is_optional:mi===0?(a.is_optional||false):false,optional_note:mi===0?(a.optional_note||""):""}; });
+        return mls.map((ml,mi)=>{const mat=materialMap[ml.material];const {qty,unit,unit_price,line_total}=calcAreaForSave(a,ml,mi,mat,variantMap);return {project_id:proj.id,floor_id:floorMap[floor],area_type:a.area_type,material:ml.material,thickness_in:ml.thickness_in||null,r_value:ml.r_value,sqft:a.sqft,qty,unit,unit_price,line_total,order_index:i*10+mi,company_id:companyId,options:mi===0?(a.options||[]):[],paint_sqft:mi===0?Number(a.paint_sqft||0):0,deduct_sqft:mi===0?Number(a.deduct_sqft||0):0,price_override:mi===0?(a.price_override||null):null,phase:mi===0?(a.phase||null):null,is_optional:mi===0?(a.is_optional||false):false,optional_note:mi===0?(a.optional_note||""):"",note:mi===0?(a.note||""):""}; });
       }));
       if(allAreas.length>0){
         const {data:areaRows,error:ae}=await supabase.from("areas").insert(allAreas).select();
@@ -2543,8 +2576,8 @@ export default function ProjectEstimate() {
 
             <div style={CARD_ORANGE} className={currentAreas.some(a=>!isAreaComplete(a))?"area-focus-bg":""}>
             <div style={{display:"flex",gap:6,marginBottom:6}}>
-              <select style={{...S,flex:1,height:32,fontSize:12}} value={crewNotes.const_type} onChange={e=>setCrewNotes(p=>({...p,const_type:e.target.value}))}><option value="">Job type…</option>{CONST_TYPES.map(t=><option key={t}>{t}</option>)}</select>
-              <select style={{...S,flex:1,height:32,fontSize:12}} value={crewNotes.ladder} onChange={e=>setCrewNotes(p=>({...p,ladder:e.target.value}))}><option value="">Ladder…</option>{LADDER_OPTS.map(l=><option key={l}>{l}</option>)}</select>
+              <select style={{...S,flex:1,height:32,fontSize:12}} value={crewNotes.const_type} onChange={e=>setCrewNotes(p=>({...p,const_type:e.target.value}))}><option value="">Job type…</option>{(dbConstTypes.length?dbConstTypes:CONST_TYPES).map(t=><option key={t}>{t}</option>)}</select>
+              <select style={{...S,flex:1,height:32,fontSize:12}} value={crewNotes.ladder} onChange={e=>setCrewNotes(p=>({...p,ladder:e.target.value}))}><option value="">Ladder…</option>{(dbLadderOpts.length?dbLadderOpts:LADDER_OPTS).map(l=><option key={l}>{l}</option>)}</select>
             </div>
             <div style={{display:"flex",gap:6,alignItems:"center",marginBottom:6}}>
               <span style={{fontSize:11,color:C.muted,whiteSpace:"nowrap"}}>FireBlock</span>

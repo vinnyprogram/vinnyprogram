@@ -2,6 +2,12 @@ import React, { useState, useEffect, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 
+// Display-only formatting: "R-30" -> "R30" (matches the same change made in
+// the estimate panel) - only affects how it's shown here, not stored data.
+function formatRValue(v) {
+  return (v || "").replace(/-/g, "");
+}
+
 // Scope-of-work ordering - roughly "most structurally important first"
 // rather than floor order, matching the same priority used in the estimate
 // panel so the office report and the working panel read in the same order.
@@ -153,7 +159,7 @@ export default function FieldReport() {
     const physicalAreas = primaryAreas.map(p=>{
       const combos = sortedAreas.filter(s=>s.floor_id===p.floor_id && s.order_index>p.order_index && s.order_index<p.order_index+10);
       const mls = [{material:p.material,thickness_in:p.thickness_in,r_value:p.r_value}, ...combos.map(c=>({material:c.material,thickness_in:c.thickness_in,r_value:c.r_value}))];
-      return { area_type:p.area_type, floor_id:p.floor_id, sqft:p.sqft||0, deduct_sqft:p.deduct_sqft||0, id:p.id, mat_lines:mls };
+      return { area_type:p.area_type, floor_id:p.floor_id, sqft:p.sqft||0, deduct_sqft:p.deduct_sqft||0, id:p.id, mat_lines:mls, note:p.note||"" };
     });
     const groupMap = {};
     physicalAreas.forEach(a=>{
@@ -163,7 +169,7 @@ export default function FieldReport() {
       const key = (a.area_type||"")+"||||"+specKey;
       if(!groupMap[key]) groupMap[key]={
         floors: [], floorOrder: floorIdx, area_type:a.area_type, mat_lines:a.mat_lines,
-        sqft:0, deduct:0, segs:[],
+        sqft:0, deduct:0, segs:[], notes:[],
       };
       const g = groupMap[key];
       if(fl && !g.floors.find(f=>f.id===fl.id)) g.floors.push(fl);
@@ -171,11 +177,12 @@ export default function FieldReport() {
       g.sqft += a.sqft||0;
       g.deduct += Number(a.deduct_sqft)||0;
       g.segs.push(...segments.filter(s=>s.area_id===a.id));
+      if(a.note && a.note.trim()) g.notes.push({floor:fl?.name||"",text:a.note.trim()});
     });
     const groups = Object.values(groupMap).sort((a,b)=>areaTypePriority(a.area_type)-areaTypePriority(b.area_type)||a.floorOrder-b.floorOrder);
     groups.forEach(g=>{
       const thick = g.mat_lines[0]?.thickness_in || "";
-      const specs = g.mat_lines.map(ml=>[ml.material,ml.r_value].filter(Boolean).join(" ")).filter(Boolean);
+      const specs = g.mat_lines.map(ml=>[ml.material,formatRValue(ml.r_value)].filter(Boolean).join(" ")).filter(Boolean);
       const spec = g.mat_lines.length>1
         ? [thick,"Combo:",specs.join(" + ")].filter(Boolean).join(" ")
         : [thick,specs[0]].filter(Boolean).join(" ");
@@ -185,8 +192,10 @@ export default function FieldReport() {
       const measStr = g.segs.length>0
         ? g.segs.map(s=>`${s.height}x${s.length}${s.qty>1?`x${s.qty}`:""}`).join("  ")
         : "";
+      const showFloorOnNote = g.floors.length>1;
       lines.push(`${floorLabel?floorLabel+": ":""}${g.area_type} ${spec} - ${fmt(g.sqft)}ft²${g.deduct>0?` (−${fmt(g.deduct)}ft² deducted)`:""}`);
       if(measStr) lines.push(`  ${measStr}`);
+      g.notes.forEach(n=>lines.push(`  📝 ${showFloorOnNote&&n.floor?`${n.floor}: `:""}${n.text}`));
       lines.push("");
     });
 
@@ -228,13 +237,13 @@ export default function FieldReport() {
       emailSubOpts.forEach(o=>{
         const fl = floors.find(f=>f.id===o._area.floor_id);
         const optMls=(o.mat_lines||[]).length>0?o.mat_lines:[{material:o.material||"",thickness_in:o.thickness_in||o._area?.thickness_in||"",r_value:o.r_value||o._area?.r_value||""}];
-        const matLabel=(optMls.length>1?[optMls[0]?.thickness_in,"Combo:",optMls.map(ml=>[ml.material,ml.r_value].filter(Boolean).join(" ")).join(" + ")].filter(Boolean).join(" "):[optMls[0]?.thickness_in,optMls[0]?.material,optMls[0]?.r_value].filter(Boolean).join(" "));
+        const matLabel=(optMls.length>1?[optMls[0]?.thickness_in,"Combo:",optMls.map(ml=>[ml.material,formatRValue(ml.r_value)].filter(Boolean).join(" ")).join(" + ")].filter(Boolean).join(" "):[optMls[0]?.thickness_in,optMls[0]?.material,formatRValue(optMls[0]?.r_value)].filter(Boolean).join(" "));
         const optTotalR = optMls.reduce((sum,ml)=>{
           const r = parseInt((ml.r_value||"").replace(/\D/g,""))||0;
           return sum+r;
         },0);
         lines.push(`- *${(o.label||"").toUpperCase()}* — ${fl?.name?fl.name+" — ":""}${o._area.area_type}`);
-        lines.push(`  ${matLabel}${optTotalR>0?` (Total R-${optTotalR})`:""} - ${o._area.sqft}ft²`);
+        lines.push(`  ${matLabel}${optTotalR>0?` (Total R${optTotalR})`:""} - ${o._area.sqft}ft²`);
         if(o.note) lines.push(`  📝 ${o.note}`);
       });
     }
@@ -454,6 +463,7 @@ export default function FieldReport() {
                   paint_sqft: a.paint_sqft||0,
                   materials: [],
                   segs: segments.filter(s=>s.area_id===a.id),
+                  notes: a.note&&a.note.trim()?[{floor:fl?.name||"",text:a.note.trim()}]:[],
                 };
                 const g = groupMap[key];
                 // add material if not duplicate
@@ -480,6 +490,7 @@ export default function FieldReport() {
                   paint_sqft: 0,
                   materials: g.materials,
                   segs: [],
+                  notes: [],
                 };
                 const mg = mergedMap[key];
                 if(!mg.floors.find(f=>f?.id===g.floor?.id)) mg.floors.push(g.floor);
@@ -488,6 +499,7 @@ export default function FieldReport() {
                 mg.deduct += Number(g.deduct)||0;
                 mg.paint_sqft += g.paint_sqft||0;
                 mg.segs = [...mg.segs, ...g.segs];
+                mg.notes = [...mg.notes, ...g.notes];
               });
 
               const groups = Object.values(mergedMap).sort((a,b)=>areaTypePriority(a.area_type)-areaTypePriority(b.area_type)||a.floorOrder-b.floorOrder);
@@ -500,13 +512,13 @@ export default function FieldReport() {
                   .map(f=>f?.name?.replace(" Floor",""))
                   .filter(Boolean).join(", ");
 
-                // combo: "2x6 Combo: Closed Cell R-15 + Open Cell R-21"
-                // single: "2x6 Open Cell R-21"
+                // combo: "2x6 Combo: Closed Cell R15 + Open Cell R21"
+                // single: "2x6 Open Cell R21"
                 const matLabel = isCombo
                   ? [g.materials[0]?.thickness_in, "Combo:", g.materials.map(m=>
-                      [m.material, m.r_value].filter(Boolean).join(" ")
+                      [m.material, formatRValue(m.r_value)].filter(Boolean).join(" ")
                     ).join(" + ")].filter(Boolean).join(" ")
-                  : [g.materials[0]?.thickness_in, g.materials[0]?.material, g.materials[0]?.r_value]
+                  : [g.materials[0]?.thickness_in, g.materials[0]?.material, formatRValue(g.materials[0]?.r_value)]
                       .filter(Boolean).join(" ");
                 const measStr = g.segs.length>0
                   ? g.segs.map(s=>`${s.height}×${s.length}${s.qty>1?`×${s.qty}`:""}`).join("  ")
@@ -543,6 +555,11 @@ export default function FieldReport() {
                         {g.deduct>0 && <span style={{color:"#ef4444",fontWeight:700,marginLeft:6}}>−{fmt(g.deduct)} ft² deducted</span>}
                       </div>
                     )}
+                    {g.notes && g.notes.map((n,ni)=>(
+                      <div key={ni} style={{fontSize:10,color:"#b45309",fontStyle:"italic",marginTop:3,paddingLeft:4}}>
+                        📝 {g.floors.length>1&&n.floor?`${n.floor}: `:""}{n.text}
+                      </div>
+                    ))}
                     {g.paint_sqft>0 && (
                       <div style={{fontSize:10,color:"#c2410c",marginTop:3,
                           paddingLeft:4,fontWeight:600}}>
@@ -581,7 +598,7 @@ export default function FieldReport() {
                   const floorLabel = g.floors
                     .sort((a,b)=>floors.findIndex(f=>f.id===a?.id)-floors.findIndex(f=>f.id===b?.id))
                     .map(f=>f?.name?.replace(" Floor","")).filter(Boolean).join(", ");
-                  const matLabel = (g.materials.length>1?[g.materials[0]?.thickness_in,"Combo:",g.materials.map(ml=>[ml.material,ml.r_value].filter(Boolean).join(" ")).join(" + ")].filter(Boolean).join(" "):[g.materials[0]?.thickness_in,g.materials[0]?.material,g.materials[0]?.r_value].filter(Boolean).join(" "));
+                  const matLabel = (g.materials.length>1?[g.materials[0]?.thickness_in,"Combo:",g.materials.map(ml=>[ml.material,formatRValue(ml.r_value)].filter(Boolean).join(" ")).join(" + ")].filter(Boolean).join(" "):[g.materials[0]?.thickness_in,g.materials[0]?.material,formatRValue(g.materials[0]?.r_value)].filter(Boolean).join(" "));
                   return (
                     <div key={i} style={{padding:"8px 12px",background:i%2===0?"#fffbeb":"white",
                         border:"1px solid #fde68a",borderTop:i===0?"1px solid #fde68a":"none",
@@ -620,7 +637,7 @@ export default function FieldReport() {
                 {subOpts.map((o,i)=>{
                   const fl = floors.find(f=>f.id===o._area.floor_id);
                   const optMls=(o.mat_lines||[]).length>0?o.mat_lines:[{material:o.material||"",thickness_in:o.thickness_in||o._area?.thickness_in||"",r_value:o.r_value||o._area?.r_value||""}];
-                  const matLabel=(optMls.length>1?[optMls[0]?.thickness_in,"Combo:",optMls.map(ml=>[ml.material,ml.r_value].filter(Boolean).join(" ")).join(" + ")].filter(Boolean).join(" "):[optMls[0]?.thickness_in,optMls[0]?.material,optMls[0]?.r_value].filter(Boolean).join(" "));
+                  const matLabel=(optMls.length>1?[optMls[0]?.thickness_in,"Combo:",optMls.map(ml=>[ml.material,formatRValue(ml.r_value)].filter(Boolean).join(" ")).join(" + ")].filter(Boolean).join(" "):[optMls[0]?.thickness_in,optMls[0]?.material,formatRValue(optMls[0]?.r_value)].filter(Boolean).join(" "));
                   const optTotalR = optMls.reduce((sum,ml)=>{
                     const r = parseInt((ml.r_value||"").replace(/\D/g,""))||0;
                     return sum+r;
@@ -633,7 +650,7 @@ export default function FieldReport() {
                         <div>
                           <span style={{fontSize:13,fontWeight:800,color:"#92400e"}}>{o.label}</span>
                           <span style={{fontSize:11,color:"#374151",marginLeft:6}}>— {fl?.name} — {o._area.area_type}</span>
-                          <div style={{fontSize:10,color:"#64748b"}}>{matLabel}{optTotalR>0&&<span style={{color:"#059669",fontWeight:700,marginLeft:6}}>Total R-{optTotalR}</span>}</div>
+                          <div style={{fontSize:10,color:"#64748b"}}>{matLabel}{optTotalR>0&&<span style={{color:"#059669",fontWeight:700,marginLeft:6}}>Total R{optTotalR}</span>}</div>
                           {o.note&&<div style={{fontSize:10,color:"#b45309",fontStyle:"italic"}}>📝 {o.note}</div>}
                         </div>
                         <span style={{fontSize:12,fontWeight:700,color:"#92400e"}}>{o._area.sqft} ft²</span>
