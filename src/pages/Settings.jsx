@@ -97,6 +97,38 @@ export default function Settings() {
   const [newAreaTypeHers,   setNewAreaTypeHers]   = useState("");
   const [newThickOptHers,   setNewThickOptHers]   = useState("");
   const [newRValHers,       setNewRValHers]       = useState("");
+  const [listsAutoSaved,    setListsAutoSaved]    = useState(false);
+
+  // Auto-save just the lists (reorder/add/remove) shortly after any change -
+  // separate from the big "Save All" button, which stays manual for
+  // everything else on this page. Reordering visually "worked" immediately
+  // (it's just local state) but silently discarded itself if the person
+  // navigated away before hitting Save All - this closes that gap without
+  // making the whole Settings page auto-save, which would be riskier for
+  // the heavier sections like pricing/materials.
+  async function saveLists(){
+    if(!company?.id) return;
+    await supabase.from("cost_settings").delete().eq("company_id",company.id)
+      .in("period",["list_area_type","list_thick_opt","list_r_val","list_area_type_hers","list_thick_opt_hers","list_r_val_hers"]);
+    const listInserts = [
+      ...listAreaTypes.filter(Boolean).map((name,i)=>({company_id:company.id,category:"Lists",name,period:"list_area_type",amount:0,sort_order:i})),
+      ...listThickOpts.filter(Boolean).map((name,i)=>({company_id:company.id,category:"Lists",name,period:"list_thick_opt",amount:0,sort_order:i})),
+      ...listRVals.filter(Boolean).map((name,i)=>({company_id:company.id,category:"Lists",name,period:"list_r_val",amount:0,sort_order:i})),
+      ...listAreaTypesHers.filter(Boolean).map((name,i)=>({company_id:company.id,category:"Lists",name,period:"list_area_type_hers",amount:0,sort_order:i})),
+      ...listThickOptsHers.filter(Boolean).map((name,i)=>({company_id:company.id,category:"Lists",name,period:"list_thick_opt_hers",amount:0,sort_order:i})),
+      ...listRValsHers.filter(Boolean).map((name,i)=>({company_id:company.id,category:"Lists",name,period:"list_r_val_hers",amount:0,sort_order:i})),
+    ];
+    if(listInserts.length>0) await supabase.from("cost_settings").insert(listInserts);
+  }
+  useEffect(()=>{
+    if(!settingsLoaded || !company?.id) return; // don't fire on initial load, before real data exists yet
+    const t = setTimeout(async()=>{
+      await saveLists();
+      setListsAutoSaved(true);
+      setTimeout(()=>setListsAutoSaved(false), 1800);
+    }, 900);
+    return ()=>clearTimeout(t);
+  },[listAreaTypes, listThickOpts, listRVals, listAreaTypesHers, listThickOptsHers, listRValsHers, settingsLoaded, company?.id]);
 
   // Overhead
   const [costs, setCosts] = useState([]);
@@ -984,18 +1016,9 @@ export default function Settings() {
         .update({ offers_insulation: offersInsulation, offers_hers: offersHers, offers_board_plaster: offersBoardPlaster, offers_gc: offersGc })
         .eq("id", company.id);
 
-      // save configurable lists
-      await supabase.from("cost_settings").delete().eq("company_id",company.id)
-        .in("period",["list_area_type","list_thick_opt","list_r_val","list_area_type_hers","list_thick_opt_hers","list_r_val_hers"]);
-      const listInserts = [
-        ...listAreaTypes.filter(Boolean).map((name,i)=>({company_id:company.id,category:"Lists",name,period:"list_area_type",amount:0,sort_order:i})),
-        ...listThickOpts.filter(Boolean).map((name,i)=>({company_id:company.id,category:"Lists",name,period:"list_thick_opt",amount:0,sort_order:i})),
-        ...listRVals.filter(Boolean).map((name,i)=>({company_id:company.id,category:"Lists",name,period:"list_r_val",amount:0,sort_order:i})),
-        ...listAreaTypesHers.filter(Boolean).map((name,i)=>({company_id:company.id,category:"Lists",name,period:"list_area_type_hers",amount:0,sort_order:i})),
-        ...listThickOptsHers.filter(Boolean).map((name,i)=>({company_id:company.id,category:"Lists",name,period:"list_thick_opt_hers",amount:0,sort_order:i})),
-        ...listRValsHers.filter(Boolean).map((name,i)=>({company_id:company.id,category:"Lists",name,period:"list_r_val_hers",amount:0,sort_order:i})),
-      ];
-      if(listInserts.length>0) await supabase.from("cost_settings").insert(listInserts);
+      // save configurable lists (also handled by its own auto-save below,
+      // but included here too so a manual "Save All" always covers it)
+      await saveLists();
 
       setSaved(true);
       settingsLog("✅ Save All completed successfully");
@@ -1489,10 +1512,13 @@ export default function Settings() {
         {/* ── AREA TYPES, THICKNESS & R-VALUES ── */}
         {tab==="lists" && (
           <div>
-            <div style={{fontSize:12,color:C.muted,marginBottom:16,lineHeight:1.6}}>
-              <b>Drag ☰ to reorder</b>, or use ↑↓ buttons. Changes take effect after saving.
-              Insulation and HERS keep their own separate lists below, since they're sold as
-              separate trades — customizing one never affects the other.
+            <div style={{fontSize:12,color:C.muted,marginBottom:16,lineHeight:1.6,display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+              <span>
+                <b>Drag ☰ to reorder</b>, or use ↑↓ buttons — these save automatically a moment after you stop.
+                Insulation and HERS keep their own separate lists below, since they're sold as
+                separate trades — customizing one never affects the other.
+              </span>
+              {listsAutoSaved && <span style={{color:C.green,fontWeight:700,whiteSpace:"nowrap"}}>✓ Saved</span>}
             </div>
 
             {offersInsulation && (
