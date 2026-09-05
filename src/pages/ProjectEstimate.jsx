@@ -1053,8 +1053,13 @@ function useCalcResult(field) {
             {area.measurements.map((m,i)=>(
               <span key={i} style={{ display:"inline-flex", alignItems:"center", gap:2,
                   background:isComplete?"#dcfce7":C.chip, borderRadius:4, padding:"2px 6px", fontSize:10, color:C.muted }}>
-                {m.h}×{m.l}{m.q>1?`×${m.q}`:""}&nbsp;<b style={{color:C.ink}}>{fmt(m.sqft)}</b>
-                <button onClick={()=>delMeas(i)} style={{border:"none",background:"none",cursor:"pointer",color:C.faint,fontSize:11,padding:0,lineHeight:1}}>✕</button>
+                <span
+                  onClick={()=>onChange("paint_sqft", String(Math.round(((parseFloat(area.paint_sqft)||0)+m.sqft)*100)/100))}
+                  title="Tap to add this measurement's sqft to Intumescent paint below"
+                  style={{cursor:"pointer"}}>
+                  {m.h}×{m.l}{m.q>1?`×${m.q}`:""}&nbsp;<b style={{color:C.ink}}>{fmt(m.sqft)}</b>
+                </span>
+                <button onClick={e=>{e.stopPropagation();delMeas(i);}} style={{border:"none",background:"none",cursor:"pointer",color:C.faint,fontSize:11,padding:0,lineHeight:1}}>✕</button>
               </span>
             ))}
           </div>
@@ -1087,8 +1092,13 @@ function useCalcResult(field) {
               <span style={{fontSize:10,color:"#c2410c",whiteSpace:"nowrap",fontWeight:600}}>🎨 Intumescent paint</span>
               <input type="number" placeholder="0" inputMode="decimal" value={area.paint_sqft||""}
                 onChange={e=>onChange("paint_sqft",e.target.value)}
+                title="Type a number directly, or tap the green measurement chips above to add them in"
                 style={{...I,...noArrow,width:70,padding:"0 6px",height:26,fontSize:12}} />
               <span style={{fontSize:10,color:"#c2410c"}}>ft²</span>
+              {Number(area.paint_sqft)>0 && (
+                <button onClick={()=>onChange("paint_sqft","")} title="Clear"
+                  style={{border:"none",background:"none",color:"#c2410c",cursor:"pointer",fontSize:11,padding:0}}>↺</button>
+              )}
               {Number(area.paint_sqft)>0 && (()=>{
                 const paintMat=materialMap&&Object.values(materialMap).find(m=>m.name?.toLowerCase().includes("intumescent"));
                 return paintMat
