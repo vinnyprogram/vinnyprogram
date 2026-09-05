@@ -363,15 +363,12 @@ async function saveNew() {
 }
 
 // ── AreaRow ───────────────────────────────────────────────────────────────────
-function AreaRow({ area, matTypesLive, materials, materialMap, variantMap, onChange, onDelete, onMove, onCopy, floors, activeFloor, saveOptionsOnly, onMaterialAdded, customAreaTypes, baseAreaTypes, onSaveCustomAreaType, dbThickOpts, dbRVals }) {
+function AreaRow({ area, matTypesLive, materials, materialMap, variantMap, onChange, onDelete, onMove, onCopy, floors, activeFloor, saveOptionsOnly, onMaterialAdded, baseAreaTypes, onSaveCustomAreaType, onSaveCustomThickOpt, onSaveCustomRVal, dbThickOpts, dbRVals }) {
   const effectiveThickOpts = (dbThickOpts&&dbThickOpts.length>0) ? dbThickOpts : THICK_OPTS;
   const effectiveRVals     = (dbRVals&&dbRVals.length>0) ? dbRVals : R_VALS;
   const [expanded, setExpanded] = useState(!area._collapsed);
   const [copyMenuOpen, setCopyMenuOpen] = useState(false);
   const [copyTargets, setCopyTargets] = useState([]);
-
-  const [thickOpts, setThickOpts] = useState(()=>loadCustomList("custom_thick_opts", THICK_OPTS));
-  const [rValOpts, setRValOpts] = useState(()=>loadCustomList("custom_rval_opts", R_VALS));
 
   // Calculator state is restored/persisted per-area so an in-progress
   // expression survives navigating to another page (or the phone
@@ -722,16 +719,13 @@ function useCalcResult(field) {
           }}>
           <option value="">Area type</option>
           {(baseAreaTypes||AREA_TYPES).map(a=><option key={a}>{a}</option>)}
-          {(customAreaTypes||[]).filter(t=>!(baseAreaTypes||AREA_TYPES).includes(t)).map(t=>(
-            <option key={t}>{t}</option>
-          ))}
           <option value="__other__">✏️ Other (custom)</option>
         </select>
         {!isComplete && (
         <button onClick={onDelete} style={{ border:"none", background:"none", color:C.faint, cursor:"pointer", fontSize:16, padding:"0 2px", lineHeight:1, flexShrink:0 }}>✕</button>
       )}
       </div>
-      {(area._show_custom_area || (area.area_type && !(baseAreaTypes||AREA_TYPES).includes(area.area_type) && !(customAreaTypes||[]).includes(area.area_type))) && (
+      {(area._show_custom_area || (area.area_type && !(baseAreaTypes||AREA_TYPES).includes(area.area_type))) && (
         <input placeholder="Type area name… (saved for reuse)" style={{...XS, width:"100%", marginBottom:3}}
           value={area.area_type||""}
           onChange={e=>onChange("area_type",e.target.value)}
@@ -783,7 +777,8 @@ function useCalcResult(field) {
           )}
           {area._custom_thick && (
             <input placeholder="Thickness e.g. 3in" style={{...XS,width:"100%",marginBottom:3}}
-              value={matLines[0].thickness_in||""} onChange={e=>updateMatLine(0,"thickness_in",e.target.value)} />
+              value={matLines[0].thickness_in||""} onChange={e=>updateMatLine(0,"thickness_in",e.target.value)}
+              onBlur={e=>{ const v=e.target.value.trim(); if(v) onSaveCustomThickOpt?.(v); }} />
           )}
         </div>
       )}
@@ -859,11 +854,13 @@ function useCalcResult(field) {
               </div>
               {(ml._custom_thick || (ml.thickness_in && !effectiveThickOpts.includes(ml.thickness_in))) && (
               <input placeholder="Custom thickness e.g. 3in" style={{...XS,width:"100%",marginBottom:2}}
-                value={ml.thickness_in||""} onChange={e=>updateMatLine(idx,"thickness_in",e.target.value)} />
+                value={ml.thickness_in||""} onChange={e=>updateMatLine(idx,"thickness_in",e.target.value)}
+                onBlur={e=>{ const v=e.target.value.trim(); if(v) onSaveCustomThickOpt?.(v); }} />
             )}
              {(ml._custom_rval || (ml.r_value && !effectiveRVals.includes(ml.r_value))) && (
                 <input placeholder="Custom R-Val e.g. R-22" style={{...XS,width:"100%",marginBottom:2}}
-                  value={ml.r_value||""} onChange={e=>updateMatLine(idx,"r_value",e.target.value)} />
+                  value={ml.r_value||""} onChange={e=>updateMatLine(idx,"r_value",e.target.value)}
+                  onBlur={e=>{ const v=e.target.value.trim(); if(v) onSaveCustomRVal?.(v); }} />
               )}
             </div>
           ))}
@@ -1029,7 +1026,7 @@ function useCalcResult(field) {
                {area._custom_rval && (
                 <input placeholder="e.g. R-22" style={{...XS, width:70}}
                   value={matLines[0].r_value||""} onChange={e=>updateMatLine(0,"r_value",e.target.value)}
-                  onBlur={e=>{ if(e.target.value){ saveCustomListItem("custom_rval_opts",e.target.value); setRValOpts(loadCustomList("custom_rval_opts",R_VALS)); }}} />
+                  onBlur={e=>{ const v=e.target.value.trim(); if(v) onSaveCustomRVal?.(v); }} />
               )}
               </>
             )}
@@ -1353,7 +1350,6 @@ export default function ProjectEstimate() {
   const [pendingFloor,setPendingFloor]=useState(null);
   const [areas,setAreas]=useState(()=>{const i={};DEFAULT_FLOORS.forEach(f=>{i[f]=[];});return i;});
   const [materials,setMaterials]=useState([]);
-  const [customAreaTypes,setCustomAreaTypes]=useState([]);  // extra area types saved to DB
   const [companyAreaTypes,setCompanyAreaTypes]=useState([]);  // this company's configured list from Settings (list_area_type) — authoritative when present
   const [dbThickOpts,setDbThickOpts]=useState([]);  // DB-driven thickness options
   const [dbRVals,setDbRVals]=useState([]);           // DB-driven R-value options
@@ -1583,9 +1579,6 @@ export default function ProjectEstimate() {
       if(fuel) setFuelRate(Number(fuel.amount||0.67));
       const {data:reps}=await supabase.from("sales_reps").select("*").eq("company_id",cd.id).eq("active",true).order("created_at");
       if(reps?.length) setSalesReps(reps);
-      // Load custom area types saved by this company (via the "Other" path)
-      const {data:cats}=await supabase.from("cost_settings").select("*").eq("company_id",cd.id).eq("period","custom_area_type").order("sort_order");
-      if(cats?.length) setCustomAreaTypes(cats.map(c=>c.name).filter(Boolean));
       const {data:listRows}=await supabase.from("cost_settings").select("name,period").eq("company_id",cd.id)
         .in("period",["list_area_type","list_thick_opt","list_r_val","list_const_type","list_ladder_opt"]).order("sort_order");
       if(listRows?.length){
@@ -1610,20 +1603,56 @@ export default function ProjectEstimate() {
 
   async function saveCustomAreaType(name){
     const base = companyAreaTypes.length ? companyAreaTypes : AREA_TYPES;
-    if(!name||base.includes(name)||customAreaTypes.includes(name)) return;
-    setCustomAreaTypes(prev=>[...prev,name]);
+    if(!name||base.includes(name)) return;
+    setCompanyAreaTypes([...base,name]);
     try{
       const {data:{user}}=await supabase.auth.getUser();
       if(!user) return;
       const {data:cd}=await supabase.from("companies").select("id").eq("user_id",user.id).maybeSingle();
       if(!cd) return;
-      // period must match "list_area_type" — that's what Settings.jsx reads back out.
-      // sort_order must stay within normal integer range — Date.now() overflows it.
+      // period must match "list_area_type" — that's what Settings.jsx reads back out,
+      // and what companyAreaTypes itself is loaded from, so this shows up in both
+      // places immediately (previously this read from a different, mismatched
+      // period on reload and never actually reached Settings).
       await supabase.from("cost_settings").insert([{
         company_id:cd.id, category:"Lists", name, period:"list_area_type",
-        amount:0, sort_order: customAreaTypes.length,
+        amount:0, sort_order: base.length,
       }]);
-    }catch(e){ console.warn("Could not save custom area type:",e.message); }
+    }catch(e){}
+  }
+
+  // Same pattern as saveCustomAreaType, for the "✏️ type your own" thickness
+  // and R-value inputs - these previously either saved to localStorage only
+  // (never reaching Settings/other devices) or didn't save anywhere at all.
+  async function saveCustomThickOpt(name){
+    const base = dbThickOpts.length ? dbThickOpts : THICK_OPTS;
+    if(!name||base.includes(name)) return;
+    setDbThickOpts([...base,name]);
+    try{
+      const {data:{user}}=await supabase.auth.getUser();
+      if(!user) return;
+      const {data:cd}=await supabase.from("companies").select("id").eq("user_id",user.id).maybeSingle();
+      if(!cd) return;
+      await supabase.from("cost_settings").insert([{
+        company_id:cd.id, category:"Lists", name, period:"list_thick_opt",
+        amount:0, sort_order: base.length,
+      }]);
+    }catch(e){}
+  }
+  async function saveCustomRVal(name){
+    const base = dbRVals.length ? dbRVals : R_VALS;
+    if(!name||base.includes(name)) return;
+    setDbRVals([...base,name]);
+    try{
+      const {data:{user}}=await supabase.auth.getUser();
+      if(!user) return;
+      const {data:cd}=await supabase.from("companies").select("id").eq("user_id",user.id).maybeSingle();
+      if(!cd) return;
+      await supabase.from("cost_settings").insert([{
+        company_id:cd.id, category:"Lists", name, period:"list_r_val",
+        amount:0, sort_order: base.length,
+      }]);
+    }catch(e){}
   }
 
   // Import areas from saved drawing measurements
@@ -2651,11 +2680,11 @@ export default function ProjectEstimate() {
           ):(
             <>
               {currentAreas.map((area,idx)=>({area,idx})).filter(({area})=>!isAreaComplete(area)).map(({area,idx})=>(
-                <AreaRow key={area.id||area.temp_id} area={area} matTypesLive={matTypesLive} materials={materials} materialMap={materialMap} variantMap={variantMap} onChange={(field,value)=>updateArea(activeFloor,idx,field,value)} onDelete={()=>deleteArea(activeFloor,idx)} onMove={(toFloor)=>{const realI=(areas[activeFloor]||[]).indexOf(area);moveArea(activeFloor,realI>=0?realI:idx,toFloor);}} onCopy={(toFloors)=>{const realI=(areas[activeFloor]||[]).indexOf(area);copyAreaToFloors(activeFloor,realI>=0?realI:idx,toFloors);}} floors={floors} activeFloor={activeFloor} saveOptionsOnly={saveOptionsOnly} onMaterialAdded={loadMaterials} customAreaTypes={customAreaTypes} baseAreaTypes={companyAreaTypes.length?companyAreaTypes:AREA_TYPES} onSaveCustomAreaType={saveCustomAreaType} dbThickOpts={dbThickOpts} dbRVals={dbRVals} />
+                <AreaRow key={area.id||area.temp_id} area={area} matTypesLive={matTypesLive} materials={materials} materialMap={materialMap} variantMap={variantMap} onChange={(field,value)=>updateArea(activeFloor,idx,field,value)} onDelete={()=>deleteArea(activeFloor,idx)} onMove={(toFloor)=>{const realI=(areas[activeFloor]||[]).indexOf(area);moveArea(activeFloor,realI>=0?realI:idx,toFloor);}} onCopy={(toFloors)=>{const realI=(areas[activeFloor]||[]).indexOf(area);copyAreaToFloors(activeFloor,realI>=0?realI:idx,toFloors);}} floors={floors} activeFloor={activeFloor} saveOptionsOnly={saveOptionsOnly} onMaterialAdded={loadMaterials} baseAreaTypes={companyAreaTypes.length?companyAreaTypes:AREA_TYPES} onSaveCustomAreaType={saveCustomAreaType} onSaveCustomThickOpt={saveCustomThickOpt} onSaveCustomRVal={saveCustomRVal} dbThickOpts={dbThickOpts} dbRVals={dbRVals} />
               ))}
               {currentAreas.some(a=>isAreaComplete(a))&&(<div style={{fontSize:9,fontWeight:700,color:"#059669",textTransform:"uppercase",letterSpacing:0.5,marginBottom:4,marginTop:2,paddingLeft:2}}>✓ Completed areas</div>)}
               {currentAreas.map((area,idx)=>({area,idx})).filter(({area})=>isAreaComplete(area)).map(({area,idx})=>(
-                <AreaRow key={area.id||area.temp_id} area={area} matTypesLive={matTypesLive} materials={materials} materialMap={materialMap} variantMap={variantMap} onChange={(field,value)=>updateArea(activeFloor,idx,field,value)} onDelete={()=>deleteArea(activeFloor,idx)} onMove={(toFloor)=>{const realI=(areas[activeFloor]||[]).indexOf(area);moveArea(activeFloor,realI>=0?realI:idx,toFloor);}} onCopy={(toFloors)=>{const realI=(areas[activeFloor]||[]).indexOf(area);copyAreaToFloors(activeFloor,realI>=0?realI:idx,toFloors);}} floors={floors} activeFloor={activeFloor} saveOptionsOnly={saveOptionsOnly} onMaterialAdded={loadMaterials} customAreaTypes={customAreaTypes} baseAreaTypes={companyAreaTypes.length?companyAreaTypes:AREA_TYPES} onSaveCustomAreaType={saveCustomAreaType} dbThickOpts={dbThickOpts} dbRVals={dbRVals} />
+                <AreaRow key={area.id||area.temp_id} area={area} matTypesLive={matTypesLive} materials={materials} materialMap={materialMap} variantMap={variantMap} onChange={(field,value)=>updateArea(activeFloor,idx,field,value)} onDelete={()=>deleteArea(activeFloor,idx)} onMove={(toFloor)=>{const realI=(areas[activeFloor]||[]).indexOf(area);moveArea(activeFloor,realI>=0?realI:idx,toFloor);}} onCopy={(toFloors)=>{const realI=(areas[activeFloor]||[]).indexOf(area);copyAreaToFloors(activeFloor,realI>=0?realI:idx,toFloors);}} floors={floors} activeFloor={activeFloor} saveOptionsOnly={saveOptionsOnly} onMaterialAdded={loadMaterials} baseAreaTypes={companyAreaTypes.length?companyAreaTypes:AREA_TYPES} onSaveCustomAreaType={saveCustomAreaType} onSaveCustomThickOpt={saveCustomThickOpt} onSaveCustomRVal={saveCustomRVal} dbThickOpts={dbThickOpts} dbRVals={dbRVals} />
               ))}
             </>
           )}
