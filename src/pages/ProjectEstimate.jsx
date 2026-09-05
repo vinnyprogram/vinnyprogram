@@ -2035,6 +2035,10 @@ export default function ProjectEstimate() {
           deduct_sqft: "",
           paint_sqft: "",
           price_override: "",
+          note: "",           // area-specific note shouldn't carry over
+          optional_note: "",  // same reasoning - was missed alongside `note`
+          is_optional: false, // "customer choice" status is per-area, not part of the spec
+          phase: null,        // phase/scheduling is per-area too
           _collapsed: false, // opens ready for the measurements to be typed in
         };
         next[toFloor] = [...(next[toFloor]||[]), copy];
