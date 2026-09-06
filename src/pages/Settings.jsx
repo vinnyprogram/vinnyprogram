@@ -92,34 +92,6 @@ export default function Settings() {
   // keeps both in sync instead of drifting apart.
   const [listsAutoSaved,    setListsAutoSaved]    = useState(false);
 
-  // Auto-save just the lists (reorder/add/remove) shortly after any change -
-  // separate from the big "Save All" button, which stays manual for
-  // everything else on this page. Reordering visually "worked" immediately
-  // (it's just local state) but silently discarded itself if the person
-  // navigated away before hitting Save All - this closes that gap without
-  // making the whole Settings page auto-save, which would be riskier for
-  // the heavier sections like pricing/materials.
-  async function saveLists(){
-    if(!company?.id) return;
-    await supabase.from("cost_settings").delete().eq("company_id",company.id)
-      .in("period",["list_area_type","list_thick_opt","list_r_val"]);
-    const listInserts = [
-      ...listAreaTypes.filter(Boolean).map((name,i)=>({company_id:company.id,category:"Lists",name,period:"list_area_type",amount:0,sort_order:i})),
-      ...listThickOpts.filter(Boolean).map((name,i)=>({company_id:company.id,category:"Lists",name,period:"list_thick_opt",amount:0,sort_order:i})),
-      ...listRVals.filter(Boolean).map((name,i)=>({company_id:company.id,category:"Lists",name,period:"list_r_val",amount:0,sort_order:i})),
-    ];
-    if(listInserts.length>0) await supabase.from("cost_settings").insert(listInserts);
-  }
-  useEffect(()=>{
-    if(!settingsLoaded || !company?.id) return; // don't fire on initial load, before real data exists yet
-    const t = setTimeout(async()=>{
-      await saveLists();
-      setListsAutoSaved(true);
-      setTimeout(()=>setListsAutoSaved(false), 1800);
-    }, 900);
-    return ()=>clearTimeout(t);
-  },[listAreaTypes, listThickOpts, listRVals, settingsLoaded, company?.id]);
-
   // Overhead
   const [costs, setCosts] = useState([]);
   const [jobsPerMonth, setJobsPerMonth] = useState(20);
@@ -175,6 +147,34 @@ export default function Settings() {
   // replace it with nothing, since the in-memory state would still be
   // at its default/empty values.
   const [settingsLoaded, setSettingsLoaded] = useState(false);
+
+  // Auto-save just the lists (reorder/add/remove) shortly after any change -
+  // separate from the big "Save All" button, which stays manual for
+  // everything else on this page. Reordering visually "worked" immediately
+  // (it's just local state) but silently discarded itself if the person
+  // navigated away before hitting Save All - this closes that gap without
+  // making the whole Settings page auto-save, which would be riskier for
+  // the heavier sections like pricing/materials.
+  async function saveLists(){
+    if(!company?.id) return;
+    await supabase.from("cost_settings").delete().eq("company_id",company.id)
+      .in("period",["list_area_type","list_thick_opt","list_r_val"]);
+    const listInserts = [
+      ...listAreaTypes.filter(Boolean).map((name,i)=>({company_id:company.id,category:"Lists",name,period:"list_area_type",amount:0,sort_order:i})),
+      ...listThickOpts.filter(Boolean).map((name,i)=>({company_id:company.id,category:"Lists",name,period:"list_thick_opt",amount:0,sort_order:i})),
+      ...listRVals.filter(Boolean).map((name,i)=>({company_id:company.id,category:"Lists",name,period:"list_r_val",amount:0,sort_order:i})),
+    ];
+    if(listInserts.length>0) await supabase.from("cost_settings").insert(listInserts);
+  }
+  useEffect(()=>{
+    if(!settingsLoaded || !company?.id) return; // don't fire on initial load, before real data exists yet
+    const t = setTimeout(async()=>{
+      await saveLists();
+      setListsAutoSaved(true);
+      setTimeout(()=>setListsAutoSaved(false), 1800);
+    }, 900);
+    return ()=>clearTimeout(t);
+  },[listAreaTypes, listThickOpts, listRVals, settingsLoaded, company?.id]);
 
   useEffect(()=>{ if(company?.id) load(); },[company?.id]);
 
