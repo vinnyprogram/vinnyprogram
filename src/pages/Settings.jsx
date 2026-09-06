@@ -86,17 +86,10 @@ export default function Settings() {
   const [newAreaType,   setNewAreaType]   = useState("");
   const [newThickOpt,   setNewThickOpt]   = useState("");
   const [newRVal,       setNewRVal]       = useState("");
-  // HERS gets its OWN copies of these same lists. Insulation and HERS are
-  // sold as separate trades (offers_insulation / offers_hers) - sharing one
-  // set of rows would mean a company running only one of them inherits (or
-  // corrupts) the other's customizations. Same mechanism, same starting
-  // defaults, separate stored data.
-  const [listAreaTypesHers, setListAreaTypesHers] = useState(DEFAULT_AREA_TYPES);
-  const [listThickOptsHers, setListThickOptsHers] = useState(DEFAULT_THICK_OPTS);
-  const [listRValsHers,     setListRValsHers]     = useState(DEFAULT_R_VALS);
-  const [newAreaTypeHers,   setNewAreaTypeHers]   = useState("");
-  const [newThickOptHers,   setNewThickOptHers]   = useState("");
-  const [newRValHers,       setNewRValHers]       = useState("");
+  // Shared between Insulation and HERS (see Settings "lists" tab note) -
+  // area type/thickness/R-value describe the same physical thing whether
+  // you're quoting it or measuring it for an energy model, so one list
+  // keeps both in sync instead of drifting apart.
   const [listsAutoSaved,    setListsAutoSaved]    = useState(false);
 
   // Auto-save just the lists (reorder/add/remove) shortly after any change -
@@ -109,14 +102,11 @@ export default function Settings() {
   async function saveLists(){
     if(!company?.id) return;
     await supabase.from("cost_settings").delete().eq("company_id",company.id)
-      .in("period",["list_area_type","list_thick_opt","list_r_val","list_area_type_hers","list_thick_opt_hers","list_r_val_hers"]);
+      .in("period",["list_area_type","list_thick_opt","list_r_val"]);
     const listInserts = [
       ...listAreaTypes.filter(Boolean).map((name,i)=>({company_id:company.id,category:"Lists",name,period:"list_area_type",amount:0,sort_order:i})),
       ...listThickOpts.filter(Boolean).map((name,i)=>({company_id:company.id,category:"Lists",name,period:"list_thick_opt",amount:0,sort_order:i})),
       ...listRVals.filter(Boolean).map((name,i)=>({company_id:company.id,category:"Lists",name,period:"list_r_val",amount:0,sort_order:i})),
-      ...listAreaTypesHers.filter(Boolean).map((name,i)=>({company_id:company.id,category:"Lists",name,period:"list_area_type_hers",amount:0,sort_order:i})),
-      ...listThickOptsHers.filter(Boolean).map((name,i)=>({company_id:company.id,category:"Lists",name,period:"list_thick_opt_hers",amount:0,sort_order:i})),
-      ...listRValsHers.filter(Boolean).map((name,i)=>({company_id:company.id,category:"Lists",name,period:"list_r_val_hers",amount:0,sort_order:i})),
     ];
     if(listInserts.length>0) await supabase.from("cost_settings").insert(listInserts);
   }
@@ -128,7 +118,7 @@ export default function Settings() {
       setTimeout(()=>setListsAutoSaved(false), 1800);
     }, 900);
     return ()=>clearTimeout(t);
-  },[listAreaTypes, listThickOpts, listRVals, listAreaTypesHers, listThickOptsHers, listRValsHers, settingsLoaded, company?.id]);
+  },[listAreaTypes, listThickOpts, listRVals, settingsLoaded, company?.id]);
 
   // Overhead
   const [costs, setCosts] = useState([]);
@@ -286,10 +276,11 @@ export default function Settings() {
       setOffersGc(co.offers_gc === true); // default false
     }
 
-    // load configurable lists (area types, thickness, R-values)
+    // load configurable lists (area types, thickness, R-values) - shared
+    // between Insulation and HERS
     const { data:listRows } = await supabase.from("cost_settings").select("*")
       .eq("company_id",company.id)
-      .in("period",["list_area_type","list_thick_opt","list_r_val","list_area_type_hers","list_thick_opt_hers","list_r_val_hers"])
+      .in("period",["list_area_type","list_thick_opt","list_r_val"])
       .order("sort_order");
     if(listRows?.length){
       const at = listRows.filter(r=>r.period==="list_area_type").map(r=>r.name);
@@ -298,12 +289,6 @@ export default function Settings() {
       if(at.length) setListAreaTypes(at);
       if(th.length) setListThickOpts(th);
       if(rv.length) setListRVals(rv);
-      const atH = listRows.filter(r=>r.period==="list_area_type_hers").map(r=>r.name);
-      const thH = listRows.filter(r=>r.period==="list_thick_opt_hers").map(r=>r.name);
-      const rvH = listRows.filter(r=>r.period==="list_r_val_hers").map(r=>r.name);
-      if(atH.length) setListAreaTypesHers(atH);
-      if(thH.length) setListThickOptsHers(thH);
-      if(rvH.length) setListRValsHers(rvH);
     }
     setSettingsLoaded(true);
     settingsLog("Settings finished loading - safe to save now");
@@ -1515,37 +1500,27 @@ export default function Settings() {
             <div style={{fontSize:12,color:C.muted,marginBottom:16,lineHeight:1.6,display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,flexWrap:"wrap"}}>
               <span>
                 <b>Drag ☰ to reorder</b>, or use ↑↓ buttons — these save automatically a moment after you stop.
-                Insulation and HERS keep their own separate lists below, since they're sold as
-                separate trades — customizing one never affects the other.
+                {offersInsulation && offersHers
+                  ? " Shared between the Insulation estimate and HERS's Insulation tab, so both always stay in sync."
+                  : ""}
               </span>
               {listsAutoSaved && <span style={{color:C.green,fontWeight:700,whiteSpace:"nowrap"}}>✓ Saved</span>}
             </div>
 
-            {offersInsulation && (
+            {(offersInsulation || offersHers) && (
               <>
                 <div style={{fontSize:12,fontWeight:800,color:C.ink,textTransform:"uppercase",letterSpacing:0.4,marginBottom:8,marginTop:4}}>
-                  🧰 Insulation
+                  🧰 Area Types & Materials
                 </div>
+                {(offersInsulation && offersHers) && (
+                  <div style={{fontSize:11,color:C.muted,marginBottom:10,marginTop:-4}}>
+                    Used by both the Insulation estimate and HERS's "🏗 Insulation" tab.
+                  </div>
+                )}
                 {[
                   {id:"area",  label:"Area Types", description:"Location/type of insulation areas", list:listAreaTypes, setList:setListAreaTypes, newVal:newAreaType, setNew:setNewAreaType, placeholder:"e.g. Cathedral Ceiling"},
                   {id:"thick", label:"Thickness / Stud Size", description:"Stud cavity and joist sizes", list:listThickOpts, setList:setListThickOpts, newVal:newThickOpt, setNew:setNewThickOpt, placeholder:"e.g. I-joist 11in"},
                   {id:"rval",  label:"R-Values", description:"R-value options for the area dropdown", list:listRVals, setList:setListRVals, newVal:newRVal, setNew:setNewRVal, placeholder:"e.g. R-25"},
-                ].map(renderListCard)}
-              </>
-            )}
-
-            {offersHers && (
-              <>
-                <div style={{fontSize:12,fontWeight:800,color:C.ink,textTransform:"uppercase",letterSpacing:0.4,marginBottom:8,marginTop:offersInsulation?24:4}}>
-                  📋 HERS — Insulation Measurements
-                </div>
-                <div style={{fontSize:11,color:C.muted,marginBottom:10,marginTop:-4}}>
-                  Used on the "🏗 Insulation" tab inside HERS field measurements.
-                </div>
-                {[
-                  {id:"area-hers",  label:"Area Types", description:"Location/type of insulation areas", list:listAreaTypesHers, setList:setListAreaTypesHers, newVal:newAreaTypeHers, setNew:setNewAreaTypeHers, placeholder:"e.g. Cathedral Ceiling"},
-                  {id:"thick-hers", label:"Thickness / Stud Size", description:"Stud cavity and joist sizes", list:listThickOptsHers, setList:setListThickOptsHers, newVal:newThickOptHers, setNew:setNewThickOptHers, placeholder:"e.g. I-joist 11in"},
-                  {id:"rval-hers",  label:"R-Values", description:"R-value options for the area dropdown", list:listRValsHers, setList:setListRValsHers, newVal:newRValHers, setNew:setNewRValHers, placeholder:"e.g. R-25"},
                 ].map(renderListCard)}
               </>
             )}
