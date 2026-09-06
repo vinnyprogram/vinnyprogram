@@ -3,6 +3,33 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { supabase } from "../lib/supabase";
 
+// Same starting defaults as the Insulation estimate's built-in fallback
+// consts (and what Settings.jsx also uses) - seeded into a brand-new
+// company's Settings so they start with a real, working, fully-editable
+// list instead of an empty one. About 90% of this is the same across
+// insulation companies; new customers can rename/reorder/remove anything.
+const DEFAULT_AREA_TYPES = ["Roof Rafter w/ Strapping","Roof Rafter behind knee walls","Floor","Exterior Wall","Demising Wall","Rim Joist","Concrete Wall","Ceiling","Interior Walls","Fire Blocking"];
+const DEFAULT_THICK_OPTS = ["2x3","2x4","2x6","2x8","2x10","2x12","I-joist 14in","I-joist 16in","I-joist 18in"];
+const DEFAULT_R_VALS     = ["R-11","R-13","R-15","R-19","R-21","R-28","R-30","R-38","R-49","R-60"];
+const DEFAULT_CONST_TYPES = ["New Construction","Remodeling","Addition","Existing Construction","Renovation","Commercial","Other"];
+const DEFAULT_LADDER_OPTS = ["5ft","7ft","10ft","12ft","16ft","20ft","Lift","No ladder needed"];
+
+async function seedDefaultSettings(companyId){
+  const rows = [
+    ...DEFAULT_AREA_TYPES.map((name,i)=>({company_id:companyId,category:"Lists",name,period:"list_area_type",amount:0,sort_order:i})),
+    ...DEFAULT_THICK_OPTS.map((name,i)=>({company_id:companyId,category:"Lists",name,period:"list_thick_opt",amount:0,sort_order:i})),
+    ...DEFAULT_R_VALS.map((name,i)=>({company_id:companyId,category:"Lists",name,period:"list_r_val",amount:0,sort_order:i})),
+    ...DEFAULT_CONST_TYPES.map((name,i)=>({company_id:companyId,category:"Lists",name,period:"list_const_type",amount:0,sort_order:i})),
+    ...DEFAULT_LADDER_OPTS.map((name,i)=>({company_id:companyId,category:"Lists",name,period:"list_ladder_opt",amount:0,sort_order:i})),
+  ];
+  try{
+    await supabase.from("cost_settings").insert(rows);
+  }catch(e){
+    // Non-fatal - the hardcoded fallback consts in the estimate pages
+    // still work fine if this seed insert ever fails for some reason.
+  }
+}
+
 export default function Onboarding() {
   const navigate = useNavigate();
   const { loadCompany } = useAuth();
@@ -94,7 +121,7 @@ export default function Onboarding() {
         }).eq("id", existing.id);
       } else {
         // insert new company
-        const { error: ce } = await supabase.from("companies").insert([{
+        const { data: newCompany, error: ce } = await supabase.from("companies").insert([{
           user_id: user.id,
           name: form.name,
           address: form.address || null,
@@ -104,8 +131,16 @@ export default function Onboarding() {
           website: form.website || null,
           logo_url,
           status: "trial",
-        }]);
+        }]).select().single();
         if (ce) throw new Error(ce.message || "Could not save company");
+        // Seed sensible starting defaults into Settings (Area Types,
+        // Thickness, R-Values, Job Type, Ladder Size) so a brand-new
+        // company isn't staring at empty dropdowns before they've had a
+        // chance to configure anything - about 90% of these are the same
+        // across insulation companies anyway. Everything here is fully
+        // editable in Settings right away; this just gives them a real,
+        // working starting point instead of a blank list.
+        if (newCompany?.id) await seedDefaultSettings(newCompany.id);
       }
 
       // reload company in context then navigate
