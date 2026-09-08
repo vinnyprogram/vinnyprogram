@@ -777,30 +777,32 @@ export default function HersFieldMeasurements() {
   // before with no visible change.
   const unitLabel = searchParams.get("unit") || "";
 
-  // HERS's own copies of the area type / thickness / R-value lists, kept
-  // separate from Insulation's even though they use the same Settings
-  // mechanism (see Settings.jsx "lists" tab) - each trade is sold and
-  // customized independently.
-  const [dbAreaTypesHers, setDbAreaTypesHers] = useState([]);
-  const [dbThickOptsHers, setDbThickOptsHers] = useState([]);
-  const [dbRValsHers, setDbRValsHers] = useState([]);
+  // Shares the SAME Settings-driven lists as the Insulation trade (not a
+  // separate HERS-only copy). Area type/thickness/R-value describe the same
+  // physical thing whether you're quoting it or measuring it for an energy
+  // model - keeping them in sync means data typed on either side is
+  // immediately available on the other, which matters a lot when
+  // transferring info between the two trades.
+  const [dbAreaTypes, setDbAreaTypes] = useState([]);
+  const [dbThickOpts, setDbThickOpts] = useState([]);
+  const [dbRVals, setDbRVals] = useState([]);
   useEffect(()=>{
     if(!company?.id) return;
     (async()=>{
       const { data:listRows } = await supabase.from("cost_settings").select("*")
         .eq("company_id", company.id)
-        .in("period",["list_area_type_hers","list_thick_opt_hers","list_r_val_hers"])
+        .in("period",["list_area_type","list_thick_opt","list_r_val"])
         .order("sort_order");
       if(listRows?.length){
-        setDbAreaTypesHers(listRows.filter(r=>r.period==="list_area_type_hers").map(r=>r.name));
-        setDbThickOptsHers(listRows.filter(r=>r.period==="list_thick_opt_hers").map(r=>r.name));
-        setDbRValsHers(listRows.filter(r=>r.period==="list_r_val_hers").map(r=>r.name));
+        setDbAreaTypes(listRows.filter(r=>r.period==="list_area_type").map(r=>r.name));
+        setDbThickOpts(listRows.filter(r=>r.period==="list_thick_opt").map(r=>r.name));
+        setDbRVals(listRows.filter(r=>r.period==="list_r_val").map(r=>r.name));
       }
     })();
   },[company?.id]);
-  const effectiveAreaTypes = dbAreaTypesHers.length ? dbAreaTypesHers : AREA_TYPES;
-  const effectiveThickOpts = dbThickOptsHers.length ? dbThickOptsHers : THICK_OPTS;
-  const effectiveRVals     = dbRValsHers.length ? dbRValsHers : R_VALS;
+  const effectiveAreaTypes = dbAreaTypes.length ? dbAreaTypes : AREA_TYPES;
+  const effectiveThickOpts = dbThickOpts.length ? dbThickOpts : THICK_OPTS;
+  const effectiveRVals     = dbRVals.length ? dbRVals : R_VALS;
 
 
   const [loading, setLoading]     = useState(true);
