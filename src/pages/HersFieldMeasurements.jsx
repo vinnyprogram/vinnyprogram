@@ -237,7 +237,7 @@ function FloorsEditor({ floors, onChange, onCommit, unitLabel }) {
 }
 
 // ── Single area row — mirrors AreaRow from insulation estimate, no pricing ──
-function AreaRow({ area, materials, onChange, onDelete, onCommit, areaTypes, thickOpts, rVals, floors, activeFloor, onCopy, onMove, onSaveCustomAreaType, onSaveCustomThickOpt, onSaveCustomRVal }) {
+function AreaRow({ area, materials, onChange, onDelete, onCommit, areaTypes, thickOpts, rVals, floors, activeFloor, onCopy, onMove, onSaveCustomAreaType, onSaveCustomThickOpt, onSaveCustomRVal, onMaterialAdded }) {
   const [calcOpen, setCalcOpen] = useState(false);
   const [calcExpr, setCalcExpr] = useState("");
   const [copyMenuOpen, setCopyMenuOpen] = useState(false);
@@ -276,6 +276,27 @@ function AreaRow({ area, materials, onChange, onDelete, onCommit, areaTypes, thi
     if(matLines.length<=2) return;
     const lines = matLines.filter((_,i)=>i!==idx);
     onChange("mat_lines",lines);
+  }
+
+  // Saves a typed-in custom material into the SAME shared materials catalog
+  // Insulation uses - so it's remembered for next time and shows up as a
+  // real option in both trades, instead of only existing as free text on
+  // this one area.
+  async function saveCustomMaterial(val, idx){
+    if(!val) return;
+    if(idx===0 && !isComboMode) onChange("material",val);
+    updateMatLine(idx, "material", val);
+    try{
+      const {data:{user}} = await supabase.auth.getUser();
+      if(!user) return;
+      const {data:cd} = await supabase.from("companies").select("id").eq("user_id",user.id).maybeSingle();
+      if(!cd) return;
+      const {data:existing} = await supabase.from("materials").select("id").eq("company_id",cd.id).eq("name",val).maybeSingle();
+      if(!existing){
+        await supabase.from("materials").insert([{company_id:cd.id,name:val,unit:"board_ft",price_per_unit:0}]);
+      }
+      onMaterialAdded?.();
+    }catch(e){ console.error("saveCustomMaterial error:",e); }
   }
 
   const totalR = matLines.reduce((s,ml)=>{
@@ -520,8 +541,8 @@ function AreaRow({ area, materials, onChange, onDelete, onCommit, areaTypes, thi
               style={{...I,height:32,marginBottom:4,border:"2px solid #059669",borderRadius:6,fontSize:13}}
               value={area.custom_material||""}
               onChange={e=>onChange("custom_material",e.target.value)}
-              onBlur={()=>{ const v=(area.custom_material||"").trim(); if(v){ updateMatLine(0,"material",v); onChange("material",v); }}}
-              onKeyDown={e=>{ if(e.key==="Enter"){ const v=(area.custom_material||"").trim(); if(v){ updateMatLine(0,"material",v); onChange("material",v); e.target.blur(); }}}} />
+              onBlur={()=>{ const v=(area.custom_material||"").trim(); if(v) saveCustomMaterial(v,0); }}
+              onKeyDown={e=>{ if(e.key==="Enter"){ const v=(area.custom_material||"").trim(); if(v){ saveCustomMaterial(v,0); e.target.blur(); }}}} />
           )}
         </div>
       )}
@@ -551,6 +572,14 @@ function AreaRow({ area, materials, onChange, onDelete, onCommit, areaTypes, thi
                     style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:14,padding:"0 2px",flexShrink:0}}>✕</button>
                 )}
               </div>
+              {ml.material==="__custom__" && (
+                <input autoFocus placeholder="Type material name…"
+                  style={{...I,height:30,marginBottom:4,border:"2px solid #059669",borderRadius:6,fontSize:12}}
+                  value={ml._custom_material_text||""}
+                  onChange={e=>updateMatLine(idx,"_custom_material_text",e.target.value)}
+                  onBlur={()=>{ const v=(ml._custom_material_text||"").trim(); if(v) saveCustomMaterial(v,idx); }}
+                  onKeyDown={e=>{ if(e.key==="Enter"){ const v=(ml._custom_material_text||"").trim(); if(v){ saveCustomMaterial(v,idx); e.target.blur(); }}}} />
+              )}
               <div style={{display:"flex",gap:4}}>
                 <select style={{...GS,flex:1}}
                   value={(thickOpts||THICK_OPTS).includes(ml.thickness_in)?ml.thickness_in:(ml._custom_thick?"__other_thick__":(ml.thickness_in||""))}
@@ -1155,9 +1184,10 @@ export default function HersFieldMeasurements() {
     if(autoSaveTick>0) save();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   },[autoSaveTick]);
-  useEffect(()=>{
+  function loadMaterials(){
     supabase.from("materials").select("*").then(({data})=>{ if(data) setMaterials(data); });
-  },[]);
+  }
+  useEffect(()=>{ loadMaterials(); },[]);
 
   // Area helpers
   function addArea(floor){
@@ -1902,6 +1932,7 @@ export default function HersFieldMeasurements() {
                     onSaveCustomAreaType={saveCustomAreaType}
                     onSaveCustomThickOpt={saveCustomThickOpt}
                     onSaveCustomRVal={saveCustomRVal}
+                    onMaterialAdded={loadMaterials}
                     onCommit={()=>setAutoSaveTick(t=>t+1)} />
                 );
               })}
@@ -1923,6 +1954,7 @@ export default function HersFieldMeasurements() {
                     onSaveCustomAreaType={saveCustomAreaType}
                     onSaveCustomThickOpt={saveCustomThickOpt}
                     onSaveCustomRVal={saveCustomRVal}
+                    onMaterialAdded={loadMaterials}
                     onCommit={()=>setAutoSaveTick(t=>t+1)} />
                 );
               })}
