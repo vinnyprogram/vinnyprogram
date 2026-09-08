@@ -497,10 +497,9 @@ function useCalcResult(field) {
     onChange("sqft", Math.max(0, Math.round(meas.reduce((s,m)=>s+m.sqft,0)-d)));
   }
 
-  async function saveCustomMaterial(val) {
+  async function saveCustomMaterial(val, idx=0) {
     if(!val) return;
-    onChange("mat_lines",[{id:1,material:val,thickness_in:matLines[0].thickness_in||"",r_value:matLines[0].r_value||"",oc:matLines[0].oc||""}]);
-    onChange("material",val);
+    updateMatLine(idx, "material", val);
     try {
       const {data:{user}} = await supabase.auth.getUser();
       if(!user) return;
@@ -815,7 +814,8 @@ function useCalcResult(field) {
                   <input placeholder="Type material…" style={{...XS,flex:1}}
                     value={ml.custom_material||""}
                     onChange={e=>updateMatLine(idx,"custom_material",e.target.value)}
-                    onBlur={()=>{ if(ml.custom_material) updateMatLine(idx,"material",ml.custom_material); }} />
+                    onBlur={()=>{ const v=(ml.custom_material||"").trim(); if(v) saveCustomMaterial(v,idx); }}
+                    onKeyDown={e=>{ if(e.key==="Enter"){ const v=(ml.custom_material||"").trim(); if(v){ saveCustomMaterial(v,idx); e.target.blur(); } }}} />
                 )}
                 {matLines.length>2 && <button onClick={()=>removeMatLine(idx)} style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:14,padding:"0 2px",lineHeight:1,flexShrink:0}}>✕</button>}
               </div>
