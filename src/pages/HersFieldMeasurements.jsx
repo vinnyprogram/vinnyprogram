@@ -357,6 +357,36 @@ function AreaRow({ area, materials, onChange, onDelete, onCommit, areaTypes, thi
 
   const isComplete = !!(area.area_type && sqft>0);
 
+  const copyModal = copyMenuOpen && createPortal(
+    <div onClick={()=>setCopyMenuOpen(false)}
+      style={{position:"fixed",inset:0,zIndex:9999,background:"rgba(15,23,42,0.45)",
+        display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+      <div onClick={e=>e.stopPropagation()}
+        style={{background:"#fff",borderRadius:12,padding:16,width:"100%",maxWidth:280,
+          maxHeight:"70vh",overflowY:"auto",boxShadow:"0 12px 32px rgba(0,0,0,.25)"}}>
+        <div style={{fontSize:13,fontWeight:800,color:C.ink,marginBottom:2}}>Copy "{area.area_type||"this area"}"</div>
+        <div style={{fontSize:11,color:C.muted,marginBottom:10}}>Same material, thickness &amp; R-value — just fill in measurements on the floors you pick.</div>
+        {(floors||[]).filter(f=>f!==activeFloor).map(f=>(
+          <label key={f} style={{display:"flex",alignItems:"center",gap:8,fontSize:13,color:C.ink,padding:"6px 2px",cursor:"pointer",borderBottom:`1px solid ${C.border}`}}>
+            <input type="checkbox" checked={copyTargets.includes(f)}
+              onChange={()=>setCopyTargets(t=>t.includes(f)?t.filter(x=>x!==f):[...t,f])} />
+            {f}
+          </label>
+        ))}
+        <div style={{display:"flex",gap:8,marginTop:12}}>
+          <button onClick={()=>setCopyMenuOpen(false)} style={{flex:1,border:`1px solid ${C.border}`,background:"#fff",color:C.muted,borderRadius:7,padding:"8px 0",fontSize:12,fontWeight:600,cursor:"pointer"}}>Cancel</button>
+          <button
+            disabled={copyTargets.length===0}
+            onClick={()=>{ onCopy?.(copyTargets); setCopyMenuOpen(false); setCopyTargets([]); }}
+            style={{flex:1,border:"none",background:copyTargets.length?"#2563eb":"#cbd5e1",color:"#fff",borderRadius:7,padding:"8px 0",fontSize:12,fontWeight:700,cursor:copyTargets.length?"pointer":"default"}}>
+            Copy to {copyTargets.length||""} floor{copyTargets.length===1?"":"s"}
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+
   // Collapsed
   if(isComplete && !expanded) return (
     <div style={{background:"#f0fdf4",border:"1px solid #86efac",borderLeft:"3px solid #059669",
@@ -365,6 +395,14 @@ function AreaRow({ area, materials, onChange, onDelete, onCommit, areaTypes, thi
         <span style={{fontSize:12,fontWeight:700,color:C.ink}}>{area.area_type}{area.customLabel?` — ${area.customLabel}`:""}</span>
         <div style={{display:"flex",alignItems:"center",gap:8}}>
           <span style={{fontSize:12,fontWeight:700,color:C.green}}>{fmt(sqft,0)} ft²</span>
+          {onCopy && floors && floors.length>1 && (
+            <span
+              onClick={e=>{ e.stopPropagation(); setCopyTargets([]); setCopyMenuOpen(true); }}
+              title="Copy this area's material/spec to another floor"
+              style={{ color:"#2563eb", fontSize:13, padding:"0 2px", cursor:"pointer" }}>
+              📋
+            </span>
+          )}
           <button onClick={()=>setExpanded(true)} style={{border:"none",background:"none",color:C.green,cursor:"pointer",fontSize:14,padding:"0 2px"}}>✏️</button>
         </div>
       </div>
@@ -373,6 +411,7 @@ function AreaRow({ area, materials, onChange, onDelete, onCommit, areaTypes, thi
         {meas.length>0 && <span style={{marginLeft:6,color:C.faint}}>({meas.map(m=>`${m.h}×${m.l}${m.q>1?`×${m.q}`:""}`).join("  ")})</span>}
         {totalR>0 && isComboMode && <span style={{marginLeft:8,color:"#059669",fontWeight:700}}>Total R-{totalR}</span>}
       </div>
+      {copyModal}
     </div>
   );
 
@@ -461,10 +500,6 @@ function AreaRow({ area, materials, onChange, onDelete, onCommit, areaTypes, thi
           {(areaTypes||AREA_TYPES).map(t=><option key={t} value={t}>{t}</option>)}
           <option value="__other_area__">✏️ Other (custom)</option>
         </select>
-        {onCopy && floors && floors.length>1 && (
-          <button onClick={()=>{setCopyTargets([]);setCopyMenuOpen(true);}} title="Copy this area's material/spec to another floor"
-            style={{border:"none",background:"none",color:"#2563eb",cursor:"pointer",fontSize:16,padding:"0 2px",flexShrink:0}}>📋</button>
-        )}
         {!isComplete && (
           <button onClick={onDelete} style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:18,padding:"0 4px",lineHeight:1,flexShrink:0}}>✕</button>
         )}
@@ -626,8 +661,13 @@ function AreaRow({ area, materials, onChange, onDelete, onCommit, areaTypes, thi
           {meas.map((m,i)=>(
             <span key={i} style={{background:"#dcfce7",color:"#166534",borderRadius:6,
                 padding:"2px 8px",fontSize:11,fontWeight:600,display:"inline-flex",alignItems:"center",gap:4}}>
-              {m.h}×{m.l}{m.q>1?`×${m.q}`:""} <span style={{color:"#4ade80",fontSize:10}}>={fmt(m.sqft,0)}</span>
-              <button onClick={()=>delMeas(i)} style={{border:"none",background:"none",color:"#4ade80",cursor:"pointer",fontSize:12,padding:0}}>✕</button>
+              <span
+                onClick={()=>onChange("paint_sqft", String(Math.round(((parseFloat(area.paint_sqft)||0)+m.sqft)*100)/100))}
+                title="Tap to add this measurement's sqft to Intumescent paint below"
+                style={{cursor:"pointer"}}>
+                {m.h}×{m.l}{m.q>1?`×${m.q}`:""} <span style={{color:"#4ade80",fontSize:10}}>={fmt(m.sqft,0)}</span>
+              </span>
+              <button onClick={e=>{e.stopPropagation();delMeas(i);}} style={{border:"none",background:"none",color:"#4ade80",cursor:"pointer",fontSize:12,padding:0}}>✕</button>
             </span>
           ))}
         </div>
@@ -738,39 +778,37 @@ function AreaRow({ area, materials, onChange, onDelete, onCommit, areaTypes, thi
         <span style={{fontSize:11,color:C.muted}}>ft²</span>
       </div>
 
+      {/* Intumescent paint — shown only for spray foam (open/closed cell),
+          same condition Insulation uses. No pricing behind it here since
+          HERS doesn't do cost calculations - it's just tracked as sqft. */}
+      {(()=>{
+        const allMats = isComboMode
+          ? matLines.map(ml=>(ml.material||"").toLowerCase())
+          : [(matLines[0]?.material||"").toLowerCase()];
+        const isSprayFoam = allMats.some(m=>m.includes("closed")||m.includes("open cell")||m.includes("open-cell"));
+        if(!isSprayFoam) return null;
+        return (
+          <div style={{display:"flex",alignItems:"center",gap:6,marginTop:6,
+              background:"#fff7ed",border:"1px solid #fed7aa",borderRadius:6,padding:"4px 8px"}}>
+            <span style={{fontSize:10,color:"#c2410c",whiteSpace:"nowrap",fontWeight:600}}>🎨 Intumescent paint</span>
+            <input type="number" placeholder="0" inputMode="decimal" value={area.paint_sqft||""}
+              onChange={e=>onChange("paint_sqft",e.target.value)}
+              title="Type a number directly, or tap the green measurement chips above to add them in"
+              style={{...I,width:70,padding:"0 6px",height:26,fontSize:12}} />
+            <span style={{fontSize:10,color:"#c2410c"}}>ft²</span>
+            {Number(area.paint_sqft)>0 && (
+              <button onClick={()=>onChange("paint_sqft","")} title="Clear"
+                style={{border:"none",background:"none",color:"#c2410c",cursor:"pointer",fontSize:11,padding:0}}>↺</button>
+            )}
+          </div>
+        );
+      })()}
+
       <input placeholder="📝 Note for this area (optional)"
         value={area.note||""} onChange={e=>onChange("note",e.target.value)}
         style={{...I,width:"100%",marginTop:8,fontSize:11,color:"#92400e",background:"#fffbeb",borderColor:"#fde68a"}} />
 
-      {copyMenuOpen && createPortal(
-        <div onClick={()=>setCopyMenuOpen(false)}
-          style={{position:"fixed",inset:0,zIndex:9999,background:"rgba(15,23,42,0.45)",
-            display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
-          <div onClick={e=>e.stopPropagation()}
-            style={{background:"#fff",borderRadius:12,padding:16,width:"100%",maxWidth:280,
-              maxHeight:"70vh",overflowY:"auto",boxShadow:"0 12px 32px rgba(0,0,0,.25)"}}>
-            <div style={{fontSize:13,fontWeight:800,color:C.ink,marginBottom:2}}>Copy "{area.area_type||"this area"}"</div>
-            <div style={{fontSize:11,color:C.muted,marginBottom:10}}>Same material, thickness &amp; R-value — just fill in measurements on the floors you pick.</div>
-            {(floors||[]).filter(f=>f!==activeFloor).map(f=>(
-              <label key={f} style={{display:"flex",alignItems:"center",gap:8,fontSize:13,color:C.ink,padding:"6px 2px",cursor:"pointer",borderBottom:`1px solid ${C.border}`}}>
-                <input type="checkbox" checked={copyTargets.includes(f)}
-                  onChange={()=>setCopyTargets(t=>t.includes(f)?t.filter(x=>x!==f):[...t,f])} />
-                {f}
-              </label>
-            ))}
-            <div style={{display:"flex",gap:8,marginTop:12}}>
-              <button onClick={()=>setCopyMenuOpen(false)} style={{flex:1,border:`1px solid ${C.border}`,background:"#fff",color:C.muted,borderRadius:7,padding:"8px 0",fontSize:12,fontWeight:600,cursor:"pointer"}}>Cancel</button>
-              <button
-                disabled={copyTargets.length===0}
-                onClick={()=>{ onCopy?.(copyTargets); setCopyMenuOpen(false); setCopyTargets([]); }}
-                style={{flex:1,border:"none",background:copyTargets.length?"#2563eb":"#cbd5e1",color:"#fff",borderRadius:7,padding:"8px 0",fontSize:12,fontWeight:700,cursor:copyTargets.length?"pointer":"default"}}>
-                Copy to {copyTargets.length||""} floor{copyTargets.length===1?"":"s"}
-              </button>
-            </div>
-          </div>
-        </div>,
-        document.body
-      )}
+      {copyModal}
     </div>
   );
 }
@@ -1248,6 +1286,7 @@ export default function HersFieldMeasurements() {
           sqft: 0,
           mh: "", ml: "", mq: "1",
           deduct_sqft: "",
+          paint_sqft: "",
           note: "",
           options: [],
           price_override: "", // per-area, not part of the spec
