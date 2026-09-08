@@ -237,11 +237,13 @@ function FloorsEditor({ floors, onChange, onCommit, unitLabel }) {
 }
 
 // ── Single area row — mirrors AreaRow from insulation estimate, no pricing ──
-function AreaRow({ area, materials, onChange, onDelete, onCommit, areaTypes, thickOpts, rVals, floors, activeFloor, onCopy, onSaveCustomAreaType, onSaveCustomThickOpt, onSaveCustomRVal }) {
+function AreaRow({ area, materials, onChange, onDelete, onCommit, areaTypes, thickOpts, rVals, floors, activeFloor, onCopy, onMove, onSaveCustomAreaType, onSaveCustomThickOpt, onSaveCustomRVal }) {
   const [calcOpen, setCalcOpen] = useState(false);
   const [calcExpr, setCalcExpr] = useState("");
   const [copyMenuOpen, setCopyMenuOpen] = useState(false);
   const [copyTargets, setCopyTargets] = useState([]);
+  const [overrideOpen, setOverrideOpen] = useState(!!area.price_override);
+  const [movingTo, setMovingTo] = useState(false);
   const meas = area.measurements||[];
   const sqft = area.sqft||0;
   const liveH = parseFloat(area.mh)||0;
@@ -360,11 +362,69 @@ function AreaRow({ area, materials, onChange, onDelete, onCommit, areaTypes, thi
 
       {/* Done / Delete row */}
       {isComplete && (
-        <div style={{display:"flex",gap:6,marginBottom:8}}>
-          <button onClick={()=>setExpanded(false)}
-            style={{...BtnD,flex:1,justifyContent:"center",background:"#059669"}}>✓ Done</button>
-          <button onClick={onDelete}
-            style={{...Btn,color:"#dc2626",borderColor:"#dc2626"}}>🗑 Delete</button>
+        <div style={{background:"#059669",margin:"-8px -10px 8px -10px",borderRadius:"7px 7px 0 0"}}>
+          <div style={{display:"flex",gap:6,padding:"8px 10px 4px"}}>
+            <button onClick={()=>setExpanded(false)}
+              style={{border:"none",background:"rgba(255,255,255,0.25)",color:"#fff",padding:"7px 18px",borderRadius:6,cursor:"pointer",fontSize:13,fontWeight:700,flex:1}}>✓ Done</button>
+            <button onClick={onDelete}
+              style={{border:"none",background:"rgba(255,0,0,0.35)",color:"#fff",padding:"7px 14px",borderRadius:6,cursor:"pointer",fontSize:13,fontWeight:700}}>🗑 Delete</button>
+          </div>
+          <div style={{display:"flex",alignItems:"center",padding:"0 10px 8px",gap:5,flexWrap:"wrap"}}>
+            <button onClick={()=>onChange("is_optional",!area.is_optional)}
+              title="Mark as optional item"
+              style={{border:"none",borderRadius:6,cursor:"pointer",fontSize:11,fontWeight:700,padding:"5px 10px",flex:1,
+                background:area.is_optional?"#fbbf24":"rgba(255,255,255,0.2)",
+                color:area.is_optional?"#78350f":"#fff"}}>
+              {area.is_optional?"⭐ Optional":"☆ Optional"}
+            </button>
+            <button onClick={()=>{ if(overrideOpen){ onChange("price_override",""); } setOverrideOpen(p=>!p); }}
+              title="Override price per sqft for this area"
+              style={{border:"none",borderRadius:6,cursor:"pointer",fontSize:11,fontWeight:700,padding:"5px 10px",flex:1,
+                background:overrideOpen?"#7c3aed":"rgba(255,255,255,0.2)",color:"#fff"}}>
+              💲 {overrideOpen?"✕ Price":"Price"}
+            </button>
+            <button
+              onClick={()=>onChange("phase", area.phase===1 ? "__clear_all__" : area.phase===2 ? null : 1)}
+              title={area.phase===1?"Tap to remove all phases (customer changed mind)":"Set phase (1st before inspection, 2nd after)"}
+              style={{border:"none",borderRadius:6,cursor:"pointer",fontSize:11,fontWeight:800,padding:"5px 10px",flex:1,
+                background:area.phase===1?"#3b82f6":area.phase===2?"#8b5cf6":"rgba(255,255,255,0.2)",
+                color:"#fff"}}>
+              {area.phase===1?"🔵 Ph.1":area.phase===2?"🟣 Ph.2":"◯ Phase"}
+            </button>
+            {onMove && floors && floors.length>1 && (
+              movingTo
+                ? <select autoFocus
+                    style={{height:30,borderRadius:6,border:"none",background:"#1d4ed8",color:"#fff",padding:"0 6px",fontSize:11,fontWeight:700,cursor:"pointer",flex:1}}
+                    onChange={e=>{ if(e.target.value){ onMove(e.target.value); setMovingTo(false); } }}
+                    onBlur={()=>setMovingTo(false)}>
+                    <option value="">Move to…</option>
+                    {floors.filter(f=>f!==activeFloor).map(f=>(
+                      <option key={f} value={f}>{f}</option>
+                    ))}
+                  </select>
+                : <button onClick={()=>setMovingTo(true)}
+                    title="Move this area to another floor"
+                    style={{border:"none",background:"rgba(255,255,255,0.2)",color:"#fff",
+                      padding:"5px 10px",borderRadius:6,cursor:"pointer",fontSize:11,fontWeight:700,flex:1}}>
+                    ↗ Move
+                  </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {overrideOpen && (
+        <div style={{background:"#f5f3ff",border:"1px solid #ddd6fe",borderRadius:7,padding:"8px 10px",marginBottom:6}}>
+          <div style={{fontSize:10,color:"#6d28d9",fontWeight:700,textTransform:"uppercase",marginBottom:4}}>
+            Custom price for this job
+          </div>
+          <div style={{display:"flex",alignItems:"center",gap:6}}>
+            <span style={{fontSize:12,color:"#6d28d9"}}>$</span>
+            <input type="number" placeholder="0.00" value={area.price_override||""}
+              onChange={e=>onChange("price_override",e.target.value)}
+              style={{...I,width:90,height:30}} />
+            <span style={{fontSize:11,color:"#6d28d9"}}>/ sqft × {fmt(sqft,0)} ft²</span>
+          </div>
         </div>
       )}
 
@@ -1126,6 +1186,19 @@ export default function HersFieldMeasurements() {
     setDeleteConfirmInfo(null);
   }
 
+  function moveArea(fromFloor, idx, toFloor){
+    if(fromFloor===toFloor) return;
+    setAreas(prev=>{
+      const area = prev[fromFloor]?.[idx];
+      if(!area) return prev;
+      return {
+        ...prev,
+        [fromFloor]: prev[fromFloor].filter((_,i)=>i!==idx),
+        [toFloor]: [...(prev[toFloor]||[]), area],
+      };
+    });
+  }
+
   // Duplicates an area's material/thickness/R-value/combo to other floors,
   // clearing only the measurements - same feature as Insulation's. areas
   // here are a JSON blob (not a relational table that gets deleted and
@@ -1147,6 +1220,9 @@ export default function HersFieldMeasurements() {
           deduct_sqft: "",
           note: "",
           options: [],
+          price_override: "", // per-area, not part of the spec
+          is_optional: false, // "customer choice" status is per-area
+          phase: null,        // phase/scheduling is per-area
           _expanded: true,
         };
         next[toFloor] = [...(next[toFloor]||[]), copy];
@@ -1822,6 +1898,7 @@ export default function HersFieldMeasurements() {
                     onChange={(f,v)=>updateArea(activeFloor,realIdx,f,v)}
                     onDelete={()=>deleteArea(activeFloor,realIdx)}
                     onCopy={(toFloors)=>copyAreaToFloors(activeFloor,realIdx,toFloors)}
+                    onMove={(toFloor)=>moveArea(activeFloor,realIdx,toFloor)}
                     onSaveCustomAreaType={saveCustomAreaType}
                     onSaveCustomThickOpt={saveCustomThickOpt}
                     onSaveCustomRVal={saveCustomRVal}
@@ -1842,6 +1919,7 @@ export default function HersFieldMeasurements() {
                     onChange={(f,v)=>updateArea(activeFloor,realIdx,f,v)}
                     onDelete={()=>deleteArea(activeFloor,realIdx)}
                     onCopy={(toFloors)=>copyAreaToFloors(activeFloor,realIdx,toFloors)}
+                    onMove={(toFloor)=>moveArea(activeFloor,realIdx,toFloor)}
                     onSaveCustomAreaType={saveCustomAreaType}
                     onSaveCustomThickOpt={saveCustomThickOpt}
                     onSaveCustomRVal={saveCustomRVal}
