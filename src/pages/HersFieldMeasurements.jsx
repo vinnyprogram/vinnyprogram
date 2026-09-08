@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import { createPortal } from "react-dom";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { logEvent as sharedLogEvent } from "../utils/debugLog";
@@ -236,9 +237,11 @@ function FloorsEditor({ floors, onChange, onCommit, unitLabel }) {
 }
 
 // ── Single area row — mirrors AreaRow from insulation estimate, no pricing ──
-function AreaRow({ area, materials, onChange, onDelete, onCommit, areaTypes, thickOpts, rVals }) {
+function AreaRow({ area, materials, onChange, onDelete, onCommit, areaTypes, thickOpts, rVals, floors, activeFloor, onCopy, onSaveCustomAreaType, onSaveCustomThickOpt, onSaveCustomRVal }) {
   const [calcOpen, setCalcOpen] = useState(false);
   const [calcExpr, setCalcExpr] = useState("");
+  const [copyMenuOpen, setCopyMenuOpen] = useState(false);
+  const [copyTargets, setCopyTargets] = useState([]);
   const meas = area.measurements||[];
   const sqft = area.sqft||0;
   const liveH = parseFloat(area.mh)||0;
@@ -284,19 +287,30 @@ function AreaRow({ area, materials, onChange, onDelete, onCommit, areaTypes, thi
     color:C.ink, outline:"none", cursor:"pointer",
   };
 
+  function computeTotalSqft(measList){
+    const raw = measList.reduce((acc,m)=>acc+m.sqft,0);
+    const d = parseFloat(area.deduct_sqft)||0;
+    return Math.max(0, Math.round((raw-d)*100)/100);
+  }
   function commit(){
     if(!liveH||!liveL) return;
     const s = Math.round(liveH*liveL*liveQ*100)/100;
     const newMeas = [...meas,{h:liveH,l:liveL,q:liveQ,sqft:s}];
     onChange("measurements", newMeas);
-    onChange("sqft", Math.round(newMeas.reduce((acc,m)=>acc+m.sqft,0)*100)/100);
+    onChange("sqft", computeTotalSqft(newMeas));
     onChange("mh",""); onChange("ml",""); onChange("mq","1");
     if(onCommit) onCommit();
   }
   function delMeas(i){
     const newMeas = meas.filter((_,j)=>j!==i);
     onChange("measurements", newMeas);
-    onChange("sqft", Math.round(newMeas.reduce((acc,m)=>acc+m.sqft,0)*100)/100);
+    onChange("sqft", computeTotalSqft(newMeas));
+  }
+  function updateDeduct(val){
+    onChange("deduct_sqft", val);
+    const d = parseFloat(val)||0;
+    const raw = meas.reduce((acc,m)=>acc+m.sqft,0);
+    onChange("sqft", Math.max(0, Math.round((raw-d)*100)/100));
   }
   function calcPress(val){
     if(val==="C"){ setCalcExpr(""); return; }
@@ -356,15 +370,31 @@ function AreaRow({ area, materials, onChange, onDelete, onCommit, areaTypes, thi
 
       {/* Area type + label */}
       <div style={{display:"flex",gap:6,marginBottom:6,alignItems:"center",borderBottom:`1px solid ${C.border}`,paddingBottom:6}}>
-        <select value={area.area_type||""} onChange={e=>onChange("area_type",e.target.value)}
+        <select value={area.area_type||""} onChange={e=>{
+            const val=e.target.value;
+            if(val==="__other_area__"){ onChange("_show_custom_area", true); onChange("area_type",""); }
+            else { onChange("_show_custom_area", false); onChange("area_type",val); }
+          }}
           style={{...GS,flex:1}}>
           <option value="">Area type…</option>
           {(areaTypes||AREA_TYPES).map(t=><option key={t} value={t}>{t}</option>)}
+          <option value="__other_area__">✏️ Other (custom)</option>
         </select>
+        {onCopy && floors && floors.length>1 && (
+          <button onClick={()=>{setCopyTargets([]);setCopyMenuOpen(true);}} title="Copy this area's material/spec to another floor"
+            style={{border:"none",background:"none",color:"#2563eb",cursor:"pointer",fontSize:16,padding:"0 2px",flexShrink:0}}>📋</button>
+        )}
         {!isComplete && (
           <button onClick={onDelete} style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:18,padding:"0 4px",lineHeight:1,flexShrink:0}}>✕</button>
         )}
       </div>
+      {(area._show_custom_area || (area.area_type && !(areaTypes||AREA_TYPES).includes(area.area_type))) && (
+        <input autoFocus placeholder="Type new area type…"
+          style={{...I,height:32,marginBottom:6,border:"2px solid #059669",borderRadius:6,fontSize:13}}
+          value={area.area_type||""} onChange={e=>onChange("area_type",e.target.value)}
+          onBlur={e=>{ const v=e.target.value.trim(); if(v) onSaveCustomAreaType?.(v); }}
+          onKeyDown={e=>{ if(e.key==="Enter"){ const v=e.target.value.trim(); if(v){ onSaveCustomAreaType?.(v); e.target.blur(); } }}} />
+      )}
       <input value={area.customLabel||""} onChange={e=>onChange("customLabel",e.target.value)}
         placeholder="Optional label (e.g. Garage, North side)"
         style={{...I,height:28,fontSize:11,marginBottom:8,color:C.muted,
@@ -395,18 +425,36 @@ function AreaRow({ area, materials, onChange, onDelete, onCommit, areaTypes, thi
               <option value="__custom_mat__">✏️ Other</option>
             </select>
             <select style={{...GS,width:80,flexShrink:0}}
-              value={matLines[0].thickness_in||""}
-              onChange={e=>updateMatLine(0,"thickness_in",e.target.value)}>
+              value={(thickOpts||THICK_OPTS).includes(matLines[0].thickness_in)?matLines[0].thickness_in:(matLines[0]._custom_thick?"__other_thick__":(matLines[0].thickness_in||""))}
+              onChange={e=>{
+                if(e.target.value==="__other_thick__") updateMatLine(0,"_custom_thick",true);
+                else { updateMatLine(0,"_custom_thick",false); updateMatLine(0,"thickness_in",e.target.value); }
+              }}>
               <option value="">Thick</option>
               {(thickOpts||THICK_OPTS).map(t=><option key={t}>{t}</option>)}
+              <option value="__other_thick__">✏️ Other</option>
             </select>
             <select style={{...GS,width:80,flexShrink:0}}
-              value={matLines[0].r_value||""}
-              onChange={e=>updateMatLine(0,"r_value",e.target.value)}>
+              value={(rVals||R_VALS).includes(matLines[0].r_value)?matLines[0].r_value:(matLines[0]._custom_rval?"__other_rval__":(matLines[0].r_value||""))}
+              onChange={e=>{
+                if(e.target.value==="__other_rval__") updateMatLine(0,"_custom_rval",true);
+                else { updateMatLine(0,"_custom_rval",false); updateMatLine(0,"r_value",e.target.value); }
+              }}>
               <option value="">R-Val</option>
               {(rVals||R_VALS).map(r=><option key={r}>{r}</option>)}
+              <option value="__other_rval__">✏️ Other</option>
             </select>
           </div>
+          {(matLines[0]._custom_thick) && (
+            <input autoFocus placeholder="Custom thickness e.g. 3in" style={{...I,height:30,marginBottom:4,fontSize:12}}
+              value={matLines[0].thickness_in||""} onChange={e=>updateMatLine(0,"thickness_in",e.target.value)}
+              onBlur={e=>{ const v=e.target.value.trim(); if(v) onSaveCustomThickOpt?.(v); }} />
+          )}
+          {(matLines[0]._custom_rval) && (
+            <input autoFocus placeholder="Custom R-Val e.g. R-22" style={{...I,height:30,marginBottom:4,fontSize:12}}
+              value={matLines[0].r_value||""} onChange={e=>updateMatLine(0,"r_value",e.target.value)}
+              onBlur={e=>{ const v=e.target.value.trim(); if(v) onSaveCustomRVal?.(v); }} />
+          )}
           {area.material==="__custom_mat__" && (
             <input autoFocus placeholder="Type material name…"
               style={{...I,height:32,marginBottom:4,border:"2px solid #059669",borderRadius:6,fontSize:13}}
@@ -444,13 +492,35 @@ function AreaRow({ area, materials, onChange, onDelete, onCommit, areaTypes, thi
                 )}
               </div>
               <div style={{display:"flex",gap:4}}>
-                <select style={{...GS,flex:1}} value={ml.thickness_in||""} onChange={e=>updateMatLine(idx,"thickness_in",e.target.value)}>
+                <select style={{...GS,flex:1}}
+                  value={(thickOpts||THICK_OPTS).includes(ml.thickness_in)?ml.thickness_in:(ml._custom_thick?"__other_thick__":(ml.thickness_in||""))}
+                  onChange={e=>{
+                    if(e.target.value==="__other_thick__") updateMatLine(idx,"_custom_thick",true);
+                    else { updateMatLine(idx,"_custom_thick",false); updateMatLine(idx,"thickness_in",e.target.value); }
+                  }}>
                   <option value="">Thick</option>{(thickOpts||THICK_OPTS).map(t=><option key={t}>{t}</option>)}
+                  <option value="__other_thick__">✏️ Other</option>
                 </select>
-                <select style={{...GS,flex:1}} value={ml.r_value||""} onChange={e=>updateMatLine(idx,"r_value",e.target.value)}>
+                <select style={{...GS,flex:1}}
+                  value={(rVals||R_VALS).includes(ml.r_value)?ml.r_value:(ml._custom_rval?"__other_rval__":(ml.r_value||""))}
+                  onChange={e=>{
+                    if(e.target.value==="__other_rval__") updateMatLine(idx,"_custom_rval",true);
+                    else { updateMatLine(idx,"_custom_rval",false); updateMatLine(idx,"r_value",e.target.value); }
+                  }}>
                   <option value="">R-Val</option>{(rVals||R_VALS).map(r=><option key={r}>{r}</option>)}
+                  <option value="__other_rval__">✏️ Other</option>
                 </select>
               </div>
+              {ml._custom_thick && (
+                <input autoFocus placeholder="Custom thickness e.g. 3in" style={{...I,height:30,marginTop:4,fontSize:12}}
+                  value={ml.thickness_in||""} onChange={e=>updateMatLine(idx,"thickness_in",e.target.value)}
+                  onBlur={e=>{ const v=e.target.value.trim(); if(v) onSaveCustomThickOpt?.(v); }} />
+              )}
+              {ml._custom_rval && (
+                <input autoFocus placeholder="Custom R-Val e.g. R-22" style={{...I,height:30,marginTop:4,fontSize:12}}
+                  value={ml.r_value||""} onChange={e=>updateMatLine(idx,"r_value",e.target.value)}
+                  onBlur={e=>{ const v=e.target.value.trim(); if(v) onSaveCustomRVal?.(v); }} />
+              )}
             </div>
           ))}
           <button onClick={addMatLine}
@@ -569,6 +639,48 @@ function AreaRow({ area, materials, onChange, onDelete, onCommit, areaTypes, thi
         <div style={{display:"flex",justifyContent:"flex-end",fontSize:11,color:C.green,fontWeight:700,marginTop:6}}>
           Total: {fmt(sqft,0)} ft²
         </div>
+      )}
+
+      <div style={{display:"flex",alignItems:"center",gap:6,marginTop:8}}>
+        <span style={{fontSize:11,color:C.muted}}>− deduct</span>
+        <input type="number" placeholder="0" inputMode="decimal" value={area.deduct_sqft||""}
+          onChange={e=>updateDeduct(e.target.value)}
+          style={{...I,width:60,height:28,fontSize:12,padding:"0 6px"}} />
+        <span style={{fontSize:11,color:C.muted}}>ft²</span>
+      </div>
+
+      <input placeholder="📝 Note for this area (optional)"
+        value={area.note||""} onChange={e=>onChange("note",e.target.value)}
+        style={{...I,width:"100%",marginTop:8,fontSize:11,color:"#92400e",background:"#fffbeb",borderColor:"#fde68a"}} />
+
+      {copyMenuOpen && createPortal(
+        <div onClick={()=>setCopyMenuOpen(false)}
+          style={{position:"fixed",inset:0,zIndex:9999,background:"rgba(15,23,42,0.45)",
+            display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+          <div onClick={e=>e.stopPropagation()}
+            style={{background:"#fff",borderRadius:12,padding:16,width:"100%",maxWidth:280,
+              maxHeight:"70vh",overflowY:"auto",boxShadow:"0 12px 32px rgba(0,0,0,.25)"}}>
+            <div style={{fontSize:13,fontWeight:800,color:C.ink,marginBottom:2}}>Copy "{area.area_type||"this area"}"</div>
+            <div style={{fontSize:11,color:C.muted,marginBottom:10}}>Same material, thickness &amp; R-value — just fill in measurements on the floors you pick.</div>
+            {(floors||[]).filter(f=>f!==activeFloor).map(f=>(
+              <label key={f} style={{display:"flex",alignItems:"center",gap:8,fontSize:13,color:C.ink,padding:"6px 2px",cursor:"pointer",borderBottom:`1px solid ${C.border}`}}>
+                <input type="checkbox" checked={copyTargets.includes(f)}
+                  onChange={()=>setCopyTargets(t=>t.includes(f)?t.filter(x=>x!==f):[...t,f])} />
+                {f}
+              </label>
+            ))}
+            <div style={{display:"flex",gap:8,marginTop:12}}>
+              <button onClick={()=>setCopyMenuOpen(false)} style={{flex:1,border:`1px solid ${C.border}`,background:"#fff",color:C.muted,borderRadius:7,padding:"8px 0",fontSize:12,fontWeight:600,cursor:"pointer"}}>Cancel</button>
+              <button
+                disabled={copyTargets.length===0}
+                onClick={()=>{ onCopy?.(copyTargets); setCopyMenuOpen(false); setCopyTargets([]); }}
+                style={{flex:1,border:"none",background:copyTargets.length?"#2563eb":"#cbd5e1",color:"#fff",borderRadius:7,padding:"8px 0",fontSize:12,fontWeight:700,cursor:copyTargets.length?"pointer":"default"}}>
+                Copy to {copyTargets.length||""} floor{copyTargets.length===1?"":"s"}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
       )}
     </div>
   );
@@ -786,6 +898,7 @@ export default function HersFieldMeasurements() {
   const [dbAreaTypes, setDbAreaTypes] = useState([]);
   const [dbThickOpts, setDbThickOpts] = useState([]);
   const [dbRVals, setDbRVals] = useState([]);
+  const [deleteConfirmInfo, setDeleteConfirmInfo] = useState(null); // {floor, idx, area}
   useEffect(()=>{
     if(!company?.id) return;
     (async()=>{
@@ -988,14 +1101,90 @@ export default function HersFieldMeasurements() {
 
   // Area helpers
   function addArea(floor){
-    const newArea = {id:uid(),area_type:"",customLabel:"",measurements:[],sqft:0,mh:"",ml:"",mq:"1",material:"",thickness_in:"",r_value:""};
+    const newArea = {id:uid(),area_type:"",customLabel:"",measurements:[],sqft:0,mh:"",ml:"",mq:"1",material:"",thickness_in:"",r_value:"",note:"",deduct_sqft:""};
     setAreas(p=>({...p,[floor]:[...((p[floor])||[]),newArea]}));
   }
   function updateArea(floor,idx,field,val){
     setAreas(p=>({...p,[floor]:(p[floor]||[]).map((a,i)=>i===idx?{...a,[field]:val}:a)}));
   }
   function deleteArea(floor,idx){
+    const area = areas[floor]?.[idx];
+    // Same protection as the Insulation estimate: an empty/unstarted area
+    // deletes instantly, but one with real measurements gets an in-app
+    // confirmation dialog first (not window.confirm - unreliable on mobile).
+    const hasData = area && (Number(area.sqft)>0 || (area.measurements||[]).length>0);
+    if(hasData){
+      setDeleteConfirmInfo({floor, idx, area});
+      return;
+    }
     setAreas(p=>({...p,[floor]:(p[floor]||[]).filter((_,i)=>i!==idx)}));
+  }
+  function confirmDeleteArea(){
+    if(!deleteConfirmInfo) return;
+    const {floor, idx} = deleteConfirmInfo;
+    setAreas(p=>({...p,[floor]:(p[floor]||[]).filter((_,i)=>i!==idx)}));
+    setDeleteConfirmInfo(null);
+  }
+
+  // Duplicates an area's material/thickness/R-value/combo to other floors,
+  // clearing only the measurements - same feature as Insulation's. areas
+  // here are a JSON blob (not a relational table that gets deleted and
+  // reinserted on save), so the client-generated id stays stable across
+  // saves - safe to just give the copy a fresh id.
+  function copyAreaToFloors(fromFloor, idx, toFloors){
+    if(!toFloors || toFloors.length===0) return;
+    setAreas(prev=>{
+      const source = prev[fromFloor]?.[idx];
+      if(!source) return prev;
+      const next = {...prev};
+      toFloors.forEach(toFloor=>{
+        const copy = {
+          ...source,
+          id: uid(),
+          measurements: [],
+          sqft: 0,
+          mh: "", ml: "", mq: "1",
+          deduct_sqft: "",
+          note: "",
+          options: [],
+          _expanded: true,
+        };
+        next[toFloor] = [...(next[toFloor]||[]), copy];
+      });
+      return next;
+    });
+  }
+
+  // Custom area type/thickness/R-value "Other" entries save into the SAME
+  // shared Settings lists the Insulation estimate uses (list_area_type,
+  // list_thick_opt, list_r_val) - so anything typed here shows up on the
+  // Insulation side too, and vice versa.
+  async function saveCustomAreaType(name){
+    if(!name||dbAreaTypes.includes(name)) return;
+    const base = dbAreaTypes.length?dbAreaTypes:AREA_TYPES;
+    setDbAreaTypes([...base,name]);
+    try{
+      if(!company?.id) return;
+      await supabase.from("cost_settings").insert([{ company_id:company.id, category:"Lists", name, period:"list_area_type", amount:0, sort_order:base.length }]);
+    }catch(e){}
+  }
+  async function saveCustomThickOpt(name){
+    if(!name||dbThickOpts.includes(name)) return;
+    const base = dbThickOpts.length?dbThickOpts:THICK_OPTS;
+    setDbThickOpts([...base,name]);
+    try{
+      if(!company?.id) return;
+      await supabase.from("cost_settings").insert([{ company_id:company.id, category:"Lists", name, period:"list_thick_opt", amount:0, sort_order:base.length }]);
+    }catch(e){}
+  }
+  async function saveCustomRVal(name){
+    if(!name||dbRVals.includes(name)) return;
+    const base = dbRVals.length?dbRVals:R_VALS;
+    setDbRVals([...base,name]);
+    try{
+      if(!company?.id) return;
+      await supabase.from("cost_settings").insert([{ company_id:company.id, category:"Lists", name, period:"list_r_val", amount:0, sort_order:base.length }]);
+    }catch(e){}
   }
   function addFloor(){
     const name = newFloorName.trim();
@@ -1629,8 +1818,13 @@ export default function HersFieldMeasurements() {
                 return (
                   <AreaRow key={area.id} area={area} materials={materials}
                     areaTypes={effectiveAreaTypes} thickOpts={effectiveThickOpts} rVals={effectiveRVals}
+                    floors={floors} activeFloor={activeFloor}
                     onChange={(f,v)=>updateArea(activeFloor,realIdx,f,v)}
                     onDelete={()=>deleteArea(activeFloor,realIdx)}
+                    onCopy={(toFloors)=>copyAreaToFloors(activeFloor,realIdx,toFloors)}
+                    onSaveCustomAreaType={saveCustomAreaType}
+                    onSaveCustomThickOpt={saveCustomThickOpt}
+                    onSaveCustomRVal={saveCustomRVal}
                     onCommit={()=>setAutoSaveTick(t=>t+1)} />
                 );
               })}
@@ -1644,8 +1838,13 @@ export default function HersFieldMeasurements() {
                 return (
                   <AreaRow key={area.id} area={area} materials={materials}
                     areaTypes={effectiveAreaTypes} thickOpts={effectiveThickOpts} rVals={effectiveRVals}
+                    floors={floors} activeFloor={activeFloor}
                     onChange={(f,v)=>updateArea(activeFloor,realIdx,f,v)}
                     onDelete={()=>deleteArea(activeFloor,realIdx)}
+                    onCopy={(toFloors)=>copyAreaToFloors(activeFloor,realIdx,toFloors)}
+                    onSaveCustomAreaType={saveCustomAreaType}
+                    onSaveCustomThickOpt={saveCustomThickOpt}
+                    onSaveCustomRVal={saveCustomRVal}
                     onCommit={()=>setAutoSaveTick(t=>t+1)} />
                 );
               })}
@@ -1727,6 +1926,25 @@ export default function HersFieldMeasurements() {
         </>
         )}
       </div>
+      {deleteConfirmInfo && createPortal(
+        <div onClick={()=>setDeleteConfirmInfo(null)}
+          style={{position:"fixed",inset:0,zIndex:9999,background:"rgba(15,23,42,0.45)",
+            display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+          <div onClick={e=>e.stopPropagation()}
+            style={{background:"#fff",borderRadius:12,padding:16,width:"100%",maxWidth:300,
+              boxShadow:"0 12px 32px rgba(0,0,0,.25)"}}>
+            <div style={{fontSize:13,fontWeight:800,color:C.ink,marginBottom:6}}>"{deleteConfirmInfo.area.area_type||"This area"}" already has {fmt(deleteConfirmInfo.area.sqft||0,0)} ft² measured.</div>
+            <div style={{fontSize:12,color:C.muted,marginBottom:14,lineHeight:1.5}}>
+              Do you still want to delete it?
+            </div>
+            <div style={{display:"flex",gap:8}}>
+              <button autoFocus onClick={()=>setDeleteConfirmInfo(null)} style={{flex:1,border:"none",background:"#dc2626",color:"#fff",borderRadius:7,padding:"9px 0",fontSize:12,fontWeight:700,cursor:"pointer"}}>No</button>
+              <button onClick={confirmDeleteArea} style={{flex:1,border:`1px solid ${C.border}`,background:"#fff",color:C.muted,borderRadius:7,padding:"9px 0",fontSize:12,fontWeight:600,cursor:"pointer"}}>Yes, delete</button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
     </div>
   );
 }
