@@ -57,7 +57,7 @@ export default function LoadCalcSearch(){
             <div>
               <div style={{fontWeight:700,fontSize:14,color:C.ink}}>{customers[j.customer_id]||"(no customer)"}</div>
               <div style={{fontSize:12,color:C.muted}}>{j.address||"(no address)"}</div>
-              {j.hvac_contractor_name && <div style={{fontSize:11,color:C.faint}}>For: {j.hvac_contractor_name}</div>}
+              {(j.hvac_contractors||[]).length>0 && <div style={{fontSize:11,color:C.faint}}>For: {j.hvac_contractors.map(hc=>hc.name).filter(Boolean).join(", ")}</div>}
             </div>
             <div style={{textAlign:"right"}}>
               {j.results?.tons>0 && <div style={{fontSize:13,fontWeight:700,color:C.green}}>{j.results.tons} tons</div>}

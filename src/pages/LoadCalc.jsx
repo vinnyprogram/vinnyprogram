@@ -147,7 +147,7 @@ function calculateZone(zone, cond){
 
 const EMPTY_JOB = {
   customer_id:null, hers_estimate_id:null, address:"", job_type:"New Construction",
-  hvac_contractor_customer_id:null, hvac_contractor_name:"", hvac_contractor_phone:"", hvac_contractor_email:"",
+  hvac_contractors:[], // [{customer_id, name, phone, email}] - multiple, e.g. getting bids from several companies
   design_temp_heating:10, design_temp_cooling:92, indoor_temp_heating:70, indoor_temp_cooling:75,
   infiltration_ach:0.35, zones:[], results:{}, notes:"", status:"Draft",
 };
@@ -169,18 +169,29 @@ export default function LoadCalc(){
     supabase.from("customers").select("*").order("name").then(({data})=>{ if(data) setCustomers(data); });
   },[]);
 
+  function addContractorRow(){
+    setJob(p=>({ ...p, hvac_contractors:[...p.hvac_contractors, {customer_id:null,name:"",phone:"",email:""}] }));
+  }
+  function updateContractorRow(idx, field, val){
+    setJob(p=>({ ...p, hvac_contractors: p.hvac_contractors.map((c,i)=>i===idx?{...c,[field]:val}:c) }));
+  }
+  function removeContractorRow(idx){
+    setJob(p=>({ ...p, hvac_contractors: p.hvac_contractors.filter((_,i)=>i!==idx) }));
+  }
+
   // HVAC contractors are just customers too - so a contractor who's also a
   // customer never gets entered twice, and adding one here makes them show
   // up in Clients/CRM as well. Only needs a name at creation time; phone/
   // email can be filled in on the job form (or later, on their customer
   // record) since those stay as separate editable fields either way.
-  async function createNewContractor(name){
+  async function createNewContractor(idx, name){
     const { data, error } = await supabase.from("customers")
       .insert([{ name, company_id: company?.id, is_hvac_contractor:true }])
       .select().maybeSingle();
     if(error){ alert("Could not save contractor: "+error.message); return; }
     setCustomers(p=>[...p, data]);
-    setJob(p=>({ ...p, hvac_contractor_customer_id:data.id, hvac_contractor_name:data.name }));
+    updateContractorRow(idx, "customer_id", data.id);
+    updateContractorRow(idx, "name", data.name);
   }
 
   // Picking an existing customer as the contractor tags them as an HVAC
@@ -199,7 +210,22 @@ export default function LoadCalc(){
     if(isNew){ setLoading(false); return; }
     (async()=>{
       const { data } = await supabase.from("load_calc_jobs").select("*").eq("id",id).maybeSingle();
-      if(data) setJob({ ...EMPTY_JOB, ...data, zones: data.zones||[], results: data.results||{} });
+      if(data){
+        // Old jobs saved before multi-contractor support have a single
+        // hvac_contractor_name/phone/email instead of the hvac_contractors
+        // array - migrate that into the array on read so old jobs still
+        // show their contractor correctly.
+        let hvacContractors = data.hvac_contractors||[];
+        if(hvacContractors.length===0 && data.hvac_contractor_name){
+          hvacContractors = [{
+            customer_id: data.hvac_contractor_customer_id||null,
+            name: data.hvac_contractor_name||"",
+            phone: data.hvac_contractor_phone||"",
+            email: data.hvac_contractor_email||"",
+          }];
+        }
+        setJob({ ...EMPTY_JOB, ...data, zones: data.zones||[], results: data.results||{}, hvac_contractors: hvacContractors });
+      }
       setLoading(false);
     })();
   },[id]);
@@ -270,7 +296,7 @@ export default function LoadCalc(){
     }
   }
 
-  function emailReportToContractor(){
+  function emailReportToContractor(contractorEmail){
     const lines = [];
     lines.push(`RESIDENTIAL HVAC LOAD CALCULATION`);
     lines.push(`(Preliminary Estimate — not ACCA Manual J® certified)`);
@@ -290,7 +316,7 @@ export default function LoadCalc(){
 
     const subject = encodeURIComponent(`Load Calculation — ${job.address||selectedCustomer?.name||"Project"}`);
     const body = encodeURIComponent(lines.join("\n"));
-    const to = encodeURIComponent(job.hvac_contractor_email||"");
+    const to = encodeURIComponent(contractorEmail||"");
     window.location.href = `mailto:${to}?subject=${subject}&body=${body}`;
   }
 
@@ -321,21 +347,26 @@ export default function LoadCalc(){
         <select value={job.job_type} onChange={e=>setJob(p=>({...p,job_type:e.target.value}))} style={{...I,marginBottom:8}}>
           <option>New Construction</option><option>Replacement</option><option>Addition</option>
         </select>
-        <div style={{fontSize:12,fontWeight:700,color:C.muted,marginTop:10,marginBottom:6}}>HVAC Contractor (who this report is for)</div>
-        <ContractorPicker value={job.hvac_contractor_name} contractors={customers}
-          onPick={(id,name)=>{
-            const match = id ? customers.find(c=>c.id===id) : null;
-            setJob(p=>({ ...p,
-              hvac_contractor_customer_id: id,
-              hvac_contractor_name: name,
-              hvac_contractor_phone: match?.phone || p.hvac_contractor_phone,
-              hvac_contractor_email: match?.email || p.hvac_contractor_email,
-            }));
-            if(id) tagAsContractorIfNeeded(id);
-          }}
-          onCreateNew={createNewContractor} />
-        <input placeholder="Contractor phone" value={job.hvac_contractor_phone} onChange={e=>setJob(p=>({...p,hvac_contractor_phone:e.target.value}))} style={{...I,marginBottom:8}} />
-        <input placeholder="Contractor email" value={job.hvac_contractor_email} onChange={e=>setJob(p=>({...p,hvac_contractor_email:e.target.value}))} style={I} />
+        <div style={{fontSize:12,fontWeight:700,color:C.muted,marginTop:10,marginBottom:6}}>HVAC Contractors (who this report is for — add more than one to send out for bids)</div>
+        {job.hvac_contractors.map((hc,idx)=>(
+          <div key={idx} style={{border:`1px solid ${C.border}`,borderRadius:8,padding:10,marginBottom:8,position:"relative"}}>
+            <button onClick={()=>removeContractorRow(idx)}
+              style={{position:"absolute",top:6,right:6,border:"none",background:"none",color:"#dc2626",cursor:"pointer",fontSize:15}}>✕</button>
+            <ContractorPicker value={hc.name} contractors={customers}
+              onPick={(id,name)=>{
+                const match = id ? customers.find(c=>c.id===id) : null;
+                updateContractorRow(idx,"customer_id",id);
+                updateContractorRow(idx,"name",name);
+                if(match?.phone) updateContractorRow(idx,"phone",match.phone);
+                if(match?.email) updateContractorRow(idx,"email",match.email);
+                if(id) tagAsContractorIfNeeded(id);
+              }}
+              onCreateNew={(name)=>createNewContractor(idx,name)} />
+            <input placeholder="Contractor phone" value={hc.phone} onChange={e=>updateContractorRow(idx,"phone",e.target.value)} style={{...I,marginBottom:8}} />
+            <input placeholder="Contractor email" value={hc.email} onChange={e=>updateContractorRow(idx,"email",e.target.value)} style={I} />
+          </div>
+        ))}
+        <button onClick={addContractorRow} style={{...Btn,width:"100%"}}>+ Add Another Contractor</button>
       </div>
 
       {showImportPicker && (
@@ -407,12 +438,16 @@ export default function LoadCalc(){
         {job.results?.tons>0 && <button onClick={()=>window.print()} style={{...Btn,flex:1}}>🖨️ Print Report</button>}
       </div>
 
-      {job.results?.tons>0 && (
-        <button onClick={emailReportToContractor} disabled={!job.hvac_contractor_email}
-          title={!job.hvac_contractor_email?"Add a contractor email above first":""}
-          style={{...BtnD,width:"100%",marginBottom:14,background: job.hvac_contractor_email?C.green:"#cbd5e1"}}>
-          📧 Send to {job.hvac_contractor_name||"Contractor"}
-        </button>
+      {job.results?.tons>0 && job.hvac_contractors.length>0 && (
+        <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:14}}>
+          {job.hvac_contractors.map((hc,idx)=>(
+            <button key={idx} onClick={()=>emailReportToContractor(hc.email)} disabled={!hc.email}
+              title={!hc.email?"Add this contractor's email above first":""}
+              style={{...BtnD,width:"100%",background: hc.email?C.green:"#cbd5e1"}}>
+              📧 Send to {hc.name||"Contractor"}
+            </button>
+          ))}
+        </div>
       )}
 
       {job.results?.tons>0 && (
@@ -457,7 +492,7 @@ function PrintableReport({ job, customer }){
         <div><b>Project:</b> {customer?.name||"—"}</div>
         <div><b>Address:</b> {job.address}</div>
         <div><b>Type:</b> {job.job_type}</div>
-        {job.hvac_contractor_name && <div><b>Prepared for:</b> {job.hvac_contractor_name}</div>}
+        {job.hvac_contractors.length>0 && <div><b>Prepared for:</b> {job.hvac_contractors.map(hc=>hc.name).filter(Boolean).join(", ")}</div>}
       </div>
       <table style={{width:"100%",borderCollapse:"collapse",marginBottom:16}}>
         <thead>
