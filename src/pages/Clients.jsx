@@ -12,7 +12,7 @@ const Btn = { border:"1px solid #e2e8f0", background:"#fff", color:"#0f172a",
 const BtnD = { border:"none", background:"#059669", color:"#fff",
   padding:"7px 14px", borderRadius:8, cursor:"pointer", fontSize:13, fontWeight:700 };
 
-const EMPTY_FORM = { name:"", phone:"", email:"", company_name:"", client_company_id:null, address:"" };
+const EMPTY_FORM = { name:"", phone:"", email:"", company_name:"", client_company_id:null, address:"", is_hvac_contractor:false };
 
 // Searchable "client's company" field. Typing filters existing companies;
 // picking one links to the SAME real company record (so two clients at the
@@ -62,6 +62,7 @@ export default function Clients() {
   const [clientCompanies, setClientCompanies] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [contractorFilter, setContractorFilter] = useState("all"); // "all" | "contractors" | "regular"
   const [showAddForm, setShowAddForm] = useState(false);
   const [addForm, setAddForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
@@ -117,6 +118,8 @@ export default function Clients() {
   }
 
   const filtered = customers.filter(c=>{
+    if(contractorFilter==="contractors" && !c.is_hvac_contractor) return false;
+    if(contractorFilter==="regular" && c.is_hvac_contractor) return false;
     const s = search.trim().toLowerCase();
     if(!s) return true;
     return c.name?.toLowerCase().includes(s)
@@ -142,13 +145,13 @@ export default function Clients() {
     setPrefillCompany(null);
     setCustomers(p=>[data, ...p]);
     setOpenId(data.id); // jump straight into it so a trade can be picked immediately
-    setEditForm({name:data.name||"",phone:data.phone||"",email:data.email||"",company_name:data.company_name||"",client_company_id:data.client_company_id||null,address:data.address||""});
+    setEditForm({name:data.name||"",phone:data.phone||"",email:data.email||"",company_name:data.company_name||"",client_company_id:data.client_company_id||null,address:data.address||"",is_hvac_contractor:data.is_hvac_contractor||false});
   }
 
   function openClient(c){
     if(openId===c.id){ setOpenId(null); return; }
     setOpenId(c.id);
-    setEditForm({name:c.name||"",phone:c.phone||"",email:c.email||"",company_name:c.company_name||"",client_company_id:c.client_company_id||null,address:c.address||""});
+    setEditForm({name:c.name||"",phone:c.phone||"",email:c.email||"",company_name:c.company_name||"",client_company_id:c.client_company_id||null,address:c.address||"",is_hvac_contractor:c.is_hvac_contractor||false});
   }
 
   async function saveEdit(id){
@@ -177,6 +180,21 @@ export default function Clients() {
       <input placeholder="Search by name, phone, email, or address…"
         value={search} onChange={e=>setSearch(e.target.value)}
         style={{...I,padding:12,fontSize:15,marginBottom:12}} />
+
+      <div style={{display:"flex",gap:8,marginBottom:12}}>
+        {[
+          {key:"all",label:"All"},
+          {key:"contractors",label:"🔧 HVAC Contractors"},
+          {key:"regular",label:"Regular Clients"},
+        ].map(f=>(
+          <button key={f.key} onClick={()=>setContractorFilter(f.key)}
+            style={{...Btn, background: contractorFilter===f.key?"#0f172a":"#fff",
+              color: contractorFilter===f.key?"#fff":"#0f172a",
+              borderColor: contractorFilter===f.key?"#0f172a":"#e2e8f0"}}>
+            {f.label}
+          </button>
+        ))}
+      </div>
 
       <button onClick={()=>{ setShowAddForm(p=>!p); setPrefillCompany(null); if(showAddForm) setAddForm(EMPTY_FORM); }} style={{...Btn,marginBottom:12}}>
         {showAddForm ? "✕ Cancel" : "+ Add Client"}
@@ -220,7 +238,10 @@ export default function Clients() {
           <div onClick={()=>openClient(c)}
             style={{display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}>
             <div>
-              <div style={{fontWeight:700,fontSize:15,color:"#0f172a"}}>{c.name}</div>
+              <div style={{fontWeight:700,fontSize:15,color:"#0f172a"}}>
+                {c.is_hvac_contractor && <span title="HVAC Contractor" style={{marginRight:5}}>🔧</span>}
+                {c.name}
+              </div>
               <div style={{fontSize:12,color:"#64748b",lineHeight:1.6}}>
                 {c.phone && <span>{c.phone}</span>}
                 {c.company_name && <span> · {c.company_name}</span>}
@@ -251,6 +272,11 @@ export default function Clients() {
                   </button>
                 )}
                 <input placeholder="Address" value={editForm.address} onChange={e=>setEditForm(p=>({...p,address:e.target.value}))} style={I} />
+                <label style={{display:"flex",alignItems:"center",gap:6,fontSize:13,color:"#0f172a",cursor:"pointer"}}>
+                  <input type="checkbox" checked={editForm.is_hvac_contractor}
+                    onChange={e=>setEditForm(p=>({...p,is_hvac_contractor:e.target.checked}))} />
+                  🔧 This client is an HVAC contractor
+                </label>
               </div>
               <button onClick={()=>saveEdit(c.id)} disabled={editSaving} style={{...Btn,marginBottom:14}}>
                 {editSaving ? "Saving…" : "💾 Save changes"}
