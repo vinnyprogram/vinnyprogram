@@ -14,6 +14,50 @@ const Btn = { border:`1px solid ${C.border}`, background:"#fff", color:C.ink,
 const BtnD = { border:"none", background:C.green, color:"#fff",
   padding:"8px 16px", borderRadius:8, cursor:"pointer", fontSize:13, fontWeight:700 };
 
+// Searchable "HVAC contractor" picker - same pattern as the client-company
+// picker on the Clients page. Typing filters the existing directory;
+// picking one auto-fills phone/email so they don't need retyping every job.
+// If nothing matches, offers to save it as a new contractor on the spot.
+function ContractorPicker({ value, contractors, onPick, onCreateNew }){
+  const [query, setQuery] = useState(value||"");
+  const [open, setOpen] = useState(false);
+  useEffect(()=>{ setQuery(value||""); },[value]);
+  const q = query.trim().toLowerCase();
+  const matches = q ? contractors.filter(c=>c.name.toLowerCase().includes(q)) : contractors;
+  const exactMatch = contractors.find(c=>c.name.toLowerCase()===q);
+  return (
+    <div style={{position:"relative"}}>
+      <input placeholder="HVAC contractor name" value={query}
+        onChange={e=>{ setQuery(e.target.value); setOpen(true); onPick(null,e.target.value); }}
+        onFocus={()=>setOpen(true)}
+        onBlur={()=>setTimeout(()=>setOpen(false),150)}
+        style={{...I,marginBottom:8}} />
+      {open && (matches.length>0 || q) && (
+        <div style={{position:"absolute",top:"100%",left:0,right:0,zIndex:20,background:"#fff",
+            border:`1px solid ${C.border}`,borderRadius:8,marginTop:-4,maxHeight:200,overflowY:"auto",
+            boxShadow:"0 6px 18px rgba(0,0,0,.1)"}}>
+          {matches.map(c=>(
+            <div key={c.id} onMouseDown={()=>{ onPick(c.id,c.name); setQuery(c.name); setOpen(false); }}
+              style={{padding:"8px 10px",cursor:"pointer",fontSize:13,borderBottom:`1px solid ${C.border}`}}>
+              <div style={{fontWeight:600}}>
+                {c.is_hvac_contractor && <span title="Already tagged as an HVAC contractor" style={{marginRight:4}}>🔧</span>}
+                {c.name}
+              </div>
+              {(c.phone||c.email) && <div style={{fontSize:11,color:C.muted}}>{[c.phone,c.email].filter(Boolean).join(" · ")}</div>}
+            </div>
+          ))}
+          {q && !exactMatch && (
+            <div onMouseDown={()=>{ onCreateNew(query.trim()); setOpen(false); }}
+              style={{padding:"8px 10px",cursor:"pointer",fontSize:13,color:"#2563eb",fontWeight:600}}>
+              + Save "{query.trim()}" as a new contractor
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Simplified peak solar heat gain (Btu/h per sqft of glass) by compass
 // orientation - a standard simplification used in quick load estimates.
 // Not ACCA's full CLTD/CLF methodology (which varies by hour, latitude,
@@ -91,7 +135,7 @@ function calculateZone(zone, cond){
 
 const EMPTY_JOB = {
   customer_id:null, hers_estimate_id:null, address:"", job_type:"New Construction",
-  hvac_contractor_name:"", hvac_contractor_phone:"", hvac_contractor_email:"",
+  hvac_contractor_customer_id:null, hvac_contractor_name:"", hvac_contractor_phone:"", hvac_contractor_email:"",
   design_temp_heating:10, design_temp_cooling:92, indoor_temp_heating:70, indoor_temp_cooling:75,
   infiltration_ach:0.35, zones:[], results:{}, notes:"", status:"Draft",
 };
@@ -112,6 +156,32 @@ export default function LoadCalc(){
   useEffect(()=>{
     supabase.from("customers").select("*").order("name").then(({data})=>{ if(data) setCustomers(data); });
   },[]);
+
+  // HVAC contractors are just customers too - so a contractor who's also a
+  // customer never gets entered twice, and adding one here makes them show
+  // up in Clients/CRM as well. Only needs a name at creation time; phone/
+  // email can be filled in on the job form (or later, on their customer
+  // record) since those stay as separate editable fields either way.
+  async function createNewContractor(name){
+    const { data, error } = await supabase.from("customers")
+      .insert([{ name, company_id: company?.id, is_hvac_contractor:true }])
+      .select().maybeSingle();
+    if(error){ alert("Could not save contractor: "+error.message); return; }
+    setCustomers(p=>[...p, data]);
+    setJob(p=>({ ...p, hvac_contractor_customer_id:data.id, hvac_contractor_name:data.name }));
+  }
+
+  // Picking an existing customer as the contractor tags them as an HVAC
+  // contractor going forward too (if they weren't already) - being used in
+  // this role is the actual signal we care about, whether or not someone
+  // remembered to tag them ahead of time.
+  async function tagAsContractorIfNeeded(customerId){
+    const c = customers.find(x=>x.id===customerId);
+    if(c && !c.is_hvac_contractor){
+      await supabase.from("customers").update({ is_hvac_contractor:true }).eq("id",customerId);
+      setCustomers(p=>p.map(x=>x.id===customerId?{...x,is_hvac_contractor:true}:x));
+    }
+  }
 
   useEffect(()=>{
     if(isNew){ setLoading(false); return; }
@@ -216,7 +286,18 @@ export default function LoadCalc(){
           <option>New Construction</option><option>Replacement</option><option>Addition</option>
         </select>
         <div style={{fontSize:12,fontWeight:700,color:C.muted,marginTop:10,marginBottom:6}}>HVAC Contractor (who this report is for)</div>
-        <input placeholder="Contractor name" value={job.hvac_contractor_name} onChange={e=>setJob(p=>({...p,hvac_contractor_name:e.target.value}))} style={{...I,marginBottom:8}} />
+        <ContractorPicker value={job.hvac_contractor_name} contractors={customers}
+          onPick={(id,name)=>{
+            const match = id ? customers.find(c=>c.id===id) : null;
+            setJob(p=>({ ...p,
+              hvac_contractor_customer_id: id,
+              hvac_contractor_name: name,
+              hvac_contractor_phone: match?.phone || p.hvac_contractor_phone,
+              hvac_contractor_email: match?.email || p.hvac_contractor_email,
+            }));
+            if(id) tagAsContractorIfNeeded(id);
+          }}
+          onCreateNew={createNewContractor} />
         <input placeholder="Contractor phone" value={job.hvac_contractor_phone} onChange={e=>setJob(p=>({...p,hvac_contractor_phone:e.target.value}))} style={{...I,marginBottom:8}} />
         <input placeholder="Contractor email" value={job.hvac_contractor_email} onChange={e=>setJob(p=>({...p,hvac_contractor_email:e.target.value}))} style={I} />
       </div>
