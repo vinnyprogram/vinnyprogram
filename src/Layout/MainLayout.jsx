@@ -229,6 +229,14 @@ export default function MainLayout() {
                   <span>🧾</span> Search Invoices
                 </Link>
 
+                <Link to="/load-calc"
+                  onClick={()=>{ setHersOpen(false); setMenuOpen(false); }}
+                  style={subLink}
+                  onMouseEnter={e=>e.currentTarget.style.background="#374151"}
+                  onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                  <span>🌡️</span> Load Calc
+                </Link>
+
               </div>
             )}
           </div>}

@@ -21,6 +21,8 @@ import HersEstimate from "./pages/HersEstimate";
 import BoardPlasterEstimate from "./pages/BoardPlasterEstimate";
 import BoardPlasterSearch from "./pages/BoardPlasterSearch";
 import HersSearch from "./pages/HersSearch";
+import LoadCalc from "./pages/LoadCalc";
+import LoadCalcSearch from "./pages/LoadCalcSearch";
 import HersInvoice from "./pages/HersInvoice";
 import HersInvoiceSearch from "./pages/HersInvoiceSearch";
 import HersFieldMeasurements from "./pages/HersFieldMeasurements";
@@ -105,6 +107,9 @@ function ProtectedApp() {
         <Route path="/projects/:customerId" element={<Projects />} />
         <Route path="schedule" element={<Schedule />} />
         <Route path="/hers/search" element={<HersSearch />} />
+        <Route path="/load-calc" element={<LoadCalcSearch />} />
+        <Route path="/load-calc/new" element={<LoadCalc />} />
+        <Route path="/load-calc/:id" element={<LoadCalc />} />
         <Route path="/hers/invoices" element={<HersInvoiceSearch />} />
         <Route path="/hers/invoice/:id" element={<HersInvoice />} />
         <Route path="/hers/measurements/:invoiceId" element={<HersFieldMeasurements />} />
