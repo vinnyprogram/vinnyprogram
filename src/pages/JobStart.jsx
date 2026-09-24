@@ -131,9 +131,16 @@ export default function JobStart() {
 
   async function createCustomer(){
     if(!newName.trim()) return;
-    // Duplicate check
-    const phone = newPhone.replace(/\D/g,"");
-    const phoneMatch = phone.length>=7 && leads.find(l=>(l.phone||"").replace(/\D/g,"").includes(phone));
+    // Duplicate check - compares last-10-digit exact match, not substring
+    // containment (a shorter/partial phone entry could otherwise falsely
+    // match any existing number that happens to contain those digits
+    // somewhere within it).
+    function last10(p){ return (p||"").replace(/\D/g,"").slice(-10); }
+    const newLast10 = last10(newPhone);
+    const phoneMatch = newLast10.length>=7 && leads.find(l=>{
+      const existingLast10 = last10(l.phone);
+      return existingLast10.length>=7 && existingLast10===newLast10;
+    });
     const nameMatch = leads.find(l=>(l.name||"").toLowerCase().trim()===newName.toLowerCase().trim());
     if(phoneMatch){
       alert(`"${phoneMatch.name}" already exists with this phone. Selecting them instead.`);

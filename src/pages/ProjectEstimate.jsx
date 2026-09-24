@@ -200,10 +200,17 @@ async function saveNew() {
   const email = (newForm.email||"").toLowerCase().trim();
   const name = (newForm.name||"").toLowerCase().trim();
 
-  const phoneMatch = phone.length >= 7 && leads.find(l=>
-    (l.phone||"").replace(/\D/g,"").includes(phone) ||
-    phone.includes((l.phone||"").replace(/\D/g,"").slice(-7))
-  );
+  // Compares the last 10 digits of each number (drops a leading "1" country
+  // code either side) so formatting differences don't matter, but requires
+  // an actual match - not just "one number happens to contain some other
+  // number's digits somewhere in it", which was matching unrelated phone
+  // numbers by pure coincidence the more customers existed.
+  function last10(p){ return (p||"").replace(/\D/g,"").slice(-10); }
+  const newLast10 = last10(newForm.phone);
+  const phoneMatch = newLast10.length>=7 && leads.find(l=>{
+    const existingLast10 = last10(l.phone);
+    return existingLast10.length>=7 && existingLast10===newLast10;
+  });
   const emailMatch = email && leads.find(l=>
     (l.email||"").toLowerCase().trim() === email
   );
