@@ -23,7 +23,14 @@ function ContractorPicker({ value, contractors, onPick, onCreateNew }){
   const [open, setOpen] = useState(false);
   useEffect(()=>{ setQuery(value||""); },[value]);
   const q = query.trim().toLowerCase();
-  const matches = q ? contractors.filter(c=>c.name.toLowerCase().includes(q)) : contractors;
+  // Empty/idle: show only already-tagged contractors, so the default list
+  // isn't cluttered with every homeowner client. Once you start typing,
+  // search the FULL customer list instead - so a contractor who exists as
+  // a regular (not-yet-tagged) customer can still be found and selected,
+  // which tags them automatically at that point.
+  const matches = q
+    ? contractors.filter(c=>c.name.toLowerCase().includes(q))
+    : contractors.filter(c=>c.is_hvac_contractor);
   const exactMatch = contractors.find(c=>c.name.toLowerCase()===q);
   return (
     <div style={{position:"relative"}}>
@@ -32,10 +39,15 @@ function ContractorPicker({ value, contractors, onPick, onCreateNew }){
         onFocus={()=>setOpen(true)}
         onBlur={()=>setTimeout(()=>setOpen(false),150)}
         style={{...I,marginBottom:8}} />
-      {open && (matches.length>0 || q) && (
+      {open && (
         <div style={{position:"absolute",top:"100%",left:0,right:0,zIndex:20,background:"#fff",
             border:`1px solid ${C.border}`,borderRadius:8,marginTop:-4,maxHeight:200,overflowY:"auto",
             boxShadow:"0 6px 18px rgba(0,0,0,.1)"}}>
+          {!q && matches.length===0 && (
+            <div style={{padding:"8px 10px",fontSize:12,color:C.faint,fontStyle:"italic"}}>
+              No contractors tagged yet — start typing to search all clients.
+            </div>
+          )}
           {matches.map(c=>(
             <div key={c.id} onMouseDown={()=>{ onPick(c.id,c.name); setQuery(c.name); setOpen(false); }}
               style={{padding:"8px 10px",cursor:"pointer",fontSize:13,borderBottom:`1px solid ${C.border}`}}>
@@ -258,6 +270,30 @@ export default function LoadCalc(){
     }
   }
 
+  function emailReportToContractor(){
+    const lines = [];
+    lines.push(`RESIDENTIAL HVAC LOAD CALCULATION`);
+    lines.push(`(Preliminary Estimate — not ACCA Manual J® certified)`);
+    lines.push("");
+    lines.push(`Project: ${selectedCustomer?.name||"—"}`);
+    lines.push(`Address: ${job.address}`);
+    lines.push(`Type: ${job.job_type}`);
+    lines.push("");
+    lines.push("Zone" + " ".repeat(20) + "Heating (Btu/h)" + "   " + "Cooling (Btu/h)");
+    job.zones.forEach(z=>{
+      lines.push(`${z.name} — Heating: ${(z.results?.heating_btu||0).toLocaleString()} Btu/h — Cooling: ${(z.results?.cooling_total||0).toLocaleString()} Btu/h`);
+    });
+    lines.push("");
+    lines.push(`Total Heating: ${job.results.heating_btu.toLocaleString()} Btu/h`);
+    lines.push(`Total Cooling: ${job.results.cooling_total.toLocaleString()} Btu/h`);
+    lines.push(`Cooling: ${job.results.cooling_total.toLocaleString()} ÷ 12,000 = ${job.results.tons} tons`);
+
+    const subject = encodeURIComponent(`Load Calculation — ${job.address||selectedCustomer?.name||"Project"}`);
+    const body = encodeURIComponent(lines.join("\n"));
+    const to = encodeURIComponent(job.hvac_contractor_email||"");
+    window.location.href = `mailto:${to}?subject=${subject}&body=${body}`;
+  }
+
   if(loading) return <div style={{textAlign:"center",color:C.faint,padding:40}}>Loading…</div>;
 
   const selectedCustomer = customers.find(c=>c.id===job.customer_id);
@@ -370,6 +406,14 @@ export default function LoadCalc(){
         <button onClick={save} disabled={saving} style={{...Btn,flex:1}}>{saving?"Saving…":"💾 Save"}</button>
         {job.results?.tons>0 && <button onClick={()=>window.print()} style={{...Btn,flex:1}}>🖨️ Print Report</button>}
       </div>
+
+      {job.results?.tons>0 && (
+        <button onClick={emailReportToContractor} disabled={!job.hvac_contractor_email}
+          title={!job.hvac_contractor_email?"Add a contractor email above first":""}
+          style={{...BtnD,width:"100%",marginBottom:14,background: job.hvac_contractor_email?C.green:"#cbd5e1"}}>
+          📧 Send to {job.hvac_contractor_name||"Contractor"}
+        </button>
+      )}
 
       {job.results?.tons>0 && (
         <div style={CARD}>
