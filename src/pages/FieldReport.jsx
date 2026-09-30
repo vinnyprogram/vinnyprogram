@@ -258,9 +258,9 @@ export default function FieldReport() {
       });
     }
 
-    pushBlank();
-    lines.push(`${salesRep}`);
-
+    // No sign-off line here anymore - it was showing whoever's logged-in
+    // account email (no display name set), which showed up as an unwanted
+    // personal email address in client-facing correspondence.
     const body = encodeURIComponent(lines.join("\n"));
     // No default recipient - this used to hardcode one specific email
     // address for every company using CUB, which is wrong for a multi-
@@ -269,7 +269,11 @@ export default function FieldReport() {
     window.location.href = `mailto:?subject=${subject}&body=${body}`;
   }
 
-  const salesRep = user?.user_metadata?.full_name || user?.email || "Field Rep";
+  // Never falls back to the logged-in account's raw email - that ended up
+  // showing a personal email address in client-facing print/email output
+  // whenever no display name was set on the account. Falls back to a
+  // generic label instead.
+  const salesRep = user?.user_metadata?.full_name || "Field Rep";
 
   // crew_notes not stored in DB yet — show empty
   const crewNotes = project?.crew_notes
