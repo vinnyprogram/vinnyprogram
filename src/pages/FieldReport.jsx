@@ -28,7 +28,6 @@ const COMPANY = {
   address:      "69 Watson Street | Brockton, Massachusetts 02301",
   phone:        "(781) 507-3199",
   email:        "info@brightchoiceinsulation.com",
-  office_email: "gvvini.carvalho@gmail.com",
   website:      "https://brightchoiceinsulation.com/",
 };
 
@@ -159,7 +158,7 @@ export default function FieldReport() {
     const physicalAreas = primaryAreas.map(p=>{
       const combos = sortedAreas.filter(s=>s.floor_id===p.floor_id && s.order_index>p.order_index && s.order_index<p.order_index+10);
       const mls = [{material:p.material,thickness_in:p.thickness_in,r_value:p.r_value}, ...combos.map(c=>({material:c.material,thickness_in:c.thickness_in,r_value:c.r_value}))];
-      return { area_type:p.area_type, floor_id:p.floor_id, sqft:p.sqft||0, deduct_sqft:p.deduct_sqft||0, id:p.id, mat_lines:mls, note:p.note||"" };
+      return { area_type:p.area_type, floor_id:p.floor_id, sqft:p.sqft||0, deduct_sqft:p.deduct_sqft||0, paint_sqft:p.paint_sqft||0, id:p.id, mat_lines:mls, note:p.note||"" };
     });
     const groupMap = {};
     physicalAreas.forEach(a=>{
@@ -169,13 +168,14 @@ export default function FieldReport() {
       const key = (a.area_type||"")+"||||"+specKey;
       if(!groupMap[key]) groupMap[key]={
         floors: [], floorOrder: floorIdx, area_type:a.area_type, mat_lines:a.mat_lines,
-        sqft:0, deduct:0, segs:[], notes:[],
+        sqft:0, deduct:0, paint_sqft:0, segs:[], notes:[],
       };
       const g = groupMap[key];
       if(fl && !g.floors.find(f=>f.id===fl.id)) g.floors.push(fl);
       if(floorIdx < g.floorOrder) g.floorOrder = floorIdx;
       g.sqft += a.sqft||0;
       g.deduct += Number(a.deduct_sqft)||0;
+      g.paint_sqft += Number(a.paint_sqft)||0;
       g.segs.push(...segments.filter(s=>s.area_id===a.id));
       if(a.note && a.note.trim()) g.notes.push({floor:fl?.name||"",text:a.note.trim()});
     });
@@ -195,6 +195,7 @@ export default function FieldReport() {
       const showFloorOnNote = g.floors.length>1;
       lines.push(`${floorLabel?floorLabel+": ":""}${g.area_type} ${spec} - ${fmt(g.sqft)}ft²${g.deduct>0?` (−${fmt(g.deduct)}ft² deducted)`:""}`);
       if(measStr) lines.push(`  ${measStr}`);
+      if(g.paint_sqft>0) lines.push(`  🎨 Intumescent paint: ${fmt(g.paint_sqft)} ft²`);
       g.notes.forEach(n=>lines.push(`  📝 ${showFloorOnNote&&n.floor?`${n.floor}: `:""}${n.text}`));
       lines.push("");
     });
@@ -261,7 +262,11 @@ export default function FieldReport() {
     lines.push(`${salesRep}`);
 
     const body = encodeURIComponent(lines.join("\n"));
-    window.location.href = `mailto:${COMPANY.office_email}?subject=${subject}&body=${body}`;
+    // No default recipient - this used to hardcode one specific email
+    // address for every company using CUB, which is wrong for a multi-
+    // tenant app. Left blank so whoever clicks "Email" picks the right
+    // recipient themselves in their own mail client.
+    window.location.href = `mailto:?subject=${subject}&body=${body}`;
   }
 
   const salesRep = user?.user_metadata?.full_name || user?.email || "Field Rep";
