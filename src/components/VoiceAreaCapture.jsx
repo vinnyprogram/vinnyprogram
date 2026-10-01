@@ -143,7 +143,14 @@ export default function VoiceAreaCapture({ floors, areaTypes, thickOpts, materia
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     if(!SR){ setSupported(false); return; }
     const recognition = new SR();
-    recognition.continuous = true;
+    // iOS Safari's speech recognition is specifically buggy with
+    // continuous:true - it tends to immediately error out with
+    // "service-not-allowed" instead of actually listening. The documented
+    // workaround is to use single-utterance mode there instead, and rely on
+    // our own onend-triggered restart (below) to simulate continuous
+    // listening by rapidly starting a new utterance each time one ends.
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+    recognition.continuous = !isIOS;
     recognition.interimResults = true;
     recognition.lang = "en-US";
 
@@ -185,9 +192,15 @@ export default function VoiceAreaCapture({ floors, areaTypes, thickOpts, materia
     recognition.onend = ()=>{
       // Auto-restart only if we're still SUPPOSED to be listening - checked
       // via the ref (always current), not the state variable this closure
-      // would otherwise have captured once, back at mount time.
+      // would otherwise have captured once, back at mount time. A short
+      // delay before restarting avoids some browsers silently rejecting a
+      // .start() call made immediately after the previous session ended.
       if(listeningRef.current){
-        try{ recognition.start(); }catch(e){ /* already running - ignore */ }
+        setTimeout(()=>{
+          if(listeningRef.current){
+            try{ recognition.start(); }catch(e){ /* already running - ignore */ }
+          }
+        }, 150);
       }
     };
 
