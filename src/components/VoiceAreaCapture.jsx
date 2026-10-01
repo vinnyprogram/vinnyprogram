@@ -184,7 +184,11 @@ export default function VoiceAreaCapture({ floors, areaTypes, thickOpts, materia
         "network": "A network error interrupted speech recognition.",
       };
       setLastError(messages[event.error] || `Speech recognition error: ${event.error}`);
-      if(event.error==="not-allowed" || event.error==="audio-capture"){
+      if(
+        event.error === "not-allowed" ||
+        event.error === "service-not-allowed" ||
+        event.error === "audio-capture"
+        ){
         setListening(false);
         listeningRef.current = false;
       }
