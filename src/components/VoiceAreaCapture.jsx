@@ -128,8 +128,16 @@ export default function VoiceAreaCapture({ floors, areaTypes, thickOpts, materia
   const [liveTranscript, setLiveTranscript] = useState("");
   const [staged, setStaged] = useState([]); // [{id, selected, ...parsed fields}]
   const [supported, setSupported] = useState(true);
+  const [lastError, setLastError] = useState("");
   const recognitionRef = useRef(null);
   const bufferRef = useRef(""); // accumulates finalized speech since the last "done"/"another line"
+  // Mirrors `listening` into a ref so the onend handler (set up once, inside
+  // a useEffect that runs on mount) always checks the CURRENT value, not
+  // the stale `listening=false` it would otherwise close over from the
+  // very first render - that stale check is why auto-restart never fired
+  // once the browser's engine silently stopped itself (which happens often,
+  // even in "continuous" mode, after a short pause or timeout).
+  const listeningRef = useRef(false);
 
   useEffect(()=>{
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -159,8 +167,29 @@ export default function VoiceAreaCapture({ floors, areaTypes, thickOpts, materia
       }
       setLiveTranscript(bufferRef.current + interimChunk);
     };
-    recognition.onerror = ()=>{ /* swallow - mic permission or network hiccup; user can just retry */ };
-    recognition.onend = ()=>{ if(listening) recognition.start(); }; // auto-restart if we're still supposed to be listening
+    recognition.onerror = (event)=>{
+      // Surfaced to the user now instead of silently swallowed - this is
+      // the actual diagnostic info needed when nothing seems to happen.
+      const messages = {
+        "not-allowed": "Microphone access was denied. Check your browser/site permissions and try again.",
+        "no-speech": "No speech detected — try again, a bit closer to the mic.",
+        "audio-capture": "No microphone found on this device.",
+        "network": "A network error interrupted speech recognition.",
+      };
+      setLastError(messages[event.error] || `Speech recognition error: ${event.error}`);
+      if(event.error==="not-allowed" || event.error==="audio-capture"){
+        setListening(false);
+        listeningRef.current = false;
+      }
+    };
+    recognition.onend = ()=>{
+      // Auto-restart only if we're still SUPPOSED to be listening - checked
+      // via the ref (always current), not the state variable this closure
+      // would otherwise have captured once, back at mount time.
+      if(listeningRef.current){
+        try{ recognition.start(); }catch(e){ /* already running - ignore */ }
+      }
+    };
 
     recognitionRef.current = recognition;
     return ()=>{ try{ recognition.stop(); }catch(e){} };
@@ -176,13 +205,16 @@ export default function VoiceAreaCapture({ floors, areaTypes, thickOpts, materia
 
   function startListening(){
     if(!supported) return;
+    setLastError("");
     bufferRef.current = "";
     setLiveTranscript("");
     setListening(true);
-    try{ recognitionRef.current?.start(); }catch(e){}
+    listeningRef.current = true;
+    try{ recognitionRef.current?.start(); }catch(e){ setLastError(`Could not start listening: ${e.message}`); }
   }
   function stopListening(){
     setListening(false);
+    listeningRef.current = false;
     try{ recognitionRef.current?.stop(); }catch(e){}
     // Commit whatever's left in the buffer as a final entry too, in case
     // they stopped with the button instead of saying "done".
@@ -222,6 +254,11 @@ export default function VoiceAreaCapture({ floors, areaTypes, thickOpts, materia
         {!supported && (
           <div style={{background:"#fef2f2",border:"1px solid #fecaca",borderRadius:8,padding:10,fontSize:12,color:"#991b1b",marginBottom:10}}>
             Voice recognition isn't supported in this browser. Try Chrome or Edge.
+          </div>
+        )}
+        {lastError && (
+          <div style={{background:"#fef2f2",border:"1px solid #fecaca",borderRadius:8,padding:10,fontSize:12,color:"#991b1b",marginBottom:10}}>
+            ⚠️ {lastError}
           </div>
         )}
 
