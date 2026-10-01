@@ -7,6 +7,7 @@ import { logEvent as sharedLogEvent } from "../utils/debugLog";
 import DebugLogButton from "../components/DebugLogButton";
 import { useAuth } from "../context/AuthContext";
 import AddressInput from "./AddressInput";
+import VoiceAreaCapture from "../components/VoiceAreaCapture";
 
 const C = {
   bg: "#f4f5f7", white: "#fff", ink: "#0f172a",
@@ -1399,6 +1400,37 @@ export default function ProjectEstimate() {
   const [newFloorName,setNewFloorName]=useState("");
   const [addingFloor,setAddingFloor]=useState(false);
   const [deleteConfirmInfo,setDeleteConfirmInfo]=useState(null); // {floor, idx, area} - in-app delete confirmation
+  const [showVoiceCapture,setShowVoiceCapture]=useState(false);
+
+  // Converts staged voice-dictated entries into real area objects and adds
+  // them to whichever floor each one specifies - same shape addArea()
+  // produces, so everything downstream (pricing, combo editing, etc.)
+  // treats them identically to a manually-added area.
+  function transferVoiceEntries(entries){
+    setAreas(prev=>{
+      const next = {...prev};
+      entries.forEach((e,i)=>{
+        const targetFloor = e.floor || activeFloor;
+        if(!next[targetFloor]) next[targetFloor] = [];
+        const measurements = (e.measurements||[]).map(m=>({h:m.h,l:m.l,q:m.q||1,sqft:m.sqft}));
+        const sqft = Math.round(measurements.reduce((s,m)=>s+m.sqft,0)*100)/100;
+        const mat_lines = e.combo
+          ? e.combo.map((c,ci)=>({id:ci+1,material:c.material||"",thickness_in:c.thickness_in||e.thickness_in||"",r_value:"",oc:""}))
+          : [{id:1,material:e.material||"",thickness_in:e.thickness_in||"",r_value:"",oc:""}];
+        const areaObj = {
+          temp_id: Date.now()+i, floor: targetFloor, area_type: e.area_type||"",
+          material: e.combo ? "__combo__" : (e.material||""),
+          thickness_in: e.thickness_in||"", r_value:"", oc:"",
+          sqft, measurements, mh:"", ml:"", mq:"1",
+          deduct_sqft:"", paint_sqft:"", price_override:"", phase:null,
+          _collapsed:false, options:[], is_optional:false, mat_lines, note:"",
+        };
+        next[targetFloor] = [areaObj, ...next[targetFloor]];
+      });
+      return next;
+    });
+    setShowVoiceCapture(false);
+  }
   const [panelOpen,setPanelOpen]=useState(false);
   const [loadingProject,setLoadingProject]=useState(isEditing);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
@@ -2674,6 +2706,11 @@ export default function ProjectEstimate() {
 
           <div style={{display:"flex",gap:6,marginBottom:6}}>
             <button onClick={()=>addArea(activeFloor)} className={currentAreas.some(a=>!isAreaComplete(a))?"area-focus-bg":""} style={{flex:1,padding:"7px",borderRadius:7,border:`1px dashed ${C.border}`,background:C.white,color:C.muted,cursor:"pointer",fontSize:11,fontWeight:600,height:"auto"}}>+ Add area to {activeFloor}</button>
+            <button onClick={()=>setShowVoiceCapture(true)}
+              title="Dictate an area by voice"
+              style={{border:"none",background:"#2563eb",color:"#fff",borderRadius:7,padding:"0 12px",cursor:"pointer",fontSize:13,fontWeight:700,whiteSpace:"nowrap",flexShrink:0}}>
+              🎙️
+            </button>
             {savedProjectId&&(
               <button onClick={()=>navigate(`/project/drawings/${savedProjectId}`)}
                 title="Measure areas from a PDF floor plan"
@@ -2772,6 +2809,16 @@ export default function ProjectEstimate() {
         input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
         @media (max-width: 899px) { input, select, textarea { font-size: 16px !important; } }
       `}</style>
+      {showVoiceCapture && (
+        <VoiceAreaCapture
+          floors={floors}
+          areaTypes={companyAreaTypes.length?companyAreaTypes:AREA_TYPES}
+          thickOpts={dbThickOpts.length?dbThickOpts:THICK_OPTS}
+          materials={materials}
+          onClose={()=>setShowVoiceCapture(false)}
+          onTransferEntries={transferVoiceEntries}
+        />
+      )}
       {deleteConfirmInfo && createPortal(
         <div onClick={()=>setDeleteConfirmInfo(null)}
           style={{position:"fixed",inset:0,zIndex:9999,background:"rgba(15,23,42,0.45)",
