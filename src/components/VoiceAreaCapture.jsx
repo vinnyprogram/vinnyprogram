@@ -17,6 +17,18 @@ const NUM_WORDS = {zero:0,one:1,two:2,three:3,four:4,five:5,six:6,seven:7,eight:
   ten:10,eleven:11,twelve:12,thirteen:13,fourteen:14,fifteen:15,sixteen:16,seventeen:17,
   eighteen:18,nineteen:19,twenty:20,thirty:30,forty:40,fifty:50,sixty:60,seventy:70,eighty:80,ninety:90};
 
+// "third floor" needs to become "3rd" to match a floor tab named "3rd" -
+// ordinal words, not the cardinal numbers above.
+const ORDINAL_WORDS = {first:"1st",second:"2nd",third:"3rd",fourth:"4th",fifth:"5th",
+  sixth:"6th",seventh:"7th",eighth:"8th",ninth:"9th",tenth:"10th"};
+function ordinalsToDigits(text){
+  let out = text;
+  for(const [word,digit] of Object.entries(ORDINAL_WORDS)){
+    out = out.replace(new RegExp(`\\b${word}\\b`,"gi"), digit);
+  }
+  return out;
+}
+
 function wordsToDigits(text){
   const words = text.toLowerCase().split(/\s+/);
   const out = [];
@@ -38,14 +50,37 @@ function wordsToDigits(text){
   return out.join(" ");
 }
 
-// Finds the longest matching entry from a list of known values within the
-// transcript - longest-first so "exterior wall" matches before a shorter
-// unrelated "wall" entry would.
+// Normalizes small, predictable differences between how a value is written
+// ("Roof Rafter w/ Strapping") and how someone naturally says it ("roof
+// rafters with strapping") - expands "w/" to "with", and strips a trailing
+// "s" from each word so plurals match singulars either direction.
+function normalizeForMatch(text){
+  return text.toLowerCase()
+    .replace(/\bw\//g," with ")
+    .split(/\s+/)
+    .map(w=>w.replace(/s$/,""))
+    .join(" ")
+    .trim();
+}
+
+// Finds the best matching entry from a list of known values within the
+// transcript. Tries an exact substring match first (longest candidate
+// first, so "exterior wall" matches before a shorter unrelated "wall"
+// would); if nothing matches exactly, falls back to a normalized
+// comparison (handles "w/" vs "with", plurals vs singulars) requiring most
+// of the candidate's words to actually appear in the transcript.
 function findBestMatch(text, candidates){
   const low = text.toLowerCase();
   const sorted = [...candidates].filter(Boolean).sort((a,b)=>b.length-a.length);
   for(const c of sorted){
     if(low.includes(c.toLowerCase())) return c;
+  }
+  const normText = normalizeForMatch(text);
+  for(const c of sorted){
+    const candWords = normalizeForMatch(c).split(/\s+/).filter(w=>w.length>2);
+    if(candWords.length===0) continue;
+    const hits = candWords.filter(w=>normText.includes(w)).length;
+    if(hits/candWords.length >= 0.8) return c;
   }
   return null;
 }
@@ -79,27 +114,47 @@ function parseMeasurements(text){
   return measurements;
 }
 
-// The actual parser - walks the transcript in the expected order: floor ->
-// area type -> thickness -> material/combo -> measurements. Each piece is
-// located by finding where it starts in the remaining text, then that
-// section is consumed before looking for the next piece - this keeps,
-// e.g., a floor name from accidentally being matched again inside the
-// measurements section.
+// Removes the FIRST occurrence of a matched phrase from the text (not just
+// checks whether it's there) - used so a word that was already claimed by
+// one field (e.g. "floor" as part of a floor name) can't also get picked up
+// by a later field that happens to share that word (e.g. a literal "Floor"
+// area type).
+function consume(text, phrase){
+  if(!phrase) return text;
+  const idx = text.toLowerCase().indexOf(phrase.toLowerCase());
+  if(idx===-1) return text;
+  return text.slice(0,idx) + " " + text.slice(idx+phrase.length);
+}
+
+// The actual parser - walks the transcript in order: floor -> area type ->
+// thickness -> material/combo -> measurements. Each matched piece is
+// removed from the working text before looking for the next one, so a word
+// that appears in more than one list (e.g. "floor") can't get matched
+// twice for two different fields.
 function parseEntry(rawTranscript, { floors, areaTypes, thickOpts, materials }){
-  const transcript = wordsToDigits(rawTranscript);
+  let remaining = ordinalsToDigits(wordsToDigits(rawTranscript));
   const result = { floor:null, area_type:null, thickness_in:null, material:null, combo:null, measurements:[], raw:rawTranscript };
 
-  const floor = findBestMatch(transcript, floors);
+  const floor = findBestMatch(remaining, floors);
   result.floor = floor;
+  remaining = consume(remaining, floor);
+  // "third floor" -> floor name "3rd" gets consumed above, but the
+  // leftover standalone word "floor" would otherwise go on to falsely
+  // match a literal "Floor" area type later - in practice "[ordinal]
+  // floor" at the start of a sentence is naming the level, essentially
+  // never the area type, so drop that leftover word too.
+  if(floor) remaining = remaining.replace(/\bfloor\b/i," ");
 
-  const areaType = findBestMatch(transcript, areaTypes);
+  const areaType = findBestMatch(remaining, areaTypes);
   result.area_type = areaType;
+  remaining = consume(remaining, areaType);
 
-  const thickness = findBestMatch(transcript, thickOpts);
+  const thickness = findBestMatch(remaining, thickOpts);
   result.thickness_in = thickness;
+  remaining = consume(remaining, thickness);
 
-  // "combo of X and Y"
-  const comboMatch = transcript.match(/combo of (.+?) and (.+?)(?:\.|,|measure|$)/i);
+  // "combo of X and Y" / "combo with X and Y" - people say both naturally.
+  const comboMatch = remaining.match(/combo (?:of|with)\s+(.+?)\s+and\s+(.+?)(?:\.|,|measure|$)/i);
   if(comboMatch){
     const partA = comboMatch[1].trim(), partB = comboMatch[2].trim();
     const parseComboPart = (part)=>{
@@ -108,17 +163,18 @@ function parseEntry(rawTranscript, { floors, areaTypes, thickOpts, materials }){
       return { thickness_in: thickMatch?`${thickMatch[1]}in`:"", material: matchedMat||part.trim() };
     };
     result.combo = [parseComboPart(partA), parseComboPart(partB)];
+    remaining = remaining.slice(0, comboMatch.index) + " " + remaining.slice(comboMatch.index + comboMatch[0].length);
   } else {
-    // single material - look for it after the thickness token, if any
-    const afterThickness = thickness ? transcript.split(thickness).slice(1).join(thickness) : transcript;
-    result.material = matchMaterial(afterThickness, materials) || findBestMatch(transcript, materials.map(m=>m.name));
+    result.material = matchMaterial(remaining, materials);
+    if(result.material) remaining = consume(remaining, result.material);
   }
 
-  // measurements - everything after "measures of" / "measurements is" / "measurement"
-  const measMatch = transcript.match(/measure(?:s|ments)?\s*(?:of|is|are)?\s*(.+)/i);
-  if(measMatch){
-    result.measurements = parseMeasurements(measMatch[1]);
-  }
+  // Measurements - prefer the "measures of"/"measurements is" trigger
+  // phrase when it's actually said, but don't require it: if nothing
+  // follows that trigger, just scan whatever's left for H x L patterns
+  // directly, since people don't always say the trigger phrase.
+  const measMatch = remaining.match(/measure(?:s|ments)?\s*(?:of|is|are)?\s*(.+)/i);
+  result.measurements = parseMeasurements(measMatch ? measMatch[1] : remaining);
 
   return result;
 }
@@ -249,7 +305,10 @@ export default function VoiceAreaCapture({ floors, areaTypes, thickOpts, materia
     const spokenEntries = [];
     for(let i=0;i<parts.length;i+=2){
       const entry = parts[i]?.trim();
-      if(entry) spokenEntries.push(entry);
+      // Needs some actual letters/numbers, not just leftover punctuation -
+      // a trailing "." after the last "Done." in a transcript otherwise
+      // became its own empty staged entry.
+      if(entry && entry.replace(/[^a-z0-9]/gi,"").length>2) spokenEntries.push(entry);
     }
     if(spokenEntries.length===0){
       commitEntry(text);
