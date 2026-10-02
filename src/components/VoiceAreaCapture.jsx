@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef } from "react";
 import { createPortal } from "react-dom";
 
 const C = { bg:"#f4f5f7", white:"#fff", ink:"#0f172a", muted:"#64748b",
@@ -125,119 +125,144 @@ function parseEntry(rawTranscript, { floors, areaTypes, thickOpts, materials }){
 
 export default function VoiceAreaCapture({ floors, areaTypes, thickOpts, materials, onClose, onTransferEntries }){
   const [listening, setListening] = useState(false);
+  const [processing, setProcessing] = useState(false); // uploading/transcribing after Stop
   const [liveTranscript, setLiveTranscript] = useState("");
   const [staged, setStaged] = useState([]); // [{id, selected, ...parsed fields}]
-  const [supported, setSupported] = useState(true);
   const [lastError, setLastError] = useState("");
-  const recognitionRef = useRef(null);
-  const bufferRef = useRef(""); // accumulates finalized speech since the last "done"/"another line"
-  // Mirrors `listening` into a ref so the onend handler (set up once, inside
-  // a useEffect that runs on mount) always checks the CURRENT value, not
-  // the stale `listening=false` it would otherwise close over from the
-  // very first render - that stale check is why auto-restart never fired
-  // once the browser's engine silently stopped itself (which happens often,
-  // even in "continuous" mode, after a short pause or timeout).
-  const listeningRef = useRef(false);
+  const mediaRecorderRef = useRef(null);
+  const mediaStreamRef = useRef(null);
+  const audioChunksRef = useRef([]);
 
-  useEffect(()=>{
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if(!SR){ setSupported(false); return; }
-    const recognition = new SR();
-    // iOS Safari's speech recognition is specifically buggy with
-    // continuous:true - it tends to immediately error out with
-    // "service-not-allowed" instead of actually listening. The documented
-    // workaround is to use single-utterance mode there instead, and rely on
-    // our own onend-triggered restart (below) to simulate continuous
-    // listening by rapidly starting a new utterance each time one ends.
-    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
-    recognition.continuous = !isIOS;
-    recognition.interimResults = true;
-    recognition.lang = "en-US";
+  // Browser-native SpeechRecognition (webkitSpeechRecognition) turned out to
+  // be unreliable across real devices - "service-not-allowed" on iOS,
+  // outright denial on Android, even with continuous mode tuned per-
+  // platform. This replaces it with a much more broadly-supported approach:
+  // the browser only records plain audio (MediaRecorder), and a server-side
+  // function (/api/transcribe) does the actual speech-to-text via OpenAI.
+  // Everything downstream - parseEntry, commitEntry, the staged-entry UI -
+  // is unchanged, since it only ever needed the resulting text.
 
-    recognition.onresult = (event)=>{
-      let finalChunk = "";
-      let interimChunk = "";
-      for(let i=event.resultIndex;i<event.results.length;i++){
-        const transcriptPiece = event.results[i][0].transcript;
-        if(event.results[i].isFinal) finalChunk += transcriptPiece + " ";
-        else interimChunk += transcriptPiece;
-      }
-      if(finalChunk){
-        bufferRef.current += finalChunk;
-        // Check for an end-of-entry control word in what's been said so far.
-        const endMatch = bufferRef.current.match(/\b(done|another line)\b/i);
-        if(endMatch){
-          const beforeEnd = bufferRef.current.slice(0, endMatch.index);
-          commitEntry(beforeEnd);
-          bufferRef.current = bufferRef.current.slice(endMatch.index + endMatch[0].length);
-        }
-      }
-      setLiveTranscript(bufferRef.current + interimChunk);
-    };
-    recognition.onerror = (event)=>{
-      // Surfaced to the user now instead of silently swallowed - this is
-      // the actual diagnostic info needed when nothing seems to happen.
-      const messages = {
-        "not-allowed": "Microphone access was denied. Check your browser/site permissions and try again.",
-        "no-speech": "No speech detected — try again, a bit closer to the mic.",
-        "audio-capture": "No microphone found on this device.",
-        "network": "A network error interrupted speech recognition.",
+  function getSupportedMimeType(){
+    const types = ["audio/webm;codecs=opus","audio/webm","audio/mp4","audio/ogg;codecs=opus"];
+    for(const type of types){ if(MediaRecorder.isTypeSupported(type)) return type; }
+    return "";
+  }
+
+  async function startListening(){
+    setLastError("");
+    setLiveTranscript("");
+
+    if(!navigator.mediaDevices?.getUserMedia){
+      setLastError("Microphone recording isn't supported in this browser.");
+      return;
+    }
+
+    try{
+      const stream = await navigator.mediaDevices.getUserMedia({ audio:true });
+      mediaStreamRef.current = stream;
+
+      const mimeType = getSupportedMimeType();
+      const recorder = mimeType ? new MediaRecorder(stream,{mimeType}) : new MediaRecorder(stream);
+      mediaRecorderRef.current = recorder;
+      audioChunksRef.current = [];
+
+      recorder.ondataavailable = (event)=>{
+        if(event.data && event.data.size>0) audioChunksRef.current.push(event.data);
       };
-      setLastError(messages[event.error] || `Speech recognition error: ${event.error}`);
-      if(
-        event.error === "not-allowed" ||
-        event.error === "service-not-allowed" ||
-        event.error === "audio-capture"
-        ){
+      recorder.onerror = ()=>{
+        setLastError("The microphone recording failed.");
         setListening(false);
-        listeningRef.current = false;
-      }
-    };
-    recognition.onend = ()=>{
-      // Auto-restart only if we're still SUPPOSED to be listening - checked
-      // via the ref (always current), not the state variable this closure
-      // would otherwise have captured once, back at mount time. A short
-      // delay before restarting avoids some browsers silently rejecting a
-      // .start() call made immediately after the previous session ended.
-      if(listeningRef.current){
-        setTimeout(()=>{
-          if(listeningRef.current){
-            try{ recognition.start(); }catch(e){ /* already running - ignore */ }
-          }
-        }, 150);
-      }
-    };
+      };
+      recorder.onstop = async ()=>{
+        const chunks = audioChunksRef.current;
+        const blob = new Blob(chunks, { type: recorder.mimeType || mimeType || "audio/webm" });
+        stream.getTracks().forEach(track=>track.stop());
+        mediaStreamRef.current = null;
+        mediaRecorderRef.current = null;
 
-    recognitionRef.current = recognition;
-    return ()=>{ try{ recognition.stop(); }catch(e){} };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[]);
+        if(blob.size===0){
+          setLastError("No audio was recorded.");
+          setListening(false);
+          return;
+        }
+        await transcribeAudio(blob);
+      };
+
+      recorder.start();
+      setListening(true);
+    }catch(error){
+      setListening(false);
+      if(error?.name==="NotAllowedError"){
+        setLastError("Microphone access was denied. Please allow microphone access for this site.");
+      } else if(error?.name==="NotFoundError"){
+        setLastError("No microphone was found on this device.");
+      } else {
+        setLastError(error?.message || "Could not start the microphone.");
+      }
+    }
+  }
+
+  function stopListening(){
+    const recorder = mediaRecorderRef.current;
+    if(recorder && recorder.state!=="inactive"){
+      recorder.stop();
+    } else {
+      setListening(false);
+    }
+  }
+
+  async function transcribeAudio(blob){
+    setProcessing(true);
+    setLastError("");
+    try{
+      const extension = blob.type.includes("mp4") ? "m4a" : "webm";
+      const file = new File([blob], `voice-command.${extension}`, { type: blob.type });
+      const formData = new FormData();
+      formData.append("audio", file);
+
+      const response = await fetch("/api/transcribe", { method:"POST", body: formData });
+      const data = await response.json();
+      if(!response.ok) throw new Error(data?.error || "Transcription failed.");
+
+      const text = (data.text||"").trim();
+      if(!text){
+        setLastError("I couldn't hear any words. Please try again.");
+        return;
+      }
+      setLiveTranscript(text);
+      processTranscript(text);
+    }catch(error){
+      setLastError(error?.message || "Could not transcribe the recording.");
+    }finally{
+      setProcessing(false);
+      setListening(false);
+    }
+  }
+
+  // One recording can contain several entries ("...done... another
+  // line..."), so this splits on those control words and commits each
+  // piece separately - same staged-entry behavior as before, just fed from
+  // one transcribed block of text instead of a live, continuously-updating
+  // stream.
+  function processTranscript(text){
+    const parts = text.toLowerCase().split(/\b(done|another line)\b/i);
+    const spokenEntries = [];
+    for(let i=0;i<parts.length;i+=2){
+      const entry = parts[i]?.trim();
+      if(entry) spokenEntries.push(entry);
+    }
+    if(spokenEntries.length===0){
+      commitEntry(text);
+      return;
+    }
+    spokenEntries.forEach(entry=>commitEntry(entry));
+  }
 
   function commitEntry(transcript){
     const trimmed = transcript.trim();
     if(!trimmed) return;
     const parsed = parseEntry(trimmed, { floors, areaTypes, thickOpts, materials });
     setStaged(p=>[...p, { id: Date.now()+Math.random(), selected:true, ...parsed }]);
-  }
-
-  function startListening(){
-    if(!supported) return;
-    setLastError("");
-    bufferRef.current = "";
-    setLiveTranscript("");
-    setListening(true);
-    listeningRef.current = true;
-    try{ recognitionRef.current?.start(); }catch(e){ setLastError(`Could not start listening: ${e.message}`); }
-  }
-  function stopListening(){
-    setListening(false);
-    listeningRef.current = false;
-    try{ recognitionRef.current?.stop(); }catch(e){}
-    // Commit whatever's left in the buffer as a final entry too, in case
-    // they stopped with the button instead of saying "done".
-    if(bufferRef.current.trim()) commitEntry(bufferRef.current);
-    bufferRef.current = "";
-    setLiveTranscript("");
   }
 
   function updateStaged(id, field, val){
@@ -268,11 +293,6 @@ export default function VoiceAreaCapture({ floors, areaTypes, thickOpts, materia
           <button onClick={onClose} style={{border:"none",background:"none",color:C.faint,fontSize:20,cursor:"pointer"}}>✕</button>
         </div>
 
-        {!supported && (
-          <div style={{background:"#fef2f2",border:"1px solid #fecaca",borderRadius:8,padding:10,fontSize:12,color:"#991b1b",marginBottom:10}}>
-            Voice recognition isn't supported in this browser. Try Chrome or Edge.
-          </div>
-        )}
         {lastError && (
           <div style={{background:"#fef2f2",border:"1px solid #fecaca",borderRadius:8,padding:10,fontSize:12,color:"#991b1b",marginBottom:10}}>
             ⚠️ {lastError}
@@ -280,21 +300,28 @@ export default function VoiceAreaCapture({ floors, areaTypes, thickOpts, materia
         )}
 
         <div style={{fontSize:11,color:C.muted,marginBottom:10,lineHeight:1.5}}>
-          Say: floor → area type → thickness → material (or "combo of X and Y") → "measures of" then H×L pairs
-          separated by "<b>plus</b>" → "<b>done</b>" or "<b>another line</b>" to finish that one and start the next.
+          Press Start, then say: floor → area type → thickness → material (or "combo of X and Y") → "measures of"
+          then H×L pairs separated by "<b>plus</b>" → "<b>done</b>" or "<b>another line</b>" between entries →
+          press Stop when you're finished.
         </div>
 
         <div style={{display:"flex",gap:8,marginBottom:10}}>
-          {!listening ? (
-            <button onClick={startListening} disabled={!supported} style={{...BtnD,flex:1}}>🎙️ Let's Start</button>
-          ) : (
+          {!listening && !processing ? (
+            <button onClick={startListening} style={{...BtnD,flex:1}}>🎙️ Let's Start</button>
+          ) : listening ? (
             <button onClick={stopListening} style={{...Btn,flex:1,background:"#fef2f2",borderColor:"#fecaca",color:"#991b1b"}}>⏹ Stop</button>
+          ) : (
+            <button disabled style={{...Btn,flex:1,opacity:0.7}}>⏳ Transcribing…</button>
           )}
         </div>
 
-        {listening && (
-          <div style={{background:"#f0fdf4",border:"1px solid #86efac",borderRadius:8,padding:10,marginBottom:10,fontSize:12,color:"#166534",minHeight:40}}>
-            {liveTranscript || "Listening…"}
+        {(listening || processing || liveTranscript) && (
+          <div style={{
+              background: processing ? "#eff6ff" : "#f0fdf4",
+              border: processing ? "1px solid #bfdbfe" : "1px solid #86efac",
+              borderRadius:8, padding:10, marginBottom:10, fontSize:12,
+              color: processing ? "#1d4ed8" : "#166534", minHeight:40}}>
+            {processing ? "☁️ Transcribing…" : listening ? "🎙️ Recording…" : liveTranscript}
           </div>
         )}
 
