@@ -63,24 +63,42 @@ function normalizeForMatch(text){
     .trim();
 }
 
+function escapeRegex(s){ return s.replace(/[.*+?^${}()|[\]\\]/g,"\\$&"); }
+
+// A candidate like "2x12" needs digit-boundary awareness - plain substring
+// search would "find" it hiding inside an unrelated "12x12" (the digits
+// 2,x,1,2 literally appear starting at position 1 of "12x12"), which both
+// produces the wrong thickness AND, when that match later gets removed
+// from the text, mangles the real "12x12" measurement into nothing. Only
+// candidates that start or end with a digit need this extra care - word-
+// based candidates like area types don't have this risk.
+function safeIncludes(text, candidate){
+  const startsOrEndsDigit = /^\d/.test(candidate) || /\d$/.test(candidate);
+  if(!startsOrEndsDigit) return text.toLowerCase().includes(candidate.toLowerCase());
+  const re = new RegExp(`(?<!\\d)${escapeRegex(candidate.toLowerCase())}(?!\\d)`);
+  return re.test(text.toLowerCase());
+}
+
 // Finds the best matching entry from a list of known values within the
 // transcript. Tries an exact substring match first (longest candidate
 // first, so "exterior wall" matches before a shorter unrelated "wall"
 // would); if nothing matches exactly, falls back to a normalized
-// comparison (handles "w/" vs "with", plurals vs singulars) requiring most
-// of the candidate's words to actually appear in the transcript.
+// comparison (handles "w/" vs "with", plurals vs singulars, and a word or
+// two being misheard) requiring most of the candidate's words to actually
+// appear in the transcript.
 function findBestMatch(text, candidates){
-  const low = text.toLowerCase();
   const sorted = [...candidates].filter(Boolean).sort((a,b)=>b.length-a.length);
   for(const c of sorted){
-    if(low.includes(c.toLowerCase())) return c;
+    if(safeIncludes(text, c)) return c;
   }
   const normText = normalizeForMatch(text);
   for(const c of sorted){
     const candWords = normalizeForMatch(c).split(/\s+/).filter(w=>w.length>2);
     if(candWords.length===0) continue;
     const hits = candWords.filter(w=>normText.includes(w)).length;
-    if(hits/candWords.length >= 0.8) return c;
+    // A single word being off (e.g. one mis-heard syllable) shouldn't block
+    // the whole match - only requires more than half instead of nearly all.
+    if(hits/candWords.length > 0.5) return c;
   }
   return null;
 }
@@ -121,7 +139,10 @@ function parseMeasurements(text){
 // area type).
 function consume(text, phrase){
   if(!phrase) return text;
-  const idx = text.toLowerCase().indexOf(phrase.toLowerCase());
+  const startsOrEndsDigit = /^\d/.test(phrase) || /\d$/.test(phrase);
+  const idx = startsOrEndsDigit
+    ? text.toLowerCase().search(new RegExp(`(?<!\\d)${escapeRegex(phrase.toLowerCase())}(?!\\d)`))
+    : text.toLowerCase().indexOf(phrase.toLowerCase());
   if(idx===-1) return text;
   return text.slice(0,idx) + " " + text.slice(idx+phrase.length);
 }
@@ -154,7 +175,9 @@ function parseEntry(rawTranscript, { floors, areaTypes, thickOpts, materials }){
   remaining = consume(remaining, thickness);
 
   // "combo of X and Y" / "combo with X and Y" - people say both naturally.
-  const comboMatch = remaining.match(/combo (?:of|with)\s+(.+?)\s+and\s+(.+?)(?:\.|,|measure|$)/i);
+  // "combo of X and Y", "combo with X and Y", or just "combo, X and Y" -
+  // the connector word is optional since people don't always say one.
+  const comboMatch = remaining.match(/combo,?\s*(?:of|with)?\s*(.+?)\s+and\s+(.+?)(?:\.|,|measure|$)/i);
   if(comboMatch){
     const partA = comboMatch[1].trim(), partB = comboMatch[2].trim();
     const parseComboPart = (part)=>{
