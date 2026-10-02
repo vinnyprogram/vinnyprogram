@@ -119,16 +119,18 @@ function matchMaterial(text, materials){
 }
 
 function parseMeasurements(text){
-  // Segments separated by "plus"; each segment should contain an H x L pair.
-  const segments = text.split(/\bplus\b/i).map(s=>s.trim()).filter(Boolean);
+  // Scans for every H x L pattern directly, rather than first splitting on
+  // "plus" - people don't always say "plus" between pairs (a comma, "and",
+  // or nothing at all are all natural too), and splitting on one specific
+  // word first meant anything after a differently-worded separator never
+  // got looked at.
   const measurements = [];
-  segments.forEach(seg=>{
-    const m = seg.match(/(\d+(?:\.\d+)?)\s*(?:x|by)\s*(\d+(?:\.\d+)?)/i);
-    if(m){
-      const h = parseFloat(m[1]), l = parseFloat(m[2]);
-      measurements.push({ h, l, q:1, sqft: Math.round(h*l*100)/100 });
-    }
-  });
+  const regex = /(\d+(?:\.\d+)?)\s*(?:x|by)\s*(\d+(?:\.\d+)?)/gi;
+  let m;
+  while((m = regex.exec(text)) !== null){
+    const h = parseFloat(m[1]), l = parseFloat(m[2]);
+    measurements.push({ h, l, q:1, sqft: Math.round(h*l*100)/100 });
+  }
   return measurements;
 }
 
