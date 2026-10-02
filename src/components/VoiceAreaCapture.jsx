@@ -125,7 +125,7 @@ function parseMeasurements(text){
   // word first meant anything after a differently-worded separator never
   // got looked at.
   const measurements = [];
-  const regex = /(\d+(?:\.\d+)?)\s*(?:x|by)\s*(\d+(?:\.\d+)?)/gi;
+  const regex = /(\d+(?:\.\d+)?)\s*(?:x|by|times)\s*(\d+(?:\.\d+)?)/gi;
   let m;
   while((m = regex.exec(text)) !== null){
     const h = parseFloat(m[1]), l = parseFloat(m[2]);
