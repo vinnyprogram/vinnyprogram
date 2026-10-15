@@ -59,6 +59,30 @@ function formatRValue(v) {
 }
 
 const DEFAULT_FLOORS = ["Attic","3rd","2nd","1st","Basement","Crawlspace"];
+// Keeps floor tabs in a sensible top-to-bottom building order automatically,
+// so a floor added later (e.g. "4th") lands in its physical place instead
+// of always tacking onto the end of the tab bar. Recognized names are
+// grouped: Attic first, then numbered floors highest-to-lowest, then
+// Garage, then Basement, then Crawlspace last. Anything that doesn't match
+// (a custom name someone typed) sits between the numbered floors and
+// Garage, alphabetically among any other custom names - visible and
+// grouped, not scattered.
+function floorSortKey(name){
+  const low=(name||"").trim().toLowerCase();
+  if(low==="attic"||low==="roof") return [0,0];
+  const ord=low.match(/^(\d+)(st|nd|rd|th)?$/);
+  if(ord) return [1,-Number(ord[1])];
+  if(low==="garage") return [3,0];
+  if(low==="basement") return [4,0];
+  if(low==="crawlspace"||low==="crawl space") return [5,0];
+  return [2,low];
+}
+function compareFloors(a,b){
+  const [ga,sa]=floorSortKey(a), [gb,sb]=floorSortKey(b);
+  if(ga!==gb) return ga-gb;
+  return typeof sa==="number" ? sa-sb : String(sa).localeCompare(String(sb));
+}
+function sortFloors(arr){ return [...arr].sort(compareFloors); }
 // Single stable slot for "a brand-new job that doesn't have a customer or
 // address attached yet." Normal drafts are keyed by leadId+address so a
 // resume link can find the right one, but that means nothing gets saved
@@ -158,12 +182,34 @@ function calcArea(sqft, thick, mat, rValue, variantMap) {
 
 
 function CustomerSection({ leads, selectedLead, selectedLeadId, projectAddress,
-    projectName, onSelect, onClear, onSaveNew, onAddressChange, onNameChange, isEditing, isLocked }) {
+    projectName, onSelect, onClear, onSaveNew, onUpdateCustomer, onAddressChange, onNameChange, isEditing, isLocked }) {
   const [query, setQuery]     = useState("");
   const [mode, setMode]       = useState(selectedLead ? "selected" : "search");
   const [saving, setSaving]   = useState(false);
   const [newStep, setNewStep] = useState(1);
   const [newForm, setNewForm] = useState({ name:"", phone:"", company_name:"", email:"", address:"" });
+  // Edit-the-existing-customer-record form - separate from "new customer"
+  // above. Lets you fix/update a client's own info (name, phone, email,
+  // company) right from inside the estimate, instead of having to leave
+  // the job, go to Clients, find them, edit, and come back.
+  const [editingCustomer, setEditingCustomer] = useState(false);
+  const [editForm, setEditForm] = useState({ name:"", phone:"", email:"", company_name:"" });
+  const [editSaving, setEditSaving] = useState(false);
+
+  function openEditCustomer(){
+    setEditForm({
+      name: selectedLead?.name||"", phone: selectedLead?.phone||"",
+      email: selectedLead?.email||"", company_name: selectedLead?.company_name||"",
+    });
+    setEditingCustomer(true);
+  }
+  async function saveEditCustomer(){
+    if(!editForm.name.trim()){ alert("Name is required."); return; }
+    setEditSaving(true);
+    await onUpdateCustomer(selectedLead.id, editForm);
+    setEditSaving(false);
+    setEditingCustomer(false);
+  }
 
   useEffect(()=>{
     if(selectedLead && mode==="search") setMode("selected");
@@ -251,7 +297,7 @@ async function saveNew() {
   return (
     <div style={{...CARD_BLUE, marginBottom:5}}>
       {/* SELECTED */}
-      {mode==="selected" && selectedLead && (
+      {mode==="selected" && selectedLead && !editingCustomer && (
         <div>
           <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:4 }}>
             <div style={{ fontSize:11, lineHeight:1.5, flex:1, minWidth:0 }}>
@@ -260,7 +306,11 @@ async function saveNew() {
               {selectedLead.company_name && <span style={{ color:C.muted, fontSize:10, marginLeft:6 }}>· {selectedLead.company_name}</span>}
               {selectedLead.email && <div style={{ color:C.faint, fontSize:10 }}>{selectedLead.email}</div>}
             </div>
-            <button onClick={clear} style={{ border:"none", background:"none", color:C.faint, fontSize:13, cursor:"pointer", padding:"0 4px", flexShrink:0 }}>✕</button>
+            <div style={{ display:"flex", alignItems:"center", flexShrink:0 }}>
+              {!isLocked && <button onClick={openEditCustomer} title="Edit this customer's info"
+                style={{ border:"none", background:"none", color:C.muted, fontSize:12, cursor:"pointer", padding:"0 6px" }}>✏️</button>}
+              <button onClick={clear} style={{ border:"none", background:"none", color:C.faint, fontSize:13, cursor:"pointer", padding:"0 4px" }}>✕</button>
+            </div>
           </div>
           {isLocked ? (
             <div style={{...TI, width:"100%", background:"#f1f5f9", color:"#64748b", cursor:"not-allowed", padding:"5px 8px", borderRadius:6, fontSize:12}}>
@@ -271,6 +321,27 @@ async function saveNew() {
               placeholder="Job address for this project…"
               value={projectAddress} onChange={onAddressChange} />
           )}
+        </div>
+      )}
+
+      {/* EDIT EXISTING CUSTOMER */}
+      {mode==="selected" && selectedLead && editingCustomer && (
+        <div>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:6 }}>
+            <span style={{ fontSize:10, fontWeight:700, color:C.muted, textTransform:"uppercase", letterSpacing:0.4 }}>Edit customer</span>
+            <button onClick={()=>setEditingCustomer(false)} style={{ border:"none", background:"none", color:C.faint, fontSize:16, cursor:"pointer", padding:0, lineHeight:1 }}>✕</button>
+          </div>
+          <input style={{...TI, width:"100%", marginBottom:5}} placeholder="Full name *" value={editForm.name} onChange={e=>setEditForm(p=>({...p,name:e.target.value}))} />
+          <input style={{...TI, width:"100%", marginBottom:5}} placeholder="Phone number" value={editForm.phone} onChange={e=>setEditForm(p=>({...p,phone:e.target.value}))} />
+          <input style={{...TI, width:"100%", marginBottom:5}} placeholder="Email" value={editForm.email} onChange={e=>setEditForm(p=>({...p,email:e.target.value}))} />
+          <input style={{...TI, width:"100%", marginBottom:8}} placeholder="Company name" value={editForm.company_name} onChange={e=>setEditForm(p=>({...p,company_name:e.target.value}))} />
+          <div style={{display:"flex",gap:6}}>
+            <button onClick={()=>setEditingCustomer(false)} style={{ ...BtnD, flex:1, justifyContent:"center", height:32, fontSize:12, background:C.white, color:C.muted, border:`1px solid ${C.border}` }}>Cancel</button>
+            <button onClick={saveEditCustomer} disabled={editSaving||!editForm.name.trim()}
+              style={{ ...BtnD, flex:2, justifyContent:"center", height:32, fontSize:12, opacity:(editSaving||!editForm.name.trim())?0.4:1 }}>
+              {editSaving?"Saving…":"Save changes"}
+            </button>
+          </div>
         </div>
       )}
 
@@ -1578,7 +1649,7 @@ export default function ProjectEstimate() {
       const draft=loadDraft(key);
       if(draft){
         if(draft.crewNotes) setCrewNotes(draft.crewNotes);
-        if(draft.floors?.length) setFloors([...new Set(draft.floors.filter(f=>f!=="Floor"))]);
+        if(draft.floors?.length) setFloors(sortFloors([...new Set(draft.floors.filter(f=>f!=="Floor"))]));
         if(draft.areas){
           const merged={};
           const allFloors=[...new Set([...DEFAULT_FLOORS,...(draft.floors||[])])];
@@ -1609,7 +1680,7 @@ export default function ProjectEstimate() {
     const draft = loadDraft(ANON_DRAFT_KEY);
     if(draft){
       if(draft.crewNotes) setCrewNotes(draft.crewNotes);
-      if(draft.floors?.length) setFloors([...new Set(draft.floors.filter(f=>f!=="Floor"))]);
+      if(draft.floors?.length) setFloors(sortFloors([...new Set(draft.floors.filter(f=>f!=="Floor"))]));
       if(draft.areas){
         const merged={};
         const allFloors=[...new Set([...DEFAULT_FLOORS,...(draft.floors||[])])];
@@ -1766,7 +1837,7 @@ export default function ProjectEstimate() {
     // Add floors that don't exist yet
     const newFloors=[...floors];
     Object.keys(imported).forEach(f=>{ if(!newFloors.includes(f)) newFloors.push(f); });
-    setFloors(newFloors);
+    setFloors(sortFloors(newFloors));
     // Prepend imported areas (collapse existing)
     setAreas(prev=>{
       const next={...prev};
@@ -1829,7 +1900,7 @@ export default function ProjectEstimate() {
       }
       const {data:floorRows}=await supabase.from("floors").select("*").eq("project_id",projectId).order("order_index");
       if(!floorRows?.length){setLoadingProject(false);return;}
-      const floorNames=[...new Set(floorRows.map(f=>f.name).filter(f=>f!=="Floor"))];
+      const floorNames=sortFloors([...new Set(floorRows.map(f=>f.name).filter(f=>f!=="Floor"))]);
       const savedUIState = loadUIState();
       const restoredFloor = (savedUIState?.activeFloor && floorNames.includes(savedUIState.activeFloor))
         ? savedUIState.activeFloor : floorNames[0];
@@ -1873,7 +1944,7 @@ export default function ProjectEstimate() {
           const draft=loadDraft(dKey);
           if(draft && draft.editingProjectId===projectId){
             if(draft.crewNotes) setCrewNotes(draft.crewNotes);
-            if(draft.floors?.length) setFloors([...new Set(draft.floors.filter(f=>f!=="Floor"))]);
+            if(draft.floors?.length) setFloors(sortFloors([...new Set(draft.floors.filter(f=>f!=="Floor"))]));
             if(draft.areas) setAreas(draft.areas);
             if(draft.projectName) setProjectName(draft.projectName);
             if(draft.projectAddress) setProjectAddress(draft.projectAddress);
@@ -1903,7 +1974,7 @@ export default function ProjectEstimate() {
         const areaCount=Object.values(draft.areas||{}).flat().filter(a=>a.area_type).length;
         if(areaCount>0&&window.confirm(`You have a draft from ${age} min ago with ${areaCount} area(s). Resume it?`)){
           if(draft.crewNotes) setCrewNotes(draft.crewNotes);
-          if(draft.floors) setFloors([...new Set(draft.floors.filter(f=>f!=="Floor"))]);
+          if(draft.floors) setFloors(sortFloors([...new Set(draft.floors.filter(f=>f!=="Floor"))]));
           if(draft.areas) setAreas(draft.areas);
           if(draft.projectName) setProjectName(draft.projectName);
           if(draft.projectAddress) setProjectAddress(draft.projectAddress);
@@ -1981,7 +2052,7 @@ export default function ProjectEstimate() {
   function addFloor(){
     const name=newFloorName.trim();if(!name)return;
     if(floors.includes(name)){alert(`"${name}" already exists.`);return;}
-    setFloors(p=>[...p,name]);setAreas(p=>({...p,[name]:[]}));
+    setFloors(p=>sortFloors([...p,name]));setAreas(p=>({...p,[name]:[]}));
     setActiveFloor(name);setNewFloorName("");setAddingFloor(false);
   }
 
@@ -2164,6 +2235,18 @@ export default function ProjectEstimate() {
     const {data,error}=await supabase.from("customers").insert([{name:form.name||"",phone:form.phone||"",company_name:form.company_name||"",email:form.email||"",address:form.address||"",status:"New",estimate_amount:0,company_id:companyId}]).select().single();
     if(error){alert("Could not save customer: "+(error.message||JSON.stringify(error)));return;}
     if(data){loadLeads();setSelectedLeadId(String(data.id));setProjectName(data.name||"");/* keep existing address — only blank if nothing entered yet */}
+  }
+
+  // Edits the ALREADY-SELECTED customer's own record (name/phone/email/
+  // company) right from inside the estimate - this is the actual client
+  // record shared across every job they have, not just this project, so
+  // the change shows up everywhere they're referenced (Clients list, other
+  // trades' estimates, etc.), same as editing them from the Clients page.
+  async function updateCustomer(id, fields){
+    const payload = { name:fields.name||"", phone:fields.phone||"", email:fields.email||"", company_name:fields.company_name||"" };
+    const { error } = await supabase.from("customers").update(payload).eq("id", id);
+    if(error){ alert("Could not save customer changes: "+(error.message||JSON.stringify(error))); return; }
+    setLeads(prev=>prev.map(l=>String(l.id)===String(id)?{...l,...payload}:l));
   }
 
   async function calculateJobPrice(companyId,allAreas,totalSqft){
@@ -2714,7 +2797,7 @@ export default function ProjectEstimate() {
             onSelect={(lead)=>{setSelectedLeadId(String(lead.id));setProjectName(lead.name||"");/* never overwrite address when editing */}}
             onClear={()=>{setSelectedLeadId("");setProjectName("");if(!projectId) setProjectAddress("");}}
             isEditing={isEditing} isLocked={isLocked}
-            onSaveNew={saveNewCustomer} onAddressChange={isLocked ? ()=>{} : setProjectAddress} onNameChange={setProjectName} />
+            onSaveNew={saveNewCustomer} onUpdateCustomer={updateCustomer} onAddressChange={isLocked ? ()=>{} : setProjectAddress} onNameChange={setProjectName} />
 
             <div style={CARD_ORANGE} className={currentAreas.some(a=>!isAreaComplete(a))?"area-focus-bg":""}>
             <div style={{display:"flex",gap:6,marginBottom:6}}>

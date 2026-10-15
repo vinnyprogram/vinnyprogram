@@ -180,8 +180,10 @@ export default function BoardPlasterEstimate(){
   const [selectedLeadId, setSelectedLeadId] = useState(paramLeadId);
   const [address, setAddress] = useState(paramAddress);
   const [custQuery, setCustQuery] = useState("");
-  const [custMode, setCustMode] = useState(paramLeadId ? "selected" : "search"); // search | selected | new
+  const [custMode, setCustMode] = useState(paramLeadId ? "selected" : "search"); // search | selected | new | edit
   const [newForm, setNewForm] = useState({ name:"", phone:"", email:"", company_name:"", address:"" });
+  const [editForm, setEditForm] = useState({ name:"", phone:"", email:"", company_name:"" });
+  const [editSaving, setEditSaving] = useState(false);
 
   const selectedLead = leads.find(l=>String(l.id)===String(selectedLeadId));
 
@@ -332,6 +334,27 @@ export default function BoardPlasterEstimate(){
     if(error){ alert("Error creating customer: "+error.message); return; }
     setLeads(p=>[...p,data]);
     setSelectedLeadId(String(data.id));
+    setCustMode("selected");
+  }
+
+  function openEditCustomer(){
+    setEditForm({
+      name: selectedLead?.name||"", phone: selectedLead?.phone||"",
+      email: selectedLead?.email||"", company_name: selectedLead?.company_name||"",
+    });
+    setCustMode("edit");
+  }
+  // Edits the customer's own record (shared across every job they have,
+  // not just this estimate) right from inside the estimate, instead of
+  // leaving the job to go edit them from Clients and coming back.
+  async function saveEditCustomer(){
+    if(!editForm.name.trim()){ alert("Name is required."); return; }
+    setEditSaving(true);
+    const payload = { name:editForm.name||"", phone:editForm.phone||"", email:editForm.email||"", company_name:editForm.company_name||"" };
+    const { error } = await supabase.from("customers").update(payload).eq("id", selectedLeadId);
+    setEditSaving(false);
+    if(error){ alert("Could not save customer changes: "+error.message); return; }
+    setLeads(p=>p.map(l=>String(l.id)===String(selectedLeadId)?{...l,...payload}:l));
     setCustMode("selected");
   }
 
@@ -784,7 +807,21 @@ export default function BoardPlasterEstimate(){
                 {selectedLead.company_name && <div style={{fontSize:12,color:C.muted}}>{selectedLead.company_name}</div>}
                 {selectedLead.email && <div style={{fontSize:12,color:C.faint}}>{selectedLead.email}</div>}
               </div>
-              <button onClick={()=>{setSelectedLeadId("");setCustMode("search");}} style={Btn}>Change</button>
+              <div style={{display:"flex",gap:6}}>
+                <button onClick={openEditCustomer} style={Btn}>✏️ Edit</button>
+                <button onClick={()=>{setSelectedLeadId("");setCustMode("search");}} style={Btn}>Change</button>
+              </div>
+            </div>
+          ) : custMode==="edit" ? (
+            <div style={{display:"flex",flexDirection:"column",gap:7}}>
+              <input placeholder="Full Name *" value={editForm.name} onChange={e=>setEditForm(p=>({...p,name:e.target.value}))} style={I} />
+              <input placeholder="Phone" value={editForm.phone} onChange={e=>setEditForm(p=>({...p,phone:e.target.value}))} style={I} />
+              <input placeholder="Email" value={editForm.email} onChange={e=>setEditForm(p=>({...p,email:e.target.value}))} style={I} />
+              <input placeholder="Company" value={editForm.company_name} onChange={e=>setEditForm(p=>({...p,company_name:e.target.value}))} style={I} />
+              <div style={{display:"flex",gap:8}}>
+                <button onClick={saveEditCustomer} disabled={editSaving} style={{...BtnD,opacity:editSaving?0.5:1}}>{editSaving?"Saving…":"Save changes"}</button>
+                <button onClick={()=>setCustMode("selected")} style={Btn}>Cancel</button>
+              </div>
             </div>
           ) : custMode==="new" ? (
             <div style={{display:"flex",flexDirection:"column",gap:7}}>
