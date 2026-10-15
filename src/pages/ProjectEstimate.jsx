@@ -500,22 +500,42 @@ function AreaRow({ area, matTypesLive, materials, materialMap, variantMap, onCha
   return Math.max(0,Math.round(raw-d));
 })();
 
+  // Intumescent paint only applies over SPRAY FOAM (closed/open cell) -
+  // if a material change leaves an area with no foam line left at all,
+  // any paint_sqft that was set while it WAS foam becomes stale: it stops
+  // showing in this area's own collapsed summary (which already checks
+  // for foam), but it was still sitting in the saved data, silently
+  // charging for paint in the cost total and appearing on the printed
+  // Field Report, on an area with no foam and nothing visibly set in the
+  // editor. Clearing it the moment the material changes away from foam
+  // stops that stale value from ever being created again.
+  function hasFoamMaterial(lines){
+    return lines.some(ml=>{
+      const m=(ml.material||"").toLowerCase();
+      return m.includes("closed")||m.includes("open cell")||m.includes("open-cell");
+    });
+  }
+  function setMatLines(lines){
+    onChange("mat_lines", lines);
+    if(!hasFoamMaterial(lines) && Number(area.paint_sqft)>0) onChange("paint_sqft","");
+  }
+
   function updateMatLine(idx, field, value) {
     const lines = matLines.map((l,i)=> i===idx ? {...l,[field]:value} : l);
-    onChange("mat_lines", lines);
+    setMatLines(lines);
     if(idx===0 && !isComboMode) onChange(field, value);
   }
 
   function addMatLine() {
     const last = matLines[matLines.length-1];
     const lines = [...matLines, { id:Date.now(), material:last.material||"", thickness_in:last.thickness_in||"", r_value:last.r_value||"", oc:"" }];
-    onChange("mat_lines", lines);
+    setMatLines(lines);
   }
 
   function removeMatLine(idx) {
     if(matLines.length===1) return;
     const lines = matLines.filter((_,i)=>i!==idx);
-    onChange("mat_lines", lines);
+    setMatLines(lines);
     onChange("material", lines[0].material||"");
     onChange("thickness_in", lines[0].thickness_in||"");
     onChange("r_value", lines[0].r_value||"");
@@ -819,13 +839,13 @@ function useCalcResult(field) {
               onChange={e=>{
                 const val=e.target.value;
                 if(val==="__combo__"){
-                  onChange("mat_lines",[{id:1,material:"",thickness_in:"",r_value:"",oc:""},{id:2,material:"",thickness_in:"",r_value:"",oc:""}]);
+                  setMatLines([{id:1,material:"",thickness_in:"",r_value:"",oc:""},{id:2,material:"",thickness_in:"",r_value:"",oc:""}]);
                   onChange("material","__combo__");
                 } else if(val==="__custom_mat__"){
-                  onChange("mat_lines",[{id:1,material:"__custom_mat__",thickness_in:matLines[0].thickness_in||"",r_value:matLines[0].r_value||"",oc:matLines[0].oc||""}]);
+                  setMatLines([{id:1,material:"__custom_mat__",thickness_in:matLines[0].thickness_in||"",r_value:matLines[0].r_value||"",oc:matLines[0].oc||""}]);
                   onChange("material","__custom_mat__"); onChange("custom_material","");
                 } else {
-                  onChange("mat_lines",[{id:1,material:val,thickness_in:matLines[0].thickness_in||"",r_value:matLines[0].r_value||"",oc:matLines[0].oc||""}]);
+                  setMatLines([{id:1,material:val,thickness_in:matLines[0].thickness_in||"",r_value:matLines[0].r_value||"",oc:matLines[0].oc||""}]);
                   onChange("material",val);
                 }
               }}>
@@ -873,7 +893,7 @@ function useCalcResult(field) {
               },0);
               return totalR>0 ? <span style={{color:"#059669",fontWeight:800}}>Total R{totalR}</span> : null;
             })()}
-            <button onClick={()=>{ onChange("mat_lines",[{id:1,material:"",thickness_in:"",r_value:"",oc:""}]); onChange("material",""); }}
+            <button onClick={()=>{ setMatLines([{id:1,material:"",thickness_in:"",r_value:"",oc:""}]); onChange("material",""); }}
               style={{border:"none",background:"none",color:"#94a3b8",cursor:"pointer",fontSize:11,marginLeft:8,padding:0}}>× remove combo</button>
           </div>
           {matLines.map((ml,idx)=>(
@@ -1402,9 +1422,17 @@ function getAreaTotalCost(area, materialMap, variantMap) {
 
   // Intumescent paint cost — looks up "Intumescent Paint" (or any material
   // with "intumescent" in the name) in Settings → Materials and prices it
-  // at the paint_sqft area input.
+  // at the paint_sqft area input. Only charged when at least one of this
+  // area's materials is actually spray foam (closed/open cell) - paint
+  // only ever applies over foam, so a paint_sqft value left over from
+  // before the material was changed to something else (batt, board, etc.)
+  // must never silently add a cost the area no longer needs.
   const paintSqft = Number(area.paint_sqft||0);
-  if(paintSqft>0 && materialMap){
+  const paintEligible = lines.some(ml=>{
+    const m=(ml.material||"").toLowerCase();
+    return m.includes("closed")||m.includes("open cell")||m.includes("open-cell");
+  });
+  if(paintSqft>0 && paintEligible && materialMap){
     const paintMat = Object.values(materialMap).find(m=>
       m.name?.toLowerCase().includes("intumescent")
     );

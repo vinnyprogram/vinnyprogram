@@ -175,7 +175,15 @@ export default function FieldReport() {
       if(floorIdx < g.floorOrder) g.floorOrder = floorIdx;
       g.sqft += a.sqft||0;
       g.deduct += Number(a.deduct_sqft)||0;
-      g.paint_sqft += Number(a.paint_sqft)||0;
+      // Paint only ever applies over spray foam. A paint_sqft value left
+      // over from before the material was switched to something else
+      // (batt, board, etc.) must not resurface here just because it's
+      // still sitting in the row - same rule as the estimate editor.
+      const areaHasFoam = a.mat_lines.some(ml=>{
+        const m=(ml.material||"").toLowerCase();
+        return m.includes("closed")||m.includes("open cell")||m.includes("open-cell");
+      });
+      if(areaHasFoam) g.paint_sqft += Number(a.paint_sqft)||0;
       g.segs.push(...segments.filter(s=>s.area_id===a.id));
       if(a.note && a.note.trim()) g.notes.push({floor:fl?.name||"",text:a.note.trim()});
     });
@@ -483,6 +491,22 @@ export default function FieldReport() {
                   thickness_in: a.thickness_in||"",
                   r_value: a.r_value||"",
                 });
+              });
+
+              // Paint only ever applies over spray foam. If this area's
+              // materials no longer include closed/open cell foam, any
+              // paint_sqft still stored on it is stale leftover from
+              // before the material was changed - drop it here so it
+              // can't resurface in the printed report. Same rule as the
+              // estimate editor and the text-summary grouping above.
+              function hasFoam(materials){
+                return materials.some(m=>{
+                  const mm=(m.material||"").toLowerCase();
+                  return mm.includes("closed")||mm.includes("open cell")||mm.includes("open-cell");
+                });
+              }
+              Object.values(groupMap).forEach(g=>{
+                if(!hasFoam(g.materials)) g.paint_sqft = 0;
               });
 
               // now merge same area_type+materials across floors
