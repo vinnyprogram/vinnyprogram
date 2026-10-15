@@ -1350,24 +1350,40 @@ function EstimatePanel({ floors, areas, materialMap, variantMap, crewNotes, proj
             {allSubOptions.length>0&&(
               <div style={{marginTop:6,paddingTop:6,borderTop:`1px dashed ${C.chip}`}}>
                 <div style={{fontSize:10,fontWeight:800,color:"#92400e",textTransform:"uppercase",letterSpacing:0.4,marginBottom:4}}>⚡ Sub-Options</div>
-                {allSubOptions.map((o,i)=>{
-                  const optMls=(o.mat_lines||[]).length>0?o.mat_lines:[{material:o.material||"",thickness_in:o.thickness_in||o._area?.thickness_in||"",r_value:o.r_value||o._area?.r_value||""}];
-                  const matLabel=(optMls.length>1?[optMls[0]?.thickness_in,"Combo:",optMls.map(ml=>[ml.material,formatRValue(ml.r_value)].filter(Boolean).join(" ")).join(" + ")].filter(Boolean).join(" "):[optMls[0]?.thickness_in,optMls[0]?.material,formatRValue(optMls[0]?.r_value)].filter(Boolean).join(" "));
-                  const optTotalR = optMls.reduce((sum,ml)=>{
-                    const r = parseInt((ml.r_value||"").replace(/\D/g,""))||0;
-                    return sum+r;
-                  },0);
-                  return (
-                    <div key={i} style={{fontSize:11,color:"#92400e",marginBottom:4,paddingLeft:6,borderLeft:"2px solid #fed7aa"}}>
-                      <div style={{fontWeight:800,display:"flex",justifyContent:"space-between"}}>
-                        <span>{o.label} <span style={{fontWeight:500}}>— {o._floor} — {o._area.area_type}</span></span>
-                        {optTotalR>0&&<span style={{color:"#059669",fontWeight:800}}>Total R{optTotalR}</span>}
+                {(()=>{
+                  // Merge identical sub-options across floors (same label +
+                  // area type + exact material spec + exact note) into one
+                  // row with a summed sqft, instead of repeating "Instead
+                  // comfort batt — 3rd / 2nd / 1st — Ceiling" three times -
+                  // same exact-match-only rule as the notes above and the
+                  // Field Report's own Sub-Options section.
+                  const merged = {};
+                  allSubOptions.forEach(o=>{
+                    const optMls=(o.mat_lines||[]).length>0?o.mat_lines:[{material:o.material||"",thickness_in:o.thickness_in||o._area?.thickness_in||"",r_value:o.r_value||o._area?.r_value||""}];
+                    const matKey = optMls.map(ml=>(ml.material||"")+"|"+(ml.thickness_in||"")+"|"+(ml.r_value||"")).join("+");
+                    const key = (o.label||"")+"||||"+(o._area.area_type||"")+"||||"+matKey+"||||"+(o.note||"");
+                    if(!merged[key]) merged[key] = { label:o.label, area_type:o._area.area_type, optMls, note:o.note, sqft:0, floors:[] };
+                    merged[key].sqft += Number(o._area.sqft)||0;
+                    if(!merged[key].floors.includes(o._floor)) merged[key].floors.push(o._floor);
+                  });
+                  return Object.values(merged).map((o,i)=>{
+                    const matLabel=(o.optMls.length>1?[o.optMls[0]?.thickness_in,"Combo:",o.optMls.map(ml=>[ml.material,formatRValue(ml.r_value)].filter(Boolean).join(" ")).join(" + ")].filter(Boolean).join(" "):[o.optMls[0]?.thickness_in,o.optMls[0]?.material,formatRValue(o.optMls[0]?.r_value)].filter(Boolean).join(" "));
+                    const optTotalR = o.optMls.reduce((sum,ml)=>{
+                      const r = parseInt((ml.r_value||"").replace(/\D/g,""))||0;
+                      return sum+r;
+                    },0);
+                    return (
+                      <div key={i} style={{fontSize:11,color:"#92400e",marginBottom:4,paddingLeft:6,borderLeft:"2px solid #fed7aa"}}>
+                        <div style={{fontWeight:800,display:"flex",justifyContent:"space-between"}}>
+                          <span>{o.label} <span style={{fontWeight:500}}>— {o.floors.join(", ")} — {o.area_type}</span></span>
+                          {optTotalR>0&&<span style={{color:"#059669",fontWeight:800}}>Total R{optTotalR}</span>}
+                        </div>
+                        <div style={{fontSize:10,color:C.muted}}>{matLabel} · {fmt(o.sqft)} ft²</div>
+                        {o.note&&<div style={{fontSize:10,color:"#b45309",fontStyle:"italic"}}>📝 {o.note}</div>}
                       </div>
-                      <div style={{fontSize:10,color:C.muted}}>{matLabel} · {o._area.sqft} ft²</div>
-                      {o.note&&<div style={{fontSize:10,color:"#b45309",fontStyle:"italic"}}>📝 {o.note}</div>}
-                    </div>
-                  );
-                })}
+                    );
+                  });
+                })()}
               </div>
             )}
           </div>
