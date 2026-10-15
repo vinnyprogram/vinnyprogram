@@ -1,8 +1,9 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import AddressInput from "./AddressInput";
 import { AdjustmentRow, PaymentScheduleEditor } from "./PricingOptions";
+import { sortFloors } from "../lib/floorSort";
 
 const C = {
   bg: "#f4f5f7", white: "#fff", ink: "#0f172a",
@@ -33,16 +34,9 @@ function fmt(n){ return Number(n||0).toLocaleString("en-US",{minimumFractionDigi
 function fmt$(n){ return "$"+Number(n||0).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2}); }
 function uid(){ return Math.random().toString(36).slice(2)+Date.now().toString(36); }
 
-const FLOOR_ORDER = ["Attic","3rd","2nd","1st","Basement","Crawlspace"];
-function sortFloors(list){
-  return [...new Set(list)].sort((a,b)=>{
-    const ai=FLOOR_ORDER.indexOf(a), bi=FLOOR_ORDER.indexOf(b);
-    if(ai===-1&&bi===-1) return 0;
-    if(ai===-1) return 1;
-    if(bi===-1) return -1;
-    return ai-bi;
-  });
-}
+// Floor ordering now comes from src/lib/floorSort.js (imported above) -
+// it used to be a fixed list here that only recognized up to "3rd" and
+// dumped anything else (a "4th" floor, "Garage") at the very end.
 
 function materialsTotal(materials){
   return (materials||[]).reduce((s,m)=>s+(Number(m.qty)||0)*(Number(m.unit_price)||0),0);
@@ -147,6 +141,13 @@ export default function GCEstimate(){
   const [loading, setLoading] = useState(isEditing);
   const [bottomPanelOpen, setBottomPanelOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  // Real synchronous lock for saveEstimate - `saving` (React state) only
+  // updates on the next render, so two rapid clicks on Save for a brand-new
+  // estimate could both read it as false and both insert, creating two
+  // separate gc_estimates rows for the same job. A ref is checked/set
+  // synchronously, closing that gap - same fix already used for Board &
+  // Plaster and Insulation's own save functions.
+  const savingRef = useRef(false);
   const [saved, setSaved] = useState(false);
   const [companyId, setCompanyId] = useState(null);
   const [companyTrades, setCompanyTrades] = useState([]); // Settings-configured trade list (list_gc_trade)
@@ -515,9 +516,10 @@ export default function GCEstimate(){
   }
 
   async function saveEstimate(){
-    if(saving) return;
+    if(savingRef.current) return;
     if(!selectedLeadId){ alert("Please select a customer first."); return; }
     if(!areas.length){ alert("Add at least one measured area."); return; }
+    savingRef.current = true;
     setSaving(true);
     try {
       const payload = {
@@ -545,6 +547,7 @@ export default function GCEstimate(){
     } catch(e){
       alert("Save failed: "+e.message);
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   }

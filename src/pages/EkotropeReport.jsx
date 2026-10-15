@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
+import { compareFloors } from "../lib/floorSort";
 
 function parseArr(v){ return Array.isArray(v)?v:(typeof v==="string"?JSON.parse(v||"[]"):[]); }
 function fmt(n,d=1){ return Number(n||0).toLocaleString("en-US",{minimumFractionDigits:d,maximumFractionDigits:d}); }
@@ -59,23 +60,15 @@ function UnitReport({ fm, label }){
     if(!windowsByOrientation[or]) windowsByOrientation[or] = [];
     windowsByOrientation[or].push(w);
   });
-  // Sort each orientation's windows by floor - standard top-down building
-  // order first (Attic, 3rd, 2nd, 1st, Basement, Crawlspace), falling back
-  // to entry order for any custom floor names not in that list.
-  // Normalized (trimmed + lowercased) matching so a stray space or
-  // different case in the stored floor name doesn't silently break the sort.
-  const norm = (s) => (s||"").trim().toLowerCase();
-  const STANDARD_FLOOR_ORDER = ["attic","3rd","2nd","1st","basement","crawlspace"];
-  const floorOrder = [...STANDARD_FLOOR_ORDER];
-  cfaFloors.forEach(f=>{ const n=norm(f.label); if(n && !floorOrder.includes(n)) floorOrder.push(n); });
+  // Sort each orientation's windows by floor, using the same shared
+  // top-down building order as every other trade (src/lib/floorSort.js):
+  // Attic first, then numbered floors highest-to-lowest, then any custom
+  // name, then Garage, Basement, Crawlspace last. This used to fall back
+  // to plain entry order for anything outside a fixed "up to 3rd" list,
+  // which put a "4th" floor's windows at the very end instead of above
+  // "3rd" - the same bug already fixed once elsewhere.
   Object.values(windowsByOrientation).forEach(wins=>{
-    wins.sort((a,b)=>{
-      const ai = floorOrder.indexOf(norm(a.floor)), bi = floorOrder.indexOf(norm(b.floor));
-      if(ai===-1 && bi===-1) return 0;
-      if(ai===-1) return 1;
-      if(bi===-1) return -1;
-      return ai-bi;
-    });
+    wins.sort((a,b)=>compareFloors(a.floor, b.floor));
   });
 
   if(!fm){

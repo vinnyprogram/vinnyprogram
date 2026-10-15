@@ -6,6 +6,7 @@ import { logEvent as sharedLogEvent } from "../utils/debugLog";
 import DebugLogButton from "../components/DebugLogButton";
 import AddressInput from "./AddressInput";
 import { AdjustmentRow, PaymentScheduleEditor } from "./PricingOptions";
+import { compareFloors, sortFloors } from "../lib/floorSort";
 
 function bpLog(msg){ sharedLogEvent(msg, "Board & Plaster"); }
 
@@ -63,18 +64,9 @@ function defaultThickness(areaType){
 function fmt(n){ return Number(n||0).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2}); }
 function uid(){ return Math.random().toString(36).slice(2)+Date.now().toString(36); }
 
-// Standard top-down building order for floor names, matching Insulation -
-// any custom floor name (Garage, etc.) not in this list falls to the end.
-const FLOOR_ORDER = ["Attic","3rd","2nd","1st","Basement","Crawlspace"];
-function sortFloors(names){
-  return [...names].sort((a,b)=>{
-    const ai=FLOOR_ORDER.indexOf(a), bi=FLOOR_ORDER.indexOf(b);
-    if(ai===-1&&bi===-1) return 0;
-    if(ai===-1) return 1;
-    if(bi===-1) return -1;
-    return ai-bi;
-  });
-}
+// Floor ordering now comes from src/lib/floorSort.js (imported above) -
+// it used to be a fixed list here that only recognized up to "3rd" and
+// dumped anything else (a "4th" floor, "Garage") at the very end.
 
 // Pure visual double-check panel: groups areas by identical spec (area
 // type + thickness + finish) across ALL floors, merging floor names for
@@ -100,13 +92,7 @@ function SummaryPanel({ areas }){
     tg.items[itemKey].sqft += Number(a.sqft);
     tg.items[itemKey].measurements.push(...(a.measurements||[]));
   });
-  const floorNames = Object.keys(floorGroups).sort((a,b)=>{
-    const ai=FLOOR_ORDER.indexOf(a), bi=FLOOR_ORDER.indexOf(b);
-    if(ai===-1&&bi===-1) return 0;
-    if(ai===-1) return 1;
-    if(bi===-1) return -1;
-    return ai-bi;
-  });
+  const floorNames = Object.keys(floorGroups).sort(compareFloors);
   const grandTotal = floorNames.reduce((s,f)=>s+Object.values(floorGroups[f].thickGroups).reduce((s2,tg)=>s2+tg.total,0),0);
 
   if(floorNames.length===0){
@@ -801,13 +787,7 @@ export default function BoardPlasterEstimate(){
       if(!tg.items[itemKey]){ tg.items[itemKey] = { area_type:a.area_type, finish:a.finish, sqft:0 }; tg.order.push(itemKey); }
       tg.items[itemKey].sqft += Number(a.sqft);
     });
-    const sortedFloorNames = Object.keys(floorGroups).sort((a,b)=>{
-      const ai=FLOOR_ORDER.indexOf(a), bi=FLOOR_ORDER.indexOf(b);
-      if(ai===-1&&bi===-1) return 0;
-      if(ai===-1) return 1;
-      if(bi===-1) return -1;
-      return ai-bi;
-    });
+    const sortedFloorNames = Object.keys(floorGroups).sort(compareFloors);
 
     sortedFloorNames.forEach(floor=>{
       lines.push(floor.toUpperCase());

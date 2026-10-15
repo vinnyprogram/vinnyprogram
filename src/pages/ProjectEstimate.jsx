@@ -8,6 +8,7 @@ import DebugLogButton from "../components/DebugLogButton";
 import { useAuth } from "../context/AuthContext";
 import AddressInput from "./AddressInput";
 import VoiceAreaCapture from "../components/VoiceAreaCapture";
+import { sortFloors } from "../lib/floorSort";
 
 const C = {
   bg: "#f4f5f7", white: "#fff", ink: "#0f172a",
@@ -59,30 +60,9 @@ function formatRValue(v) {
 }
 
 const DEFAULT_FLOORS = ["Attic","3rd","2nd","1st","Basement","Crawlspace"];
-// Keeps floor tabs in a sensible top-to-bottom building order automatically,
-// so a floor added later (e.g. "4th") lands in its physical place instead
-// of always tacking onto the end of the tab bar. Recognized names are
-// grouped: Attic first, then numbered floors highest-to-lowest, then
-// Garage, then Basement, then Crawlspace last. Anything that doesn't match
-// (a custom name someone typed) sits between the numbered floors and
-// Garage, alphabetically among any other custom names - visible and
-// grouped, not scattered.
-function floorSortKey(name){
-  const low=(name||"").trim().toLowerCase();
-  if(low==="attic"||low==="roof") return [0,0];
-  const ord=low.match(/^(\d+)(st|nd|rd|th)?$/);
-  if(ord) return [1,-Number(ord[1])];
-  if(low==="garage") return [3,0];
-  if(low==="basement") return [4,0];
-  if(low==="crawlspace"||low==="crawl space") return [5,0];
-  return [2,low];
-}
-function compareFloors(a,b){
-  const [ga,sa]=floorSortKey(a), [gb,sb]=floorSortKey(b);
-  if(ga!==gb) return ga-gb;
-  return typeof sa==="number" ? sa-sb : String(sa).localeCompare(String(sb));
-}
-function sortFloors(arr){ return [...arr].sort(compareFloors); }
+// Floor ordering now lives in src/lib/floorSort.js (imported above) so every
+// trade shares the exact same rule instead of keeping its own copy that can
+// drift out of sync.
 // Single stable slot for "a brand-new job that doesn't have a customer or
 // address attached yet." Normal drafts are keyed by leadId+address so a
 // resume link can find the right one, but that means nothing gets saved
@@ -1573,6 +1553,8 @@ export default function ProjectEstimate() {
   // whenever the component first mounted.
   const saveProjectRef = useRef(null);
   saveProjectRef.current = saveProject;
+  // Real synchronous lock for pushToBoardPlaster - see its own comment.
+  const pushBPLockRef = useRef(false);
 
   // Auto-save to localStorage immediately on every area change,
   // and to the DB 3 seconds after changes stop — so no data is lost
@@ -2749,6 +2731,15 @@ export default function ProjectEstimate() {
 
   async function pushToBoardPlaster(){
     if(!selectedLeadId) return;
+    // Real synchronous lock (unlike React state, which only disables the
+    // button after a re-render) - this function does a SELECT to check for
+    // an existing Board & Plaster estimate, then either updates it or
+    // inserts a new one. A fast double-tap could let two overlapping calls
+    // both see "nothing exists yet" and both insert, creating two separate
+    // estimates for the same customer. Same race class, same fix, as the
+    // HERS push-to-Insulation/push-to-Board-Plaster lock.
+    if(pushBPLockRef.current) return;
+    pushBPLockRef.current = true;
     // Push every area type, not just a pre-filtered "relevant" subset - let
     // the user delete whatever doesn't apply to plaster on the other side
     // (e.g. Rim Joist is sometimes needed, sometimes not).
@@ -2770,8 +2761,8 @@ export default function ProjectEstimate() {
         finish:"Smooth skim coat",
       })));
 
-    if(!pushAreas.length){ alert("No wall/ceiling/fire-blocking areas to push."); return; }
-    if(!window.confirm(`Push ${pushAreas.length} area(s) to Board & Plaster?\n\nIf a Board & Plaster estimate already exists for this customer/address, its measurements will be replaced with these. If none exists, a new one will be created.`)) return;
+    if(!pushAreas.length){ alert("No wall/ceiling/fire-blocking areas to push."); pushBPLockRef.current=false; return; }
+    if(!window.confirm(`Push ${pushAreas.length} area(s) to Board & Plaster?\n\nIf a Board & Plaster estimate already exists for this customer/address, its measurements will be replaced with these. If none exists, a new one will be created.`)){ pushBPLockRef.current=false; return; }
     try {
       const {data:{user}} = await supabase.auth.getUser();
       const {data:cd} = await supabase.from("companies").select("id").eq("user_id",user.id).maybeSingle();
@@ -2798,6 +2789,8 @@ export default function ProjectEstimate() {
       navigate(`/board-plaster/${target.id}`);
     } catch(err){
       alert("Error pushing: "+(err.message||JSON.stringify(err)));
+    } finally {
+      pushBPLockRef.current = false;
     }
   }
 
