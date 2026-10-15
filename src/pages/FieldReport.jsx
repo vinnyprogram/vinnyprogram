@@ -564,11 +564,25 @@ export default function FieldReport() {
                         {g.deduct>0 && <span style={{color:"#ef4444",fontWeight:700,marginLeft:6}}>−{fmt(g.deduct)} ft² deducted</span>}
                       </div>
                     )}
-                    {g.notes && g.notes.map((n,ni)=>(
-                      <div key={ni} style={{fontSize:10,color:"#b45309",fontStyle:"italic",marginTop:3,paddingLeft:4}}>
-                        📝 {g.floors.length>1&&n.floor?`${n.floor}: `:""}{n.text}
-                      </div>
-                    ))}
+                    {g.notes && g.notes.length>0 && (()=>{
+                      // Merge identical notes across floors into one line
+                      // (three floors that all say "Bathroom only" show as
+                      // one line instead of three) - but only when the text
+                      // matches EXACTLY. Differently-worded notes (even if
+                      // they might mean the same thing) stay on their own
+                      // line rather than risk conflating two different
+                      // instructions from the field.
+                      const byText = {};
+                      g.notes.forEach(n=>{
+                        if(!byText[n.text]) byText[n.text] = { text:n.text, floors:[] };
+                        if(n.floor) byText[n.text].floors.push(n.floor);
+                      });
+                      return Object.values(byText).map((n,ni)=>(
+                        <div key={ni} style={{fontSize:10,color:"#b45309",fontStyle:"italic",marginTop:3,paddingLeft:4}}>
+                          📝 {g.floors.length>1&&n.floors.length>0?`${n.floors.join(", ")}: `:""}{n.text}
+                        </div>
+                      ));
+                    })()}
                     {g.paint_sqft>0 && (
                       <div style={{fontSize:10,color:"#c2410c",marginTop:3,
                           paddingLeft:4,fontWeight:600}}>
@@ -636,6 +650,27 @@ export default function FieldReport() {
               }catch(e){ return []; }
             });
             if(!subOpts.length) return null;
+
+            // Merge the same sub-option (same label + material spec + note)
+            // across floors into one line with a combined sqft total,
+            // instead of listing each floor's copy separately with its own
+            // number - same approach as the sections above. Only merges
+            // when the note text ALSO matches exactly, so a note that
+            // differs per floor keeps that entry on its own line rather
+            // than risk hiding a floor-specific instruction behind a
+            // merged total.
+            const merged = {};
+            subOpts.forEach(o=>{
+              const fl = floors.find(f=>f.id===o._area.floor_id);
+              const optMls=(o.mat_lines||[]).length>0?o.mat_lines:[{material:o.material||"",thickness_in:o.thickness_in||o._area?.thickness_in||"",r_value:o.r_value||o._area?.r_value||""}];
+              const matKey = optMls.map(ml=>(ml.material||"")+(ml.thickness_in||"")+(ml.r_value||"")).sort().join("+");
+              const key = (o.label||"")+"||||"+(o._area.area_type||"")+"||||"+matKey+"||||"+(o.note||"");
+              if(!merged[key]) merged[key] = { label:o.label, area_type:o._area.area_type, optMls, note:o.note, sqft:0, floors:[] };
+              merged[key].sqft += Number(o._area.sqft)||0;
+              if(fl && !merged[key].floors.find(f=>f?.id===fl.id)) merged[key].floors.push(fl);
+            });
+            const mergedOpts = Object.values(merged);
+
             return (
               <div style={{marginBottom:16}}>
                 <div style={{fontSize:9,fontWeight:800,color:"#92400e",textTransform:"uppercase",
@@ -643,26 +678,27 @@ export default function FieldReport() {
                     padding:"6px 12px",borderRadius:6,border:"1px solid #fed7aa"}}>
                   ⚡ Sub-Options (Price Separately)
                 </div>
-                {subOpts.map((o,i)=>{
-                  const fl = floors.find(f=>f.id===o._area.floor_id);
-                  const optMls=(o.mat_lines||[]).length>0?o.mat_lines:[{material:o.material||"",thickness_in:o.thickness_in||o._area?.thickness_in||"",r_value:o.r_value||o._area?.r_value||""}];
-                  const matLabel=(optMls.length>1?[optMls[0]?.thickness_in,"Combo:",optMls.map(ml=>[ml.material,formatRValue(ml.r_value)].filter(Boolean).join(" ")).join(" + ")].filter(Boolean).join(" "):[optMls[0]?.thickness_in,optMls[0]?.material,formatRValue(optMls[0]?.r_value)].filter(Boolean).join(" "));
-                  const optTotalR = optMls.reduce((sum,ml)=>{
+                {mergedOpts.map((o,i)=>{
+                  const floorLabel = o.floors
+                    .sort((a,b)=>floors.findIndex(f=>f.id===a?.id)-floors.findIndex(f=>f.id===b?.id))
+                    .map(f=>f?.name?.replace(" Floor","")).filter(Boolean).join(", ");
+                  const matLabel=(o.optMls.length>1?[o.optMls[0]?.thickness_in,"Combo:",o.optMls.map(ml=>[ml.material,formatRValue(ml.r_value)].filter(Boolean).join(" ")).join(" + ")].filter(Boolean).join(" "):[o.optMls[0]?.thickness_in,o.optMls[0]?.material,formatRValue(o.optMls[0]?.r_value)].filter(Boolean).join(" "));
+                  const optTotalR = o.optMls.reduce((sum,ml)=>{
                     const r = parseInt((ml.r_value||"").replace(/\D/g,""))||0;
                     return sum+r;
                   },0);
                   return (
                     <div key={i} style={{padding:"8px 12px",background:i%2===0?"#fffbeb":"white",
                         border:"1px solid #fde68a",borderTop:i===0?"1px solid #fde68a":"none",
-                        borderRadius:i===0?"6px 6px 0 0":i===subOpts.length-1?"0 0 6px 6px":"0"}}>
+                        borderRadius:i===0?"6px 6px 0 0":i===mergedOpts.length-1?"0 0 6px 6px":"0"}}>
                       <div style={{display:"flex",justifyContent:"space-between",flexWrap:"wrap",gap:4}}>
                         <div>
                           <span style={{fontSize:13,fontWeight:800,color:"#92400e"}}>{o.label}</span>
-                          <span style={{fontSize:11,color:"#374151",marginLeft:6}}>— {fl?.name} — {o._area.area_type}</span>
+                          <span style={{fontSize:11,color:"#374151",marginLeft:6}}>— {floorLabel} — {o.area_type}</span>
                           <div style={{fontSize:10,color:"#64748b"}}>{matLabel}{optTotalR>0&&<span style={{color:"#059669",fontWeight:700,marginLeft:6}}>Total R{optTotalR}</span>}</div>
                           {o.note&&<div style={{fontSize:10,color:"#b45309",fontStyle:"italic"}}>📝 {o.note}</div>}
                         </div>
-                        <span style={{fontSize:12,fontWeight:700,color:"#92400e"}}>{o._area.sqft} ft²</span>
+                        <span style={{fontSize:12,fontWeight:700,color:"#92400e"}}>{fmt(o.sqft)} ft²</span>
                       </div>
                     </div>
                   );
