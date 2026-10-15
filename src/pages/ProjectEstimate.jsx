@@ -2820,9 +2820,13 @@ export default function ProjectEstimate() {
   return (
     <div style={{fontFamily:"system-ui,sans-serif",color:C.ink,background:C.bg,minHeight:"100%",display:"flex",flexDirection:"column",WebkitOverflowScrolling:"touch"}}>
       {saved&&(
-        <div style={{position:"fixed",top:12,left:"50%",transform:"translateX(-50%)",zIndex:300,display:"flex",alignItems:"center",gap:10,background:"#059669",color:"#fff",padding:"8px 16px",borderRadius:20,fontSize:12,fontWeight:700,boxShadow:"0 4px 16px rgba(0,0,0,.15)"}}>
+        // No max-width/wrap before meant this banner (4 buttons + label,
+        // centered) could run past both edges of a narrow phone screen with
+        // no way to reach whatever got pushed off - same class of issue as
+        // the sticky header's button row below. Now it wraps instead.
+        <div style={{position:"fixed",top:12,left:"50%",transform:"translateX(-50%)",zIndex:300,display:"flex",flexWrap:"wrap",alignItems:"center",justifyContent:"center",gap:10,maxWidth:"94vw",background:"#059669",color:"#fff",padding:"8px 16px",borderRadius:20,fontSize:12,fontWeight:700,boxShadow:"0 4px 16px rgba(0,0,0,.15)"}}>
           <span>✅ Saved!</span>
-          {savedProjectId&&(<><button onClick={()=>navigate(`/project/drawings/${savedProjectId}`)} style={{background:"#7c3aed",color:"white",border:"none",borderRadius:12,padding:"3px 10px",fontSize:11,fontWeight:700,cursor:"pointer"}}>📐 Drawings</button><button onClick={()=>navigate(`/field-report/${savedProjectId}`)} style={{background:"#3b82f6",color:"white",border:"none",borderRadius:12,padding:"3px 10px",fontSize:11,fontWeight:700,cursor:"pointer"}}>📋 Office Report</button><button onClick={()=>navigate(`/quote/${savedProjectId}`)} style={{background:"white",color:"#059669",border:"none",borderRadius:12,padding:"3px 10px",fontSize:11,fontWeight:700,cursor:"pointer"}}>📄 Quote</button>{offersBoardPlaster && <button onClick={pushToBoardPlaster} style={{background:"white",color:"#b45309",border:"none",borderRadius:12,padding:"3px 10px",fontSize:11,fontWeight:700,cursor:"pointer"}}>🧱 To Board &amp; Plaster</button>}</>)}
+          {savedProjectId&&(<><button onClick={()=>navigate(`/project/drawings/${savedProjectId}`)} style={{background:"#7c3aed",color:"white",border:"none",borderRadius:12,padding:"3px 10px",fontSize:11,fontWeight:700,cursor:"pointer"}}>📐 Drawings</button><button onClick={()=>navigate(`/field-report/${savedProjectId}`)} style={{background:"#3b82f6",color:"white",border:"none",borderRadius:12,padding:"3px 10px",fontSize:11,fontWeight:700,cursor:"pointer"}}>📋 Office</button><button onClick={()=>navigate(`/quote/${savedProjectId}`)} style={{background:"white",color:"#059669",border:"none",borderRadius:12,padding:"3px 10px",fontSize:11,fontWeight:700,cursor:"pointer"}}>📄 Quote</button>{offersBoardPlaster && <button onClick={pushToBoardPlaster} style={{background:"white",color:"#b45309",border:"none",borderRadius:12,padding:"3px 10px",fontSize:11,fontWeight:700,cursor:"pointer"}}>🧱 B&amp;P</button>}</>)}
         </div>
       )}
       {isLocked && (
@@ -2838,9 +2842,15 @@ export default function ProjectEstimate() {
           ← Back
         </button>
         <span style={{fontWeight:700,fontSize:14,flex:1,overflow:"hidden",whiteSpace:"nowrap",textOverflow:"ellipsis",minWidth:100}}>{isEditing?(isLocked?"🔒 View Estimate":"✏️ Edit Estimate"):(projectName||"New Project")}</span>
-        <div style={{display:"flex",gap:6,overflowX:"auto",WebkitOverflowScrolling:"touch",maxWidth:"100%",flexShrink:1}}>
+        {/* Was overflowX:"auto" - on a narrow phone the last button(s) (e.g.
+            "To Board & Plaster") sat past the edge of the screen with only a
+            horizontal swipe to reach them, which isn't obvious and can end
+            up effectively unclickable. Wrapping instead means every button
+            is always fully visible and tappable, just possibly on a second
+            line - nothing is ever hidden off-screen. */}
+        <div style={{display:"flex",gap:6,flexWrap:"wrap",maxWidth:"100%",justifyContent:"flex-end"}}>
           <DebugLogButton />
-          {savedProjectId&&(<><button onClick={()=>navigate(`/project/drawings/${savedProjectId}`)} style={{...BtnD,background:"#7c3aed",height:32,fontSize:12,padding:"0 10px",borderRadius:8,flexShrink:0}}>📐 Drawings</button><button onClick={()=>navigate(`/field-report/${savedProjectId}`)} style={{...BtnD,background:"#3b82f6",height:32,fontSize:12,padding:"0 10px",borderRadius:8,flexShrink:0}}>📋 Office</button><button onClick={()=>navigate(`/quote-pricing/${savedProjectId}`)} style={{...BtnD,background:"#f97316",height:32,fontSize:12,padding:"0 10px",borderRadius:8,flexShrink:0}}>📄 Quote</button>{offersBoardPlaster && <button onClick={pushToBoardPlaster} style={{...BtnD,background:"#b45309",height:32,fontSize:12,padding:"0 10px",borderRadius:8,flexShrink:0}}>🧱 To Board &amp; Plaster</button>}</>)}
+          {savedProjectId&&(<><button onClick={()=>navigate(`/project/drawings/${savedProjectId}`)} style={{...BtnD,background:"#7c3aed",height:32,fontSize:12,padding:"0 10px",borderRadius:8,flexShrink:0}}>📐 Drawings</button><button onClick={()=>navigate(`/field-report/${savedProjectId}`)} style={{...BtnD,background:"#3b82f6",height:32,fontSize:12,padding:"0 10px",borderRadius:8,flexShrink:0}}>📋 Office</button><button onClick={()=>navigate(`/quote-pricing/${savedProjectId}`)} style={{...BtnD,background:"#f97316",height:32,fontSize:12,padding:"0 10px",borderRadius:8,flexShrink:0}}>📄 Quote</button>{offersBoardPlaster && <button onClick={pushToBoardPlaster} style={{...BtnD,background:"#b45309",height:32,fontSize:12,padding:"0 10px",borderRadius:8,flexShrink:0}}>🧱 B&amp;P</button>}</>)}
           {!isLocked && <button onClick={saveProject} disabled={saving} style={{...BtnD,fontSize:13,height:32,padding:"0 14px",background:saving?"#64748b":C.ink,borderRadius:8,opacity:!selectedLeadId?0.4:1,flexShrink:0}}>{saving?"…":"Save"}</button>}
         </div>
       </div>
