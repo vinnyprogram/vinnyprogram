@@ -1439,6 +1439,23 @@ export default function ProjectEstimate() {
   const savingRef = useRef(false); // real lock against overlapping saves - unlike the `saving` state, this applies to SILENT saves too, and updates synchronously (no React batching delay) so two saves firing close together can't both slip past the check
   const autoSaveTimer = useRef(null);
   const areaListRef = useRef(null);
+  // Tracks whether the 3-second debounced DB autosave below is currently
+  // "armed" (scheduled but hasn't fired yet). Used by the unmount-flush
+  // effect further down: without this, navigating to another screen
+  // within that 3-second window just cancelled the pending DB save -
+  // the edit was still safe in the localStorage draft, but the DATABASE
+  // kept whatever was last actually saved, which could be older/partial.
+  // That mismatch is exactly what produced "I come back and it's blank,
+  // but there's an old version of this job AND a leftover draft with the
+  // same customer" - the draft had the newer data, the DB had the older
+  // data, and neither screen you land on shows both at once.
+  const pendingAutosaveRef = useRef(false);
+  // Always holds the CURRENT render's saveProject closure (which closes
+  // over the current areas/crewNotes/etc.) so the unmount-only effect
+  // below can call the latest version instead of a stale one from
+  // whenever the component first mounted.
+  const saveProjectRef = useRef(null);
+  saveProjectRef.current = saveProject;
 
   // Auto-save to localStorage immediately on every area change,
   // and to the DB 3 seconds after changes stop — so no data is lost
@@ -1447,7 +1464,9 @@ export default function ProjectEstimate() {
     if(!initialLoadDone.current) return;
     saveDraftNow();
     clearTimeout(autoSaveTimer.current);
+    pendingAutosaveRef.current = true;
     autoSaveTimer.current = setTimeout(()=>{
+      pendingAutosaveRef.current = false;
       // In edit mode: always auto-save directly to DB (project ID already exists).
       // In new-project mode: only auto-save once a project ID exists (after first manual save).
       const targetId = projectId || savedProjectId;
@@ -1458,6 +1477,22 @@ export default function ProjectEstimate() {
     return ()=>clearTimeout(autoSaveTimer.current);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[areas, crewNotes]);
+
+  // FLUSH ON NAVIGATE AWAY: if the debounced autosave above is still
+  // armed when this page unmounts (the user clicked to another screen
+  // before the 3 seconds elapsed), fire the save now instead of just
+  // letting the timer get cancelled. This only runs on real unmount
+  // (empty dependency array), and reads through saveProjectRef so it
+  // always uses the latest data, never a stale closure from mount time.
+  useEffect(()=>{
+    return ()=>{
+      if(pendingAutosaveRef.current){
+        pendingAutosaveRef.current = false;
+        saveProjectRef.current?.({silent:true});
+      }
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[]);
 
   function getDraftKey(id, address){
     const addrSlug = (address||"").trim().toLowerCase().replace(/[^a-z0-9]/g,"_").slice(0,40);
