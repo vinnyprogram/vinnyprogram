@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
@@ -278,6 +278,102 @@ export default function BoardPlasterEstimate(){
   const [depositValue, setDepositValue] = useState("");
   const [scheduleOpen, setScheduleOpen] = useState(false);
   const [paymentSchedule, setPaymentSchedule] = useState([]);
+
+  // AUTOSAVE - matches Insulation's approach exactly: write to localStorage
+  // immediately on every change (so nothing is ever lost just by navigating
+  // away), and to the database 3 seconds after changes stop. Previously
+  // this page had NO autosave at all - only the manual "Save" button -
+  // which is what was losing entries whenever you switched screens before
+  // remembering to click it.
+  function getDraftKey(){
+    // Editing an existing estimate already autosaves straight to the DB
+    // below, so it doesn't need a separate localStorage draft (same as
+    // Insulation - a draft here would just be a second, confusing copy).
+    if(isEditing) return null;
+    return `bp_draft_${selectedLeadId||"anon"}`;
+  }
+  function loadDraft(key){ try{ const r=localStorage.getItem(key); return r?JSON.parse(r):null; }catch(e){ return null; } }
+  function saveDraftNow(){
+    const key = getDraftKey();
+    if(!key) return;
+    try{
+      localStorage.setItem(key, JSON.stringify({
+        savedAt:new Date().toISOString(), selectedLeadId, address, areas, floorNames,
+        lineItems, notes, status, taxRate, markupOpen, markupType, markupValue,
+        discountOpen, discountType, discountValue, depositOpen, depositType, depositValue,
+        scheduleOpen, paymentSchedule,
+      }));
+      if(selectedLeadId){ try{ localStorage.removeItem("bp_draft_anon"); }catch(e){} }
+    }catch(e){}
+  }
+  function clearDraft(){
+    try{
+      if(selectedLeadId) localStorage.removeItem(`bp_draft_${selectedLeadId}`);
+      localStorage.removeItem("bp_draft_anon");
+    }catch(e){}
+  }
+  // Restore a leftover draft once, right after the page finishes loading -
+  // only for a brand-new estimate (editing an existing one already has its
+  // real saved data). Covers both "picked a customer, typed some things,
+  // never saved, came back" (keyed by that customer) and "hadn't picked a
+  // customer yet" (the shared anon slot).
+  const draftRestoredRef = useRef(false);
+  useEffect(()=>{
+    if(loading || isEditing || draftRestoredRef.current) return;
+    draftRestoredRef.current = true;
+    const draft = loadDraft(selectedLeadId ? `bp_draft_${selectedLeadId}` : "bp_draft_anon");
+    if(!draft) return;
+    if(draft.address) setAddress(draft.address);
+    if(draft.areas?.length) setAreas(draft.areas);
+    if(draft.floorNames?.length) setFloorNames(sortFloors(draft.floorNames));
+    if(draft.lineItems?.length) setLineItems(draft.lineItems);
+    if(draft.notes) setNotes(draft.notes);
+    if(draft.status) setStatus(draft.status);
+    if(draft.taxRate) setTaxRate(draft.taxRate);
+    if(draft.markupOpen){ setMarkupOpen(true); setMarkupType(draft.markupType||"percent"); setMarkupValue(draft.markupValue||""); }
+    if(draft.discountOpen){ setDiscountOpen(true); setDiscountType(draft.discountType||"percent"); setDiscountValue(draft.discountValue||""); }
+    if(draft.depositOpen){ setDepositOpen(true); setDepositType(draft.depositType||"percent"); setDepositValue(draft.depositValue||""); }
+    if(draft.scheduleOpen && draft.paymentSchedule?.length){ setScheduleOpen(true); setPaymentSchedule(draft.paymentSchedule); }
+    bpLog("Restored a leftover draft for this new estimate");
+  },[loading, isEditing, selectedLeadId]);
+
+  const autoSaveTimer = useRef(null);
+  const pendingAutosaveRef = useRef(false);
+  const saveEstimateRef = useRef(null);
+  saveEstimateRef.current = saveEstimate;
+
+  useEffect(()=>{
+    if(loading) return;
+    saveDraftNow();
+    clearTimeout(autoSaveTimer.current);
+    pendingAutosaveRef.current = true;
+    autoSaveTimer.current = setTimeout(()=>{
+      pendingAutosaveRef.current = false;
+      // Same rule as Insulation: a brand-new estimate needs one manual Save
+      // to get a real id before autosave starts writing to the DB (so idly
+      // opening a blank estimate and leaving doesn't create empty rows) -
+      // after that first save, estimateId exists and autosave takes over.
+      if(selectedLeadId && estimateId) saveEstimate({silent:true});
+    }, 3000);
+    return ()=>clearTimeout(autoSaveTimer.current);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[areas, floorNames, lineItems, notes, status, taxRate, address,
+     markupOpen, markupType, markupValue, discountOpen, discountType, discountValue,
+     depositOpen, depositType, depositValue, scheduleOpen, paymentSchedule]);
+
+  // FLUSH ON NAVIGATE AWAY - same fix as Insulation: if the debounced
+  // autosave above is still armed when this page unmounts (switched to
+  // another screen before the 3 seconds elapsed), fire the save now
+  // instead of letting the timer just get cancelled.
+  useEffect(()=>{
+    return ()=>{
+      if(pendingAutosaveRef.current){
+        pendingAutosaveRef.current = false;
+        saveEstimateRef.current?.({silent:true});
+      }
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[]);
 
   useEffect(()=>{
     async function init(){
@@ -735,13 +831,23 @@ export default function BoardPlasterEstimate(){
     window.location.href = `mailto:?subject=${subject}&body=${body}`;
   }
 
-  async function saveEstimate(){
-    if(saving) return;
-    bpLog(`Save requested (${isEditing?"update":"new estimate"})`);
-    if(!selectedLeadId){ bpLog("Save blocked: no customer selected"); alert("Please select a customer first."); return; }
+  // Real synchronous lock against overlapping saves - matters most for a
+  // brand-new (not-yet-saved) estimate: without this, two saves firing
+  // close together (autosave + a manual click, or a fast double-tap)
+  // could both still see isEditing===false and both INSERT, creating two
+  // separate board_plaster_estimates rows for the same job.
+  const savingRef = useRef(false);
+  async function saveEstimate(opts={}){
+    if(savingRef.current) return;
+    savingRef.current = true;
+    try { await saveEstimateInner(opts); } finally { savingRef.current = false; }
+  }
+  async function saveEstimateInner({silent=false}={}){
+    bpLog(`Save requested (${isEditing?"update":"new estimate"}${silent?", auto":""})`);
+    if(!selectedLeadId){ bpLog("Save blocked: no customer selected"); if(!silent) alert("Please select a customer first."); return; }
     const validItems = lineItems.filter(it=>it.service_name && Number(it.price)>=0);
-    if(!validItems.length && !areas.length){ bpLog("Save blocked: nothing entered"); alert("Add at least one area or line item."); return; }
-    setSaving(true);
+    if(!validItems.length && !areas.length){ bpLog("Save blocked: nothing entered"); if(!silent) alert("Add at least one area or line item."); return; }
+    if(!silent) setSaving(true);
     try {
       const payload = {
         company_id: companyId,
@@ -761,16 +867,20 @@ export default function BoardPlasterEstimate(){
       } else {
         const { data, error } = await supabase.from("board_plaster_estimates").insert([payload]).select().single();
         if(error) throw error;
+        // Switches the URL over to /board-plaster/{id} in place - from here
+        // on estimateId (from useParams) reflects the real saved row, so
+        // autosave and the flush-on-unmount below start targeting it too,
+        // the same way Insulation only autosaves a new job once it has an id.
         navigate(`/board-plaster/${data.id}`, { replace:true });
       }
       bpLog("✅ Save completed successfully");
-      setSaved(true);
-      setTimeout(()=>setSaved(false),2500);
+      clearDraft();
+      if(!silent){ setSaved(true); setTimeout(()=>setSaved(false),2500); }
     } catch(err){
       bpLog(`❌ SAVE FAILED: ${err.message}`);
-      alert("Error saving: "+(err.message||JSON.stringify(err)));
+      if(!silent) alert("Error saving: "+(err.message||JSON.stringify(err)));
     }
-    setSaving(false);
+    if(!silent) setSaving(false);
   }
 
   if(loading) return (
