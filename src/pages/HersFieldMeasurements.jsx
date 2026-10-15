@@ -1052,6 +1052,17 @@ export default function HersFieldMeasurements() {
   const [autoSaveTick, setAutoSaveTick] = useState(0);
   const [importing, setImporting] = useState(false);
   const [pushing, setPushing]     = useState(false);
+  // Real synchronous lock for pushToInsulation/pushToBoardPlaster - unlike
+  // the `pushing` state above (which only disables the button once React
+  // re-renders), this is set the instant the function starts, closing the
+  // same race window that caused the Insulation estimate's duplicated
+  // areas: pushToInsulation reads "does this area already exist?" then
+  // decides insert-vs-update, and two overlapping calls (a fast double
+  // tap on a field phone, or two push attempts close together) could
+  // otherwise both see "doesn't exist yet" and both insert, creating a
+  // duplicate area row in the SAME areas table that had that bug.
+  const pushLockRef = useRef(false);
+  const importLockRef = useRef(false); // same reasoning as pushLockRef, for importFromInsulation
 
   const [invoice, setInvoice]   = useState(null);
   const [customer, setCustomer] = useState(null);
@@ -1425,11 +1436,14 @@ export default function HersFieldMeasurements() {
   // ── Import from insulation ──
   async function importFromInsulation(){
     if(!invoice?.customer_id||!invoice?.company_id) return;
+    if(importLockRef.current) return;
     if(!window.confirm("Import from the insulation project for this customer?")) return;
+    if(importLockRef.current) return;
+    importLockRef.current = true;
     setImporting(true);
     try {
       const { data:projs } = await supabase.from("projects").select("id,name,address").eq("lead_id",invoice.customer_id).order("created_at",{ascending:false}).limit(5);
-      if(!projs?.length){ alert("No insulation project found."); setImporting(false); return; }
+      if(!projs?.length){ alert("No insulation project found."); importLockRef.current=false; setImporting(false); return; }
       const proj = projs.find(p=>(p.address||"").toLowerCase().includes((invoice.address||"").split(",")[0].toLowerCase()))||projs[0];
       const { data:projFloors } = await supabase.from("floors").select("*").eq("project_id",proj.id).order("order_index");
       const { data:projAreas  } = await supabase.from("areas").select("*").eq("project_id",proj.id).order("order_index");
@@ -1457,12 +1471,14 @@ export default function HersFieldMeasurements() {
       setActiveFloor(newFloorArr[0]);
       alert(`✅ Imported from "${proj.name||proj.address}" — including materials and R-values.`);
     } catch(err){ alert("Import error: "+(err.message||JSON.stringify(err))); }
+    importLockRef.current = false;
     setImporting(false);
   }
 
   // ── Push to insulation ──
   async function pushToInsulation(){
     if(!invoice?.customer_id) return;
+    if(pushLockRef.current) return; // already pushing - block a second overlapping call synchronously
 
     // Multifamily: insulation works at the BUILDING level, not per-unit -
     // pull every unit's measurements and sum matching floor+area_type+
@@ -1497,6 +1513,8 @@ export default function HersFieldMeasurements() {
     const allAreas = Object.values(buildingAreas).flat().filter(a=>a.area_type&&a.sqft>0);
     if(!allAreas.length){ alert("No completed areas to push."); return; }
     if(!window.confirm("Push measurements to the insulation estimate?\n\nIf no insulation estimate exists for this customer, a new one will be created.")) return;
+    if(pushLockRef.current) return; // re-check right before committing - a concurrent call could have started during the confirm() dialog
+    pushLockRef.current = true;
     setPushing(true);
     try {
       let proj = null;
@@ -1585,11 +1603,12 @@ export default function HersFieldMeasurements() {
 
       alert(`✅ Pushed to insulation estimate — ${updated} updated, ${created} created across ${hersFloorNames.length} floor(s)${mode==="estimate"&&unitLabels.length>1?` (building total across ${unitLabels.length} units)`:""}.\n\nGo to Insulation Estimates to open it.`);
     } catch(err){ alert("Push error: "+(err.message||JSON.stringify(err))); }
-    setPushing(false);
+    finally { pushLockRef.current = false; setPushing(false); }
   }
 
   async function pushToBoardPlaster(){
     if(!invoice?.customer_id) return;
+    if(pushLockRef.current) return; // shares the lock with pushToInsulation - these can't usefully run concurrently either
     // Push every area type, not just a pre-filtered "relevant" subset - let
     // the user delete whatever doesn't apply to plaster on the other side.
     const RELEVANT = ["Roof Rafter w/ Strapping","Roof Rafter behind knee walls","Floor","Exterior Wall","Demising Wall","Rim Joist","Concrete Wall","Ceiling","Interior Walls","Fire Blocking","Other"];
@@ -1639,6 +1658,8 @@ export default function HersFieldMeasurements() {
 
     if(!pushAreas.length){ alert("No wall/ceiling/fire-blocking areas to push."); return; }
     if(!window.confirm(`Push ${pushAreas.length} area(s) to Board & Plaster?\n\nIf a Board & Plaster estimate already exists for this customer/address, its measurements will be replaced with these. If none exists, a new one will be created.`)) return;
+    if(pushLockRef.current) return;
+    pushLockRef.current = true;
     setPushing(true);
     hersLog(`Push to Board & Plaster requested (${pushAreas.length} areas)`);
     try {
@@ -1666,6 +1687,7 @@ export default function HersFieldMeasurements() {
       hersLog(`❌ Push to Board & Plaster failed: ${err.message}`);
       alert("Error pushing: "+(err.message||JSON.stringify(err)));
     }
+    pushLockRef.current = false;
     setPushing(false);
   }
 
