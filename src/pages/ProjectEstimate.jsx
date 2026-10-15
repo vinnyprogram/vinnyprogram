@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";
 import { useSearchParams, useNavigate, useParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
-import { enqueue, flushQueue } from "../utils/offlineQueue";
+import { flushQueue } from "../utils/offlineQueue";
 import { logEvent as sharedLogEvent } from "../utils/debugLog";
 import DebugLogButton from "../components/DebugLogButton";
 import { useAuth } from "../context/AuthContext";
@@ -1585,9 +1585,18 @@ export default function ProjectEstimate() {
       // In edit mode: always auto-save directly to DB (project ID already exists).
       // In new-project mode: only auto-save once a project ID exists (after first manual save).
       const targetId = projectId || savedProjectId;
-      if(selectedLeadId && targetId){
-        if(!navigator.onLine){ enqueue({ type:"pending_save", table:"projects", data:{ id:targetId }, opts:{} }); } else { saveProject({silent:true}); }
-      }
+      // saveProject() already checks navigator.onLine itself and handles
+      // both cases correctly (writes the draft to localStorage and waits
+      // for the "online" listener below when offline, saves to the DB
+      // directly when online) - so it's always safe to call here. The
+      // offline branch used to instead enqueue a {type:"pending_save"}
+      // entry into the generic offline-write queue, but that queue only
+      // knows how to replay "upsert"/"insert"/"update"/"delete" entries -
+      // "pending_save" matched none of them, so flushQueue() silently
+      // counted it as succeeded without ever writing the real area data,
+      // and the "X synced" banner would report success for a save that
+      // never actually happened over the network.
+      if(selectedLeadId && targetId) saveProject({silent:true});
     }, 3000);
     return ()=>clearTimeout(autoSaveTimer.current);
   // eslint-disable-next-line react-hooks/exhaustive-deps
