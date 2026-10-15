@@ -59,6 +59,38 @@ function formatRValue(v) {
   return (v || "").replace(/-/g, "");
 }
 
+// ── Offline customer creation ────────────────────────────────────────────
+// A customer typed in with no signal can't get a real database id yet, so
+// it's kept here (under a "local_..." id) until a connection is available
+// to actually insert it - then resolvePendingCustomerIfNeeded() swaps the
+// local id for the real one everywhere it was used (selectedLeadId, the
+// leads list, and the project row about to be saved). Stored in
+// localStorage (not just React state) so it survives the app being closed
+// and reopened before signal returns.
+const PENDING_CUSTOMERS_KEY = "pending_offline_customers";
+function loadPendingCustomers(){
+  try{ return JSON.parse(localStorage.getItem(PENDING_CUSTOMERS_KEY)||"{}"); }
+  catch(e){ return {}; }
+}
+function savePendingCustomers(map){
+  try{ localStorage.setItem(PENDING_CUSTOMERS_KEY, JSON.stringify(map)); }catch(e){}
+}
+function isPendingLeadId(id){ return typeof id==="string" && id.startsWith("local_"); }
+// Merges any still-unsynced offline customers into a DB-sourced leads list
+// so they keep showing up to search/select (and don't get silently wiped
+// out) even after loadLeads() re-fetches from the server, or after the app
+// is closed and reopened before they've synced.
+function mergeInPendingLeads(dbLeads){
+  try{
+    const pending = loadPendingCustomers();
+    const synthetic = Object.entries(pending).map(([localId,form])=>({
+      id:localId, name:form.name||"", phone:form.phone||"", company_name:form.company_name||"",
+      email:form.email||"", address:form.address||"", _pendingOffline:true,
+    }));
+    return [...synthetic, ...(dbLeads||[])];
+  }catch(e){ return dbLeads||[]; }
+}
+
 const DEFAULT_FLOORS = ["Attic","3rd","2nd","1st","Basement","Crawlspace"];
 // Floor ordering now lives in src/lib/floorSort.js (imported above) so every
 // trade shares the exact same rule instead of keeping its own copy that can
@@ -282,6 +314,12 @@ async function saveNew() {
           <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:4 }}>
             <div style={{ fontSize:11, lineHeight:1.5, flex:1, minWidth:0 }}>
               <span style={{ fontWeight:700 }}>{selectedLead.name}</span>
+              {selectedLead._pendingOffline && (
+                <span title="Created offline - will sync to the server once you're back online"
+                  style={{ color:"#b45309", background:"#fffbeb", border:"1px solid #fde68a", borderRadius:8, fontSize:9, fontWeight:700, padding:"1px 6px", marginLeft:6 }}>
+                  ⏳ Not synced yet
+                </span>
+              )}
               {selectedLead.phone && <span style={{ color:C.muted, fontSize:10, marginLeft:6 }}>{selectedLead.phone}</span>}
               {selectedLead.company_name && <span style={{ color:C.muted, fontSize:10, marginLeft:6 }}>· {selectedLead.company_name}</span>}
               {selectedLead.email && <div style={{ color:C.faint, fontSize:10 }}>{selectedLead.email}</div>}
@@ -342,7 +380,7 @@ async function saveNew() {
                     background:i%2===0?C.white:"#fafbfc",
                     borderBottom:i<results.length-1?`1px solid ${C.border}`:"none", minHeight:40 }}>
                   <div>
-                    <div style={{ fontWeight:600 }}>{l.name}</div>
+                    <div style={{ fontWeight:600 }}>{l.name}{l._pendingOffline && <span style={{color:"#b45309",fontSize:9,fontWeight:700,marginLeft:5}}>⏳ not synced</span>}</div>
                     {l.company_name && <div style={{ color:C.muted, fontSize:10 }}>{l.company_name}</div>}
                   </div>
                   <span style={{ color:C.faint, fontSize:11 }}>{l.phone}</span>
@@ -1769,7 +1807,7 @@ export default function ProjectEstimate() {
     supabase.auth.onAuthStateChange((event,session)=>{
       if(session){
         loadMaterials();
-        supabase.from("customers").select("id,name,phone,address,email,company_name").order("name").limit(1000).then(({data})=>{if(data) setLeads(data);});
+        supabase.from("customers").select("id,name,phone,address,email,company_name").order("name").limit(1000).then(({data})=>{if(data) setLeads(mergeInPendingLeads(data));});
       }
     });
     supabase.auth.getUser().then(async({data:{user}})=>{
@@ -1921,7 +1959,7 @@ export default function ProjectEstimate() {
   function loadLeads(){
     supabase.from("customers").select("id,name,phone,address,email,company_name").order("name").limit(1000).then(({data,error})=>{
       if(error){console.error("leads error:",JSON.stringify(error));return;}
-      if(data) setLeads(data);
+      if(data) setLeads(mergeInPendingLeads(data));
     });
   }
 
@@ -2283,11 +2321,70 @@ export default function ProjectEstimate() {
   }
 
   async function saveNewCustomer(form){
+    if(!form.name||!form.name.trim()){ alert("Name is required."); return; }
+    // Offline: can't insert a real customer row without a round-trip, so
+    // keep it on this device under a temporary "local_..." id and let it
+    // flow through the exact same areas/floors/save/autosave machinery as
+    // a real customer. resolvePendingCustomerIfNeeded() swaps it for a
+    // real database id the moment a save actually reaches the server
+    // (manual Save while online, or automatically via the "online" event
+    // listener once signal returns) - never here, so there's only ever
+    // one place that creates the real row, and no risk of creating it
+    // twice.
+    if(!navigator.onLine){
+      const localId = "local_"+Date.now()+"_"+Math.random().toString(36).slice(2);
+      const pending = loadPendingCustomers();
+      pending[localId] = { name:form.name||"", phone:form.phone||"", company_name:form.company_name||"", email:form.email||"", address:form.address||"" };
+      savePendingCustomers(pending);
+      setLeads(prev=>[{ id:localId, name:form.name||"", phone:form.phone||"", company_name:form.company_name||"", email:form.email||"", address:form.address||"", _pendingOffline:true }, ...prev]);
+      setSelectedLeadId(localId);
+      setProjectName(form.name||"");
+      alert("You're offline — this customer is saved on this device and will be created on the server automatically once you're back online. You can keep going with the address and measurements now.");
+      return;
+    }
     let companyId=null;
     try{const {data:{user}}=await supabase.auth.getUser();const {data:cd}=await supabase.from("companies").select("id").eq("user_id",user.id).maybeSingle();companyId=cd?.id||null;}catch(e){}
     const {data,error}=await supabase.from("customers").insert([{name:form.name||"",phone:form.phone||"",company_name:form.company_name||"",email:form.email||"",address:form.address||"",status:"New",estimate_amount:0,company_id:companyId}]).select().single();
     if(error){alert("Could not save customer: "+(error.message||JSON.stringify(error)));return;}
     if(data){loadLeads();setSelectedLeadId(String(data.id));setProjectName(data.name||"");/* keep existing address — only blank if nothing entered yet */}
+  }
+
+  // Real synchronous lock - resolving the same pending customer twice
+  // (e.g. the "online" listener firing while a manual Save is already
+  // resolving it) must never create two database rows for one offline
+  // customer.
+  const resolvingCustomerRef = useRef(false);
+  // Turns a "local_..." pending customer into a real database row, now
+  // that there's a connection. Returns the id to actually use for this
+  // save - the real one if it just created it (or another in-flight call
+  // already did), or the original id unchanged if there was nothing
+  // pending to resolve.
+  async function resolvePendingCustomerIfNeeded(leadId){
+    if(!isPendingLeadId(leadId)) return leadId;
+    if(resolvingCustomerRef.current){
+      // Another call is already creating this customer - wait for it
+      // instead of racing a second insert.
+      while(resolvingCustomerRef.current) await new Promise(r=>setTimeout(r,150));
+      return isPendingLeadId(selectedLeadId) ? leadId : selectedLeadId;
+    }
+    resolvingCustomerRef.current = true;
+    try{
+      const pending = loadPendingCustomers();
+      const form = pending[leadId];
+      if(!form) return leadId; // already resolved by another call, or nothing to do
+      let companyId=null;
+      try{const {data:{user}}=await supabase.auth.getUser();const {data:cd}=await supabase.from("companies").select("id").eq("user_id",user.id).maybeSingle();companyId=cd?.id||null;}catch(e){}
+      const {data,error}=await supabase.from("customers").insert([{name:form.name||"",phone:form.phone||"",company_name:form.company_name||"",email:form.email||"",address:form.address||"",status:"New",estimate_amount:0,company_id:companyId}]).select().single();
+      if(error) throw error;
+      delete pending[leadId];
+      savePendingCustomers(pending);
+      const realId = String(data.id);
+      setLeads(prev=>prev.map(l=>String(l.id)===String(leadId)?{...l,id:realId,_pendingOffline:false}:l));
+      if(String(selectedLeadId)===String(leadId)) setSelectedLeadId(realId);
+      return realId;
+    } finally {
+      resolvingCustomerRef.current = false;
+    }
   }
 
   // Edits the ALREADY-SELECTED customer's own record (name/phone/email/
@@ -2297,6 +2394,14 @@ export default function ProjectEstimate() {
   // trades' estimates, etc.), same as editing them from the Clients page.
   async function updateCustomer(id, fields){
     const payload = { name:fields.name||"", phone:fields.phone||"", email:fields.email||"", company_name:fields.company_name||"" };
+    // Still a local-only customer (not synced yet) - just update it where
+    // it actually lives right now instead of trying to reach the server.
+    if(isPendingLeadId(id)){
+      const pending = loadPendingCustomers();
+      if(pending[id]){ pending[id] = {...pending[id], ...payload}; savePendingCustomers(pending); }
+      setLeads(prev=>prev.map(l=>String(l.id)===String(id)?{...l,...payload}:l));
+      return;
+    }
     const { error } = await supabase.from("customers").update(payload).eq("id", id);
     if(error){ alert("Could not save customer changes: "+(error.message||JSON.stringify(error))); return; }
     setLeads(prev=>prev.map(l=>String(l.id)===String(id)?{...l,...payload}:l));
@@ -2417,6 +2522,20 @@ export default function ProjectEstimate() {
   }
   if(!silent) setSaving(true);
   try {
+    // If this job's customer was created offline, it only exists on this
+    // device under a temporary id - turn it into a real database row now
+    // that we're actually online, and use THAT id for everything below
+    // (not selectedLeadId directly, since the state update from resolving
+    // it hasn't necessarily landed in this closure yet).
+    let effectiveLeadId = selectedLeadId;
+    if(isPendingLeadId(effectiveLeadId)){
+      try{ effectiveLeadId = await resolvePendingCustomerIfNeeded(effectiveLeadId); }
+      catch(err){
+        if(!silent) alert("Couldn't create this customer on the server yet: "+(err.message||JSON.stringify(err))+"\nStill saved on this device - will retry automatically.");
+        if(!silent) setSaving(false);
+        return;
+      }
+    }
     const {data:{user}} = await supabase.auth.getUser();
     const {data:cd} = await supabase.from("companies").select("id").eq("user_id",user.id).maybeSingle();
     const companyId = cd?.id||null;
@@ -2652,7 +2771,7 @@ export default function ProjectEstimate() {
      const updateFields = {
         name:projectName||"New Project",
         address:projectAddress||"",
-        lead_id:Number(selectedLeadId)||null,
+        lead_id:Number(effectiveLeadId)||null,
         crew_notes:JSON.stringify(crewNotes),
         measurement_snapshot: buildMeasurementSnapshot(),
         updated_at: nowIso,
@@ -2680,7 +2799,7 @@ export default function ProjectEstimate() {
     // ── NEW PROJECT: insert ──
       const allComplete = floors.every(f=>(areas[f]||[]).every(a=>!a.area_type||isAreaComplete(a)));
       const {data:proj,error:pe} = await supabase.from("projects").insert([{
-        lead_id:Number(selectedLeadId), name:projectName||"New Project", address:projectAddress||"",
+        lead_id:Number(effectiveLeadId), name:projectName||"New Project", address:projectAddress||"",
         status:"Active", source:"field", company_id:companyId,
         crew_notes: JSON.stringify(crewNotes),
         measurement_snapshot: buildMeasurementSnapshot(),
@@ -2720,7 +2839,7 @@ export default function ProjectEstimate() {
       const basePriceWithMargin=totalCostWithLabor*(1+(pricing.profit_margin_pct||30)/100);
       const commissionCost=basePriceWithMargin*commissionPct/100;
       const finalPriceWithLabor=basePriceWithMargin+commissionCost;
-      await supabase.from("customers").update({estimate_amount:Math.round(finalPriceWithLabor*100)/100}).eq("id",selectedLeadId);
+      await supabase.from("customers").update({estimate_amount:Math.round(finalPriceWithLabor*100)/100}).eq("id",effectiveLeadId);
       const allOptions=floors.flatMap(floor=>(areas[floor]||[]).filter(a=>a.area_type&&a.sqft&&(a.options||[]).length>0).map(a=>({area_type:a.area_type,floor,sqft:a.sqft,options:a.options,mat_lines:a.mat_lines})));
       await supabase.from("quotes").insert([{project_id:proj.id,subtotal:pricing.material_cost,tax_rate:0,tax_total:0,grand_total:Math.round(finalPriceWithLabor*100)/100,final_price:Math.round(finalPriceWithLabor*100)/100,material_cost:pricing.material_cost,overhead_cost:pricing.overhead_cost,labor_cost:Math.round(finalLaborCost*100)/100,labor_hours:laborRoles.reduce((s,r)=>s+Number(r.hours||0)*Number(r.days||1)*Number(r.people||1),0),crew_size:laborRoles.filter(r=>Number(r.hours||0)>0).length,labor_rate:laborRoles.find(r=>Number(r.hours||0)>0)?.rate||45,profit_margin_pct:pricing.profit_margin_pct,fuel_cost:Math.round(fuelCostCalc*100)/100,commission_cost:Math.round(commissionCost*100)/100,commission_pct:commissionPct,job_miles:Number(jobMiles||0),sales_rep_id:selectedRep||null,notes:allOptions.length>0?JSON.stringify(allOptions):null,status:"Draft",company_id:companyId}]);
       wasSaved.current = true;
@@ -2789,12 +2908,18 @@ export default function ProjectEstimate() {
     if(!pushAreas.length){ alert("No wall/ceiling/fire-blocking areas to push."); pushBPLockRef.current=false; return; }
     if(!window.confirm(`Push ${pushAreas.length} area(s) to Board & Plaster?\n\nIf a Board & Plaster estimate already exists for this customer/address, its measurements will be replaced with these. If none exists, a new one will be created.`)){ pushBPLockRef.current=false; return; }
     try {
+      // Pushing requires a real connection anyway, so if this customer was
+      // created offline and hasn't synced yet, resolve it to a real id
+      // now rather than pushing a Board & Plaster estimate linked to a
+      // customer id that doesn't exist on the server.
+      let effectiveLeadId = selectedLeadId;
+      if(isPendingLeadId(effectiveLeadId)) effectiveLeadId = await resolvePendingCustomerIfNeeded(effectiveLeadId);
       const {data:{user}} = await supabase.auth.getUser();
       const {data:cd} = await supabase.from("companies").select("id").eq("user_id",user.id).maybeSingle();
       const companyIdForPush = cd?.id||null;
 
       const { data:existing } = await supabase.from("board_plaster_estimates")
-        .select("id,address").eq("customer_id",Number(selectedLeadId)).order("created_at",{ascending:false}).limit(5);
+        .select("id,address").eq("customer_id",Number(effectiveLeadId)).order("created_at",{ascending:false}).limit(5);
       let target = (existing||[]).find(e=>(e.address||"").toLowerCase().includes((projectAddress||"").split(",")[0].toLowerCase()))||(existing||[])[0];
 
       if(target){
@@ -2804,7 +2929,7 @@ export default function ProjectEstimate() {
         if(error) throw error;
       } else {
         const { data:created, error } = await supabase.from("board_plaster_estimates").insert([{
-          company_id: companyIdForPush, customer_id: Number(selectedLeadId),
+          company_id: companyIdForPush, customer_id: Number(effectiveLeadId),
           address: projectAddress||"", status:"Draft", areas: pushAreas, line_items:[], payment_schedule:[],
         }]).select().single();
         if(error) throw error;
