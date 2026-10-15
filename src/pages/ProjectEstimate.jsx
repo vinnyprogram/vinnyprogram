@@ -1268,7 +1268,15 @@ function EstimatePanel({ floors, areas, materialMap, variantMap, crewNotes, proj
             const g=gm[key];
             if(!g.floors.includes(a.floor)) g.floors.push(a.floor);
             if(floors.indexOf(a.floor)<g.floorOrder) g.floorOrder=floors.indexOf(a.floor);
-            g.totalSqft+=a.sqft||0; g.totalCost+=getAreaTotalCost(a,materialMap,variantMap); g.totalPaintSqft+=Number(a.paint_sqft||0);
+            g.totalSqft+=a.sqft||0; g.totalCost+=getAreaTotalCost(a,materialMap,variantMap);
+            // Paint only ever applies over spray foam - a paint_sqft value left
+            // over from before the material was switched away from foam must
+            // not resurface here, same rule as the cost calc and Field Report.
+            const areaHasFoam = mls.some(ml=>{
+              const m=(ml.material||"").toLowerCase();
+              return m.includes("closed")||m.includes("open cell")||m.includes("open-cell");
+            });
+            if(areaHasFoam) g.totalPaintSqft+=Number(a.paint_sqft||0);
             g.deductTotal+=Number(a.deduct_sqft)||0;
             g.measurements.push(...(a.measurements||[]));
             if(a.note&&a.note.trim()) g.notes.push({floor:a.floor,text:a.note.trim()});
@@ -1294,11 +1302,21 @@ function EstimatePanel({ floors, areas, materialMap, variantMap, crewNotes, proj
                   </div>
                   {measStr&&<div style={{fontSize:10,color:C.faint,lineHeight:1.5}}>{measStr}{g.deductTotal>0&&<span style={{color:"#ef4444",fontWeight:700,marginLeft:6}}>−{fmt(g.deductTotal)} ft² deducted</span>}</div>}
                   {g.totalPaintSqft>0&&<div style={{fontSize:10,color:"#c2410c"}}>🎨 Paint {fmt(g.totalPaintSqft)} ft²</div>}
-                  {g.notes.map((n,ni)=>(
-                    <div key={ni} style={{fontSize:10,color:"#92400e",fontStyle:"italic",marginTop:1}}>
-                      📝 {showFloorOnNote?`${n.floor.replace(" Floor","")}: `:""}{n.text}
-                    </div>
-                  ))}
+                  {g.notes.length>0 && (()=>{
+                    // Merge identical notes across floors into one line (same
+                    // exact-match-only rule as the Field Report) instead of
+                    // repeating "Bathrooms only" once per floor.
+                    const byText = {};
+                    g.notes.forEach(n=>{
+                      if(!byText[n.text]) byText[n.text] = { text:n.text, floors:[] };
+                      byText[n.text].floors.push(n.floor);
+                    });
+                    return Object.values(byText).map((n,ni)=>(
+                      <div key={ni} style={{fontSize:10,color:"#92400e",fontStyle:"italic",marginTop:1}}>
+                        📝 {showFloorOnNote?`${n.floors.map(f=>f.replace(" Floor","")).join(", ")}: `:""}{n.text}
+                      </div>
+                    ));
+                  })()}
                 </div>
               </div>
             );
