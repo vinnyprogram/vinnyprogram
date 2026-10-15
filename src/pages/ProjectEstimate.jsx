@@ -1829,10 +1829,8 @@ export default function ProjectEstimate() {
         if(newAreas[fl.name]) newAreas[fl.name].push(areaCard);
       });
       setAreas(newAreas);
-        // Force leads reload if empty
-        if(!leads.length) loadLeads();
-        setAreas(newAreas);
-        if(!leads.length) loadLeads();
+      // Force leads reload if empty
+      if(!leads.length) loadLeads();
 
         // Check for a pending draft for THIS existing project (resume mid-edit)
         if(resumeMode){
@@ -2333,42 +2331,69 @@ export default function ProjectEstimate() {
      }
      logEvent(`Safety check passed - ${uniqueFloors.length} floor(s) have data to save`);
 
-     // CONFLICT CHECK: if another tab/device (e.g. a backgrounded session
-     // that never fully closed) has saved this same job more recently than
-     // what THIS session last knew about, don't silently overwrite it -
-     // but also don't just dead-end the user into losing their own local
-     // work (field conditions like switching phones on bad signal make
-     // that a real, common way to lose real data). Ask which version wins.
-     if(loadedUpdatedAt){
-       const { data:latestProj, error:latestErr } = await supabase.from("projects").select("updated_at").eq("id",targetProjectId).maybeSingle();
-       if(!latestErr && latestProj?.updated_at && new Date(latestProj.updated_at).getTime() !== new Date(loadedUpdatedAt).getTime()){
-         logEvent(`⛔ CONFLICT DETECTED (${silent?"silent autosave":"manual save"}): server shows ${latestProj.updated_at}, this session expected ${loadedUpdatedAt}`);
-         if(silent){
-           // Never interrupt the user for a background autosave - just skip
-           // this attempt silently and let the next timer tick (or their
-           // next manual Save) re-check.
-           setSaving(false);
-           setHasUnsavedChanges(true);
-           return;
-         }
-         const keepMine = window.confirm(
-           "This job was updated elsewhere (another tab or device) since you opened it here.\n\n" +
-           "Press OK to SAVE YOUR CHANGES from this screen anyway (this will overwrite whatever was saved elsewhere).\n\n" +
-           "Press Cancel to back out without saving, so you can reload and see the other version instead - but anything you typed here that isn't saved yet will be lost when you reload."
-         );
-         if(!keepMine){
-           setSaving(false);
-           setHasUnsavedChanges(true);
-           return;
-         }
-         // User chose to keep their own local changes - accept the current
-         // server timestamp as the new baseline and fall through to save.
-         logEvent("User chose to keep local changes and overwrite the other device's save");
-         setLoadedUpdatedAt(latestProj.updated_at);
-       } else {
-         logEvent("Conflict check passed - no newer save from elsewhere");
-       }
+     // CONFLICT CLAIM: atomically "claim" the right to save by updating
+     // projects.updated_at conditioned on it still matching what THIS
+     // session last loaded. This is a real lock, not just a check - the
+     // conditional UPDATE is one statement, so Postgres itself guarantees
+     // only ONE of two concurrent saves can match the old value and win.
+     // -----------------------------------------------------------------
+     // DANGEROUS BUG THIS REPLACES: the previous code did a plain SELECT,
+     // compared timestamps in JS, and only THEN proceeded - with a real
+     // gap between "check" and "act". If two saves overlapped (two tabs,
+     // a backgrounded phone tab waking back up, an offline save retrying
+     // at the same moment as a fresh one), BOTH could pass the check,
+     // BOTH would then insert a full new set of floors/areas/segments for
+     // the entire job (every floor, not just the one being edited), and
+     // each save only deleted the "old" rows IT personally fetched before
+     // either insert happened. Net result: both full new sets survived as
+     // permanent duplicates - exactly the doubled areas (one copy with
+     // real measurements, one collapsed to a flattened "total×1" when its
+     // segments didn't survive the race) that showed up across every
+     // floor. The claim below closes that window completely: only the
+     // save that wins the atomic update is allowed to insert/delete at all.
+     const claimedAt = new Date().toISOString();
+     async function tryClaim(expectPrevUpdatedAt){
+       let q = supabase.from("projects").update({updated_at:claimedAt}).eq("id",targetProjectId);
+       if(expectPrevUpdatedAt) q = q.eq("updated_at", expectPrevUpdatedAt);
+       const {data, error} = await q.select("id");
+       if(error) throw error;
+       return !!(data && data.length>0);
      }
+     let claimed = await tryClaim(loadedUpdatedAt||null);
+     if(!claimed){
+       const { data:latestProj } = await supabase.from("projects").select("updated_at").eq("id",targetProjectId).maybeSingle();
+       logEvent(`⛔ CONFLICT DETECTED (${silent?"silent autosave":"manual save"}): server shows ${latestProj?.updated_at}, this session expected ${loadedUpdatedAt}`);
+       if(silent){
+         // Never interrupt the user for a background autosave - just skip
+         // this attempt silently and let the next timer tick (or their
+         // next manual Save) re-check.
+         setSaving(false);
+         setHasUnsavedChanges(true);
+         return;
+       }
+       const keepMine = window.confirm(
+         "This job was updated elsewhere (another tab or device) since you opened it here.\n\n" +
+         "Press OK to SAVE YOUR CHANGES from this screen anyway (this will overwrite whatever was saved elsewhere).\n\n" +
+         "Press Cancel to back out without saving, so you can reload and see the other version instead - but anything you typed here that isn't saved yet will be lost when you reload."
+       );
+       if(!keepMine){
+         setSaving(false);
+         setHasUnsavedChanges(true);
+         return;
+       }
+       // User chose to keep their own local changes - claim unconditionally
+       // now (they explicitly chose to overwrite), then fall through to save.
+       logEvent("User chose to keep local changes and overwrite the other device's save");
+       claimed = await tryClaim(null);
+       if(!claimed) throw new Error("Could not save: project row not found.");
+     } else {
+       logEvent("Conflict check passed - no newer save from elsewhere (save claimed atomically)");
+     }
+     // From here on, THIS save - and only this save - owns the row. Any
+     // other save attempt (this tab or another) will fail its own claim
+     // the moment it tries, because updated_at no longer matches what it
+     // last loaded.
+     setLoadedUpdatedAt(claimedAt);
 
      // ARCHITECTURE: insert the NEW floors/areas/segments FIRST, fully
      // confirmed successful, and only THEN delete the OLD ones - never the
