@@ -51,15 +51,10 @@ export default function Onboarding() {
     setLoading(true); setError("");
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      const { data: targetCompany, error: fe } = await supabase.from("companies")
-        .select("id").eq("invite_code", joinCode.trim()).maybeSingle();
-      if (fe) throw new Error(fe.message);
-      if (!targetCompany) { setError("That invite code doesn't match any company"); setLoading(false); return; }
-      const { error: ie } = await supabase.from("company_employees").insert([{
-        company_id: targetCompany.id, user_id: user.id, role: "employee", status: "active",
-        employee_name: employeeName.trim(),
-      }]);
-      if (ie) throw new Error(ie.message);
+      const { error: je } = await supabase.rpc("join_company_by_code", {
+        p_code: joinCode.trim(), p_name: employeeName.trim(),
+      });
+      if (je) { setError(je.message || "Could not join with that code"); setLoading(false); return; }
       await loadCompany(user.id);
       navigate("/");
     } catch (err) {
