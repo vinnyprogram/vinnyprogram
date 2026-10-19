@@ -7,6 +7,7 @@ import DebugLogButton from "../components/DebugLogButton";
 import AddressInput from "./AddressInput";
 import { AdjustmentRow, PaymentScheduleEditor } from "./PricingOptions";
 import { compareFloors, sortFloors } from "../lib/floorSort";
+import { getMyCompany } from "../lib/myCompany";
 
 function bpLog(msg){ sharedLogEvent(msg, "Board & Plaster"); }
 
@@ -364,7 +365,7 @@ export default function BoardPlasterEstimate(){
   useEffect(()=>{
     async function init(){
       const { data:{user} } = await supabase.auth.getUser();
-      const { data:cd } = await supabase.from("companies").select("id").eq("user_id",user.id).maybeSingle();
+      const { data:cd } = await getMyCompany(user.id);
       setCompanyId(cd?.id||null);
       if(cd?.id){
         const { data:listRows } = await supabase.from("cost_settings").select("name,sort_order")

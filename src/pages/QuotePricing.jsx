@@ -3,6 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { logEvent as sharedLogEvent } from "../utils/debugLog";
 import DebugLogButton from "../components/DebugLogButton";
+import { getMyCompany } from "../lib/myCompany";
 
 function quoteLog(msg){ sharedLogEvent(msg, "Quote Pricing"); }
 
@@ -147,8 +148,7 @@ export default function QuotePricing() {
     const { data:{user} } = await supabase.auth.getUser();
     if(!user){ setLoading(false); return; }
 
-    const { data:cd } = await supabase.from("companies")
-      .select("id").eq("user_id",user.id).maybeSingle();
+    const { data:cd } = await getMyCompany(user.id);
     if(!cd){ setLoading(false); return; }
 
     // load everything in parallel

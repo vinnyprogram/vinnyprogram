@@ -9,6 +9,7 @@ import { useAuth } from "../context/AuthContext";
 import AddressInput from "./AddressInput";
 import VoiceAreaCapture from "../components/VoiceAreaCapture";
 import { sortFloors } from "../lib/floorSort";
+import { getMyCompany } from "../lib/myCompany";
 
 const C = {
   bg: "#f4f5f7", white: "#fff", ink: "#0f172a",
@@ -620,7 +621,7 @@ function useCalcResult(field) {
     try {
       const {data:{user}} = await supabase.auth.getUser();
       if(!user) return;
-      const {data:cd} = await supabase.from("companies").select("id").eq("user_id",user.id).maybeSingle();
+      const {data:cd} = await getMyCompany(user.id);
       if(!cd) return;
       const {data:existing} = await supabase.from("materials").select("id").eq("company_id",cd.id).eq("name",val).maybeSingle();
       if(!existing){
@@ -1812,7 +1813,7 @@ export default function ProjectEstimate() {
     });
     supabase.auth.getUser().then(async({data:{user}})=>{
       if(!user) return;
-      const {data:cd}=await supabase.from("companies").select("id").eq("user_id",user.id).maybeSingle();
+      const {data:cd}=await getMyCompany(user.id);
       if(!cd) return;
       loadPricing(cd.id);
       const {data:roles}=await supabase.from("cost_settings").select("*").eq("company_id",cd.id).eq("period","labor_role").order("sort_order");
@@ -1854,7 +1855,7 @@ export default function ProjectEstimate() {
     try{
       const {data:{user}}=await supabase.auth.getUser();
       if(!user) return;
-      const {data:cd}=await supabase.from("companies").select("id").eq("user_id",user.id).maybeSingle();
+      const {data:cd}=await getMyCompany(user.id);
       if(!cd) return;
       // period must match "list_area_type" — that's what Settings.jsx reads back out,
       // and what companyAreaTypes itself is loaded from, so this shows up in both
@@ -1877,7 +1878,7 @@ export default function ProjectEstimate() {
     try{
       const {data:{user}}=await supabase.auth.getUser();
       if(!user) return;
-      const {data:cd}=await supabase.from("companies").select("id").eq("user_id",user.id).maybeSingle();
+      const {data:cd}=await getMyCompany(user.id);
       if(!cd) return;
       await supabase.from("cost_settings").insert([{
         company_id:cd.id, category:"Lists", name, period:"list_thick_opt",
@@ -1892,7 +1893,7 @@ export default function ProjectEstimate() {
     try{
       const {data:{user}}=await supabase.auth.getUser();
       if(!user) return;
-      const {data:cd}=await supabase.from("companies").select("id").eq("user_id",user.id).maybeSingle();
+      const {data:cd}=await getMyCompany(user.id);
       if(!cd) return;
       await supabase.from("cost_settings").insert([{
         company_id:cd.id, category:"Lists", name, period:"list_r_val",
@@ -2343,7 +2344,8 @@ export default function ProjectEstimate() {
       return;
     }
     let companyId=null;
-    try{const {data:{user}}=await supabase.auth.getUser();const {data:cd}=await supabase.from("companies").select("id").eq("user_id",user.id).maybeSingle();companyId=cd?.id||null;}catch(e){}
+    try{const {data:{user}}=await supabase.auth.getUser();const {data:cd}=await getMyCompany(user.id);companyId=cd?.id||null;}catch(e){}
+    if(!companyId){alert("Could not find your company. Check your connection and try again.");return;}
     const {data,error}=await supabase.from("customers").insert([{name:form.name||"",phone:form.phone||"",company_name:form.company_name||"",email:form.email||"",address:form.address||"",status:"New",estimate_amount:0,company_id:companyId}]).select().single();
     if(error){alert("Could not save customer: "+(error.message||JSON.stringify(error)));return;}
     if(data){loadLeads();setSelectedLeadId(String(data.id));setProjectName(data.name||"");/* keep existing address — only blank if nothing entered yet */}
@@ -2373,7 +2375,8 @@ export default function ProjectEstimate() {
       const form = pending[leadId];
       if(!form) return leadId; // already resolved by another call, or nothing to do
       let companyId=null;
-      try{const {data:{user}}=await supabase.auth.getUser();const {data:cd}=await supabase.from("companies").select("id").eq("user_id",user.id).maybeSingle();companyId=cd?.id||null;}catch(e){}
+      try{const {data:{user}}=await supabase.auth.getUser();const {data:cd}=await getMyCompany(user.id);companyId=cd?.id||null;}catch(e){}
+      if(!companyId) throw new Error("Could not find your company. Check your connection and try again.");
       const {data,error}=await supabase.from("customers").insert([{name:form.name||"",phone:form.phone||"",company_name:form.company_name||"",email:form.email||"",address:form.address||"",status:"New",estimate_amount:0,company_id:companyId}]).select().single();
       if(error) throw error;
       delete pending[leadId];
@@ -2537,8 +2540,9 @@ export default function ProjectEstimate() {
       }
     }
     const {data:{user}} = await supabase.auth.getUser();
-    const {data:cd} = await supabase.from("companies").select("id").eq("user_id",user.id).maybeSingle();
+    const {data:cd} = await getMyCompany(user.id);
     const companyId = cd?.id||null;
+    if(!companyId){ if(!silent){ alert("Could not find your company. Check your connection and try again."); setSaving(false); } return; }
 
     // Independent text snapshot of the current measurements, stored
     // directly on the project row - NOT dependent on the areas/floors
@@ -2854,7 +2858,7 @@ export default function ProjectEstimate() {
             const {data:floorRows}=await supabase.from("floors").select("id,name").eq("project_id",proj.id);
             const fmap={}; (floorRows||[]).forEach(f=>fmap[f.name]=f.id);
             const {data:{user:u}}=await supabase.auth.getUser();
-            const {data:cd2}=await supabase.from("companies").select("id").eq("user_id",u.id).maybeSingle();
+            const {data:cd2}=await getMyCompany(u.id);
             const inserts=draft.map((a,i)=>({
               project_id:proj.id, floor_id:fmap[a.floor]||floorRows?.[0]?.id,
               company_id:cd2?.id, area_type:a.areaType, sqft:a.sqft,
@@ -2915,8 +2919,9 @@ export default function ProjectEstimate() {
       let effectiveLeadId = selectedLeadId;
       if(isPendingLeadId(effectiveLeadId)) effectiveLeadId = await resolvePendingCustomerIfNeeded(effectiveLeadId);
       const {data:{user}} = await supabase.auth.getUser();
-      const {data:cd} = await supabase.from("companies").select("id").eq("user_id",user.id).maybeSingle();
+      const {data:cd} = await getMyCompany(user.id);
       const companyIdForPush = cd?.id||null;
+      if(!companyIdForPush) throw new Error("Could not find your company. Check your connection and try again.");
 
       const { data:existing } = await supabase.from("board_plaster_estimates")
         .select("id,address").eq("customer_id",Number(effectiveLeadId)).order("created_at",{ascending:false}).limit(5);

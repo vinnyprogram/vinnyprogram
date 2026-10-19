@@ -1,5 +1,6 @@
 import { useState, useRef } from "react";
 import { createPortal } from "react-dom";
+import { supabase } from "../lib/supabase";
 
 const C = { bg:"#f4f5f7", white:"#fff", ink:"#0f172a", muted:"#64748b",
   faint:"#94a3b8", border:"#e2e8f0", green:"#059669" };
@@ -301,7 +302,11 @@ export default function VoiceAreaCapture({ floors, areaTypes, thickOpts, materia
       const formData = new FormData();
       formData.append("audio", file);
 
-      const response = await fetch("/api/transcribe", { method:"POST", body: formData });
+      const { data:{ session } } = await supabase.auth.getSession();
+      const response = await fetch("/api/transcribe", {
+        method:"POST", body: formData,
+        headers: { Authorization: `Bearer ${session?.access_token||""}` },
+      });
       const data = await response.json();
       if(!response.ok) throw new Error(data?.error || "Transcription failed.");
 

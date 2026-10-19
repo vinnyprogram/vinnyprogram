@@ -5,6 +5,7 @@ import { supabase } from "../lib/supabase";
 import { logEvent as sharedLogEvent } from "../utils/debugLog";
 import DebugLogButton from "../components/DebugLogButton";
 import { useAuth } from "../context/AuthContext";
+import { getMyCompany } from "../lib/myCompany";
 
 function hersLog(msg){ sharedLogEvent(msg, "HERS Measurements"); }
 
@@ -289,7 +290,7 @@ function AreaRow({ area, materials, onChange, onDelete, onCommit, areaTypes, thi
     try{
       const {data:{user}} = await supabase.auth.getUser();
       if(!user) return;
-      const {data:cd} = await supabase.from("companies").select("id").eq("user_id",user.id).maybeSingle();
+      const {data:cd} = await getMyCompany(user.id);
       if(!cd) return;
       const {data:existing} = await supabase.from("materials").select("id").eq("company_id",cd.id).eq("name",val).maybeSingle();
       if(!existing){

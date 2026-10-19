@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
+import { getMyCompany } from "../lib/myCompany";
 
 // ── Company defaults (will come from settings later) ──────────────────────────
 const COMPANY = {
@@ -70,8 +71,7 @@ export default function QuotePDF() {
       // material_costs lookup (needed to price sub-options by their own
       // material, not the parent area's material)
       if(user){
-        const { data:cd } = await supabase.from("companies")
-          .select("id").eq("user_id",user.id).maybeSingle();
+        const { data:cd } = await getMyCompany(user.id);
         if(cd){
           const { data:matCosts } = await supabase.from("material_costs")
             .select("*").eq("company_id",cd.id);

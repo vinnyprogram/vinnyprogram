@@ -16,6 +16,11 @@ import OpenAI, { toFile } from "openai";
 import formidable from "formidable";
 import fs from "fs/promises";
 
+// Public values (same ones the app itself ships with) - used only to ask
+// Supabase "is this login token real?".
+const SUPABASE_URL = "https://ackhjqsiwbxupldwjcvj.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFja2hqcXNpd2J4dXBsZHdqY3ZqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0MzAxMzAsImV4cCI6MjA5NTAwNjEzMH0.FiT5M0DIBP2GgK2rR-dZviFf9CSkZohyfmY_jirDebs";
+
 export const config = {
   api: {
     bodyParser: false, // formidable needs the raw multipart body, not pre-parsed JSON
@@ -23,12 +28,21 @@ export const config = {
 };
 
 export default async function handler(req, res) {
-  // CORS headers so the browser can call this from any origin
-  res.setHeader("Access-Control-Allow-Origin",  "*");
-  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-  if (req.method === "OPTIONS") return res.status(200).end();
+  // Same-origin only: the app calls this from its own domain, so no CORS
+  // headers are sent (browsers on other websites are blocked).
   if (req.method !== "POST")   return res.status(405).json({ error: "Method not allowed" });
+
+  // Must be a logged-in user of the app - checked against Supabase.
+  const token = (req.headers.authorization || "").replace(/^Bearer\s+/i, "");
+  if (!token) return res.status(401).json({ error: "Please log in again." });
+  try {
+    const who = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+      headers: { Authorization: `Bearer ${token}`, apikey: SUPABASE_ANON_KEY },
+    });
+    if (!who.ok) return res.status(401).json({ error: "Please log in again." });
+  } catch {
+    return res.status(401).json({ error: "Could not verify your login." });
+  }
 
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) return res.status(500).json({ error: "OPENAI_API_KEY not configured on Vercel" });

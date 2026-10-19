@@ -5,6 +5,7 @@ import { logEvent as sharedLogEvent } from "../utils/debugLog";
 import DebugLogButton from "../components/DebugLogButton";
 import AddressInput from "./AddressInput";
 import { AdjustmentRow, PaymentScheduleEditor } from "./PricingOptions";
+import { getMyCompany } from "../lib/myCompany";
 
 function hersEstLog(msg){ sharedLogEvent(msg, "HERS Estimate"); }
 
@@ -349,7 +350,7 @@ export default function HersEstimate() {
     const { data:{ user } } = await supabase.auth.getUser();
     if(!user) return;
     setOwnerEmail(user.email||"");
-    const { data:cd } = await supabase.from("companies").select("id").eq("user_id",user.id).maybeSingle();
+    const { data:cd } = await getMyCompany(user.id);
     if(!cd) return;
     setCompanyId(cd.id);
 

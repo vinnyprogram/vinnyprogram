@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
+import { getMyCompany } from "../lib/myCompany";
 
 const C = {
   bg: "#f4f5f7", white: "#fff", ink: "#0f172a",
@@ -35,7 +36,7 @@ export default function GCMaterialsCatalog(){
     (async()=>{
       const { data:{user} } = await supabase.auth.getUser();
       if(!user) return;
-      const { data:cd } = await supabase.from("companies").select("id").eq("user_id",user.id).maybeSingle();
+      const { data:cd } = await getMyCompany(user.id);
       setCompanyId(cd?.id||null);
       if(cd?.id){
         const { data:own } = await supabase.from("gc_materials").select("*").eq("company_id",cd.id).order("category").order("brand");

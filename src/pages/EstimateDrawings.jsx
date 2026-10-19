@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
+import { getMyCompany } from "../lib/myCompany";
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 const AREA_TYPES = [
@@ -195,7 +196,8 @@ export default function EstimateDrawings(){
         localStorage.setItem(DRAFT,JSON.stringify([...draft,...readyAreas.map(a=>({areaType:a.area_type,thickness_in:a.thickness_in||"",floor:a.floor,sqft:a.sqft}))]));
       } else {
         const {data:{user}}=await supabase.auth.getUser();
-        const {data:cd}=await supabase.from("companies").select("id").eq("user_id",user.id).maybeSingle();
+        const {data:cd}=await getMyCompany(user.id);
+        if(!cd?.id) throw new Error("Could not find your company. Check your connection and try again.");
         const inserts=readyAreas.map((a,i)=>({
           project_id:projectId, floor_id:floorMap[a.floor]||Object.values(floorMap)[0],
           company_id:cd?.id, area_type:a.area_type, thickness_in:a.thickness_in||null,
@@ -294,7 +296,7 @@ export default function EstimateDrawings(){
       if(!fid){ alert("Save the estimate first to create floors."); return; }
       setSavingArea(true);
       const {data:{user}}=await supabase.auth.getUser();
-      const {data:cd}=await supabase.from("companies").select("id").eq("user_id",user.id).maybeSingle();
+      const {data:cd}=await getMyCompany(user.id);
       await supabase.from("areas").insert([{
         project_id:projectId,floor_id:fid,company_id:cd?.id,
         area_type:selType,thickness_in:selThick||null,sqft,order_index:Date.now(),

@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import AddressInput from "./AddressInput";
+import { getMyCompany } from "../lib/myCompany";
 
 function fmt(n) {
   return Number(n||0).toLocaleString("en-US",{maximumFractionDigits:0});
@@ -296,9 +297,9 @@ export default function CustomerProfile() {
     if(!files?.length) return;
     setUploading(true);
     const { data:{ user } } = await supabase.auth.getUser();
-    const { data:cd } = await supabase.from("companies")
-      .select("id").eq("user_id", user.id).maybeSingle();
+    const { data:cd } = await getMyCompany(user.id);
     const companyId = cd?.id||null;
+    if(!companyId){ alert("Could not find your company. Check your connection and try again."); setUploading(false); return; }
 
     let successCount = 0;
     let errorMsgs = [];
@@ -338,9 +339,9 @@ export default function CustomerProfile() {
     if(!files?.length) return;
     setUploadingDoc(true);
     const { data:{ user } } = await supabase.auth.getUser();
-    const { data:cd } = await supabase.from("companies")
-      .select("id").eq("user_id", user.id).maybeSingle();
+    const { data:cd } = await getMyCompany(user.id);
     const companyId = cd?.id||null;
+    if(!companyId){ alert("Could not find your company. Check your connection and try again."); setUploadingDoc(false); return; }
 
     for(const file of Array.from(files)) {
       const ext = file.name.split('.').pop();

@@ -44,6 +44,19 @@ serve(async (req) => {
     return new Response("ok", { headers: cors });
   }
 
+  // Must be a logged-in user (the shared anon key alone is not enough).
+  const token = (req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
+  const who = token
+    ? await fetch(`${Deno.env.get("SUPABASE_URL")}/auth/v1/user`, {
+        headers: { Authorization: `Bearer ${token}`, apikey: Deno.env.get("SUPABASE_ANON_KEY") ?? "" },
+      })
+    : null;
+  if (!who || !who.ok) {
+    return new Response(JSON.stringify({ error: "Please log in again." }), {
+      status: 401, headers: { ...cors, "Content-Type": "application/json" },
+    });
+  }
+
   try {
     const { imageBase64, mediaType = "image/jpeg" } = await req.json();
 

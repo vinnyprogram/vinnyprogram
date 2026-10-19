@@ -2,6 +2,7 @@ import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
+import { getMyCompany } from "../lib/myCompany";
 
 const allStatuses = [
   "New", "Contacted", "Inspection Scheduled",
@@ -230,8 +231,7 @@ export default function CRM() {
     let companyId = null;
     try {
       const { data:{ user } } = await supabase.auth.getUser();
-      const { data:cd } = await supabase.from("companies")
-        .select("id").eq("user_id", user.id).maybeSingle();
+      const { data:cd } = await getMyCompany(user.id);
       companyId = cd?.id || null;
     } catch(e) {}
     await supabase.from("customers").insert([{
