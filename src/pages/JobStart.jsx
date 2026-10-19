@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
 import AddressInput from "./AddressInput";
+import { loadFormDraft, saveFormDraft, clearFormDraft } from "../lib/formDraft";
 
 const C = {
   bg:"#f4f5f7", white:"#fff", ink:"#0f172a",
@@ -31,14 +32,20 @@ export default function JobStart() {
   const [results, setResults]   = useState([]);
   const [selected, setSelected] = useState(null);
   const [address, setAddress]   = useState("");
-  const [creating, setCreating] = useState(false);
+  // A half-typed new customer survives switching apps / the page reloading.
+  const [restored] = useState(()=>loadFormDraft("cub_jobstart_new_customer_v1"));
+  const [creating, setCreating] = useState(!!restored?.creating);
   const [editingSelected, setEditingSelected] = useState(false);
   const [editForm, setEditForm] = useState({});
-  const [newName, setNewName]   = useState("");
-  const [newPhone, setNewPhone] = useState("");
-  const [newEmail, setNewEmail] = useState("");
-  const [newCompany, setNewCompany] = useState("");
-  const [newAddress, setNewAddress] = useState("");
+  const [newName, setNewName]   = useState(restored?.newName||"");
+  const [newPhone, setNewPhone] = useState(restored?.newPhone||"");
+  const [newEmail, setNewEmail] = useState(restored?.newEmail||"");
+  const [newCompany, setNewCompany] = useState(restored?.newCompany||"");
+  const [newAddress, setNewAddress] = useState(restored?.newAddress||"");
+  useEffect(()=>{
+    if(creating) saveFormDraft("cub_jobstart_new_customer_v1",{creating,newName,newPhone,newEmail,newCompany,newAddress});
+    else clearFormDraft("cub_jobstart_new_customer_v1");
+  },[creating,newName,newPhone,newEmail,newCompany,newAddress]);
   const [loadingLinks, setLoadingLinks] = useState(false);
 
   const [insulationJobs, setInsulationJobs] = useState([]);

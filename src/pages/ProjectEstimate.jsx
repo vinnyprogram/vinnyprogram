@@ -10,6 +10,7 @@ import AddressInput from "./AddressInput";
 import VoiceAreaCapture from "../components/VoiceAreaCapture";
 import { sortFloors } from "../lib/floorSort";
 import { getMyCompany } from "../lib/myCompany";
+import { loadFormDraft, saveFormDraft, clearFormDraft } from "../lib/formDraft";
 
 const C = {
   bg: "#f4f5f7", white: "#fff", ink: "#0f172a",
@@ -197,10 +198,16 @@ function calcArea(sqft, thick, mat, rValue, variantMap) {
 function CustomerSection({ leads, selectedLead, selectedLeadId, projectAddress,
     projectName, onSelect, onClear, onSaveNew, onUpdateCustomer, onAddressChange, onNameChange, isEditing, isLocked }) {
   const [query, setQuery]     = useState("");
-  const [mode, setMode]       = useState(selectedLead ? "selected" : "search");
+  // A half-typed NEW customer survives switching apps / the page reloading.
+  const [restored] = useState(()=> (selectedLead || isEditing) ? null : loadFormDraft("cub_new_customer_form_v1"));
+  const [mode, setMode]       = useState(selectedLead ? "selected" : (restored?.mode==="new" ? "new" : "search"));
   const [saving, setSaving]   = useState(false);
-  const [newStep, setNewStep] = useState(1);
-  const [newForm, setNewForm] = useState({ name:"", phone:"", company_name:"", email:"", address:"" });
+  const [newStep, setNewStep] = useState(restored?.step||1);
+  const [newForm, setNewForm] = useState(restored?.form||{ name:"", phone:"", company_name:"", email:"", address:"" });
+  useEffect(()=>{
+    if(mode==="new") saveFormDraft("cub_new_customer_form_v1",{mode,step:newStep,form:newForm});
+    else clearFormDraft("cub_new_customer_form_v1");
+  },[mode,newStep,newForm]);
   // Edit-the-existing-customer-record form - separate from "new customer"
   // above. Lets you fix/update a client's own info (name, phone, email,
   // company) right from inside the estimate, instead of having to leave
@@ -1657,6 +1664,26 @@ export default function ProjectEstimate() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[]);
 
+  // PHONE SWITCHED APPS / SCREEN LOCKED: if a debounced autosave is still
+  // waiting, save right now - the page may be frozen or reloaded before the
+  // 3-second timer would have fired.
+  useEffect(()=>{
+    const onHide = ()=>{
+      if(document.visibilityState==="hidden" && pendingAutosaveRef.current){
+        pendingAutosaveRef.current = false;
+        clearTimeout(autoSaveTimer.current);
+        saveProjectRef.current?.({silent:true});
+      }
+    };
+    document.addEventListener("visibilitychange", onHide);
+    window.addEventListener("pagehide", onHide);
+    return ()=>{
+      document.removeEventListener("visibilitychange", onHide);
+      window.removeEventListener("pagehide", onHide);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[]);
+
   function getDraftKey(id, address){
     const addrSlug = (address||"").trim().toLowerCase().replace(/[^a-z0-9]/g,"_").slice(0,40);
     return `draft_estimate_${id||"new"}${addrSlug?"_"+addrSlug:""}`;
@@ -1708,6 +1735,10 @@ export default function ProjectEstimate() {
     // for a localStorage draft, and creating one causes a duplicate entry
     // in the Estimates list that looks like a second copy of the project.
     if(isEditing) return;
+    // Once the project exists in the database (savedProjectId), every change
+    // is saved straight to it - a separate on-device draft would only show up
+    // later as a bogus duplicate under "Drafts on this device".
+    if(savedProjectId) return;
     // Don't save while a resumed draft is still loading. selectedLeadId and
     // projectAddress get set from the URL immediately, but floors/areas only
     // get restored from localStorage once the customer list finishes loading
@@ -2849,6 +2880,11 @@ export default function ProjectEstimate() {
       wasSaved.current = true;
       if(!silent){ setSaved(true); } setSavedProjectId(proj.id); setLoadedUpdatedAt(proj.updated_at||new Date().toISOString()); logEvent(`✅ New project created successfully (id: ${proj.id})`); clearDraft();
       setHasUnsavedChanges(false);
+      // The address bar still says /project/new. If the phone reloads this page
+      // (or you come back to it), that would open a blank NEW estimate and the
+      // next save would create a second project for the same customer. Point
+      // the address bar at the saved project instead, so coming back reopens it.
+      try{ window.history.replaceState(window.history.state, "", `/project/${proj.id}`); }catch(e){}
 
       // If started from "By Drawings", import the drawing draft into the new estimate
       if(fromDrawing){
