@@ -368,12 +368,12 @@ export default function CRM() {
               <div key={c.id} style={{padding:"10px 14px",borderBottom:"1px solid #f1f5f9",
                   display:"flex",justifyContent:"space-between",alignItems:"center",
                   cursor:"pointer"}}
-                onClick={()=>navigate(`/customer/${c.id}`)}>
+                onClick={()=>navigate(`/crm/customer/${c.id}`)}>
                 <div>
                   <div style={{fontWeight:600,fontSize:13}}>{c.name}</div>
                   <div style={{fontSize:11,color:"#64748b"}}>{c.phone}</div>
                 </div>
-                <button onClick={e=>{e.stopPropagation();navigate(`/customer/${c.id}`);}}
+                <button onClick={e=>{e.stopPropagation();navigate(`/crm/customer/${c.id}`);}}
                   style={{border:"none",background:"#eff6ff",color:"#3b82f6",
                     padding:"4px 10px",borderRadius:6,cursor:"pointer",
                     fontSize:11,fontWeight:700}}>
@@ -432,7 +432,7 @@ export default function CRM() {
                       {(provided,snapshot)=>(
                         <div ref={provided.innerRef}
                           {...provided.draggableProps} {...provided.dragHandleProps}
-                          onClick={()=>{ setTimeout(()=>navigate(`/customer/${customer.id}`),50); }}
+                          onClick={()=>{ setTimeout(()=>navigate(`/crm/customer/${customer.id}`),50); }}
                           style={{background:"white",padding:12,borderRadius:12,marginBottom:10,
                             border:"1px solid #eaeaea",
                             borderLeft:`4px solid ${statusColor[customer.status]}`,
@@ -468,7 +468,7 @@ export default function CRM() {
                             <div style={{display:"flex",gap:6}}>
                               <button
                                 onClick={e=>{ e.stopPropagation();
-                                  navigate(`/customer/${customer.id}`); }}
+                                  navigate(`/crm/customer/${customer.id}`); }}
                                 style={{border:"none",background:"#eff6ff",color:"#3b82f6",
                                   cursor:"pointer",fontSize:11,fontWeight:700,
                                   padding:"4px 8px",borderRadius:6}}>

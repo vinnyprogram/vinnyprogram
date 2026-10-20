@@ -27,10 +27,10 @@ const when = d => {
   return dt.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 };
 
-export default function CustomerOverview({ customerId, insulationGroups = [], onNoteAdded }) {
+export default function CustomerOverview({ customerId, onNoteAdded }) {
   const navigate = useNavigate();
   const { company } = useAuth();
-  const [data, setData] = useState({ hers: [], invoices: [], bp: [], gc: [], notes: [] });
+  const [data, setData] = useState({ ins: [], hers: [], invoices: [], bp: [], gc: [], notes: [] });
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState("all");
   const [note, setNote] = useState("");
@@ -39,19 +39,28 @@ export default function CustomerOverview({ customerId, insulationGroups = [], on
   async function load() {
     const id = Number(customerId);
     const safe = async q => { try { const r = await q; return r.data || []; } catch (e) { return []; } };
-    const [hers, invoices, bp, gc, notes] = await Promise.all([
+    const [insProjects, hers, invoices, bp, gc, notes] = await Promise.all([
+      safe(supabase.from("projects").select("id,name,address,pipeline_status,created_at").eq("lead_id", id).order("created_at", { ascending: false })),
       safe(supabase.from("hers_estimates").select("id,address,status,created_at").eq("customer_id", id).order("created_at", { ascending: false })),
       safe(supabase.from("hers_invoices").select("id,address,status,grand_total,created_at").eq("customer_id", id).order("created_at", { ascending: false })),
       safe(supabase.from("board_plaster_estimates").select("id,address,status,created_at").eq("customer_id", id).order("created_at", { ascending: false })),
       safe(supabase.from("gc_estimates").select("id,address,job_type,status,created_at").eq("customer_id", id).order("created_at", { ascending: false })),
       safe(supabase.from("activities").select("id,body,type,created_at").eq("lead_id", id).order("created_at", { ascending: false })),
     ]);
-    setData({ hers, invoices, bp, gc, notes });
+    // latest quote amount for each insulation job
+    let quoteBy = {};
+    if (insProjects.length) {
+      const qs = await safe(supabase.from("quotes").select("project_id,final_price,grand_total,created_at")
+        .in("project_id", insProjects.map(p => p.id)).order("created_at", { ascending: false }));
+      qs.forEach(q => { if (!quoteBy[q.project_id]) quoteBy[q.project_id] = q; });
+    }
+    const ins = insProjects.map(p => ({ ...p, quotes: quoteBy[p.id] ? [quoteBy[p.id]] : [] }));
+    setData({ ins, hers, invoices, bp, gc, notes });
     setLoading(false);
   }
   useEffect(() => { setLoading(true); load(); /* eslint-disable-next-line */ }, [customerId]);
 
-  const insJobs = useMemo(() => insulationGroups.flatMap(g => g.jobs || []), [insulationGroups]);
+  const insJobs = data.ins;
 
   // Which trades to show: what the company offers, plus anything this customer already has.
   const offers = {
