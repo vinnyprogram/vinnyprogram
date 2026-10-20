@@ -3,6 +3,7 @@ import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import AddressInput from "./AddressInput";
 import { getMyCompany } from "../lib/myCompany";
+import CustomerOverview from "../components/CustomerOverview";
 
 function fmt(n) {
   return Number(n||0).toLocaleString("en-US",{maximumFractionDigits:0});
@@ -468,6 +469,8 @@ export default function CustomerProfile() {
       </div>
 
       <div style={{maxWidth:800,margin:"0 auto",padding:"16px 14px"}}>
+
+        <CustomerOverview customerId={customerId} insulationGroups={projects} />
 
         {projects.length===0 ? (
           <div style={{textAlign:"center",padding:40,color:"#94a3b8",
