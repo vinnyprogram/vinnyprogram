@@ -50,7 +50,11 @@ export default function EstimateSearch() {
     // deduplicate by leadId — keep newest per customer
     const seen = {};
     const deduped = [];
-    found.sort((a,b)=>new Date(b.savedAt)-new Date(a.savedAt));
+    // Keep the draft with the most real work in it for each customer (newest
+    // as the tie-break) - an empty draft written later must never win over
+    // the one holding your address and measurements.
+    const weight = d => Object.values(d.areas||{}).flat().filter(a=>a && a.area_type).length;
+    found.sort((a,b)=> (weight(b)-weight(a)) || (new Date(b.savedAt)-new Date(a.savedAt)));
     found.forEach(d=>{
       const id = d.selectedLeadId||"anon";
       if(!seen[id]){ seen[id]=true; deduped.push(d); }

@@ -1789,6 +1789,16 @@ export default function ProjectEstimate() {
     // a customer-keyed one, so nothing typed gets lost while those get
     // filled in later. As soon as a customer IS attached, everything moves
     // over to the real per-customer key and the anon slot is cleared.
+    // A draft with nothing in it (just a customer picked) is worse than no
+    // draft: it looked newer than the real one and the Estimates list kept it
+    // instead of the one with your address and measurements.
+    {
+      const a2 = overrideAreas||areas;
+      const hasAreaData = Object.values(a2||{}).flat().some(a=>a && (a.area_type || Number(a.sqft)>0 || (a.measurements||[]).length>0));
+      let hasNotes = false;
+      try{ hasNotes = Object.values(crewNotes||{}).some(v=>typeof v==="string" && v.trim()); }catch(e){}
+      if(!hasAreaData && !(projectAddress||"").trim() && !hasNotes) return;
+    }
     const key = selectedLeadId ? getDraftKey(selectedLeadId, projectAddress) : ANON_DRAFT_KEY;
     try{
       localStorage.setItem(key,JSON.stringify({savedAt:new Date().toISOString(),selectedLeadId,projectName,projectAddress,crewNotes,floors:overrideFloors||floors,areas:overrideAreas||areas,editingProjectId:null}));
@@ -2129,7 +2139,26 @@ export default function ProjectEstimate() {
   useEffect(()=>{
     if(!isEditing&&selectedLeadId&&!draftRestored&&!resumeMode&&!savedProjectId){
       const key=getDraftKey(selectedLeadId, projectAddress);
-      const draft=loadDraft(key);
+      let draft=loadDraft(key);
+      // Coming back to a blank page for this customer (no address typed yet):
+      // look at every on-device draft for them and offer the one that has the
+      // most work in it, whatever address it was saved under.
+      if(!(projectAddress||"").trim()){
+        try{
+          const base=`draft_estimate_${selectedLeadId}`;
+          let best=null, bestScore=-1;
+          for(let i=0;i<localStorage.length;i++){
+            const k=localStorage.key(i);
+            if(!k || (k!==base && !k.startsWith(base+"_"))) continue;
+            const d=loadDraft(k);
+            if(!d || d.editingProjectId) continue;
+            const n=Object.values(d.areas||{}).flat().filter(a=>a.area_type).length;
+            const score=n*1000000000000 + new Date(d.savedAt||0).getTime();
+            if(n>0 && score>bestScore){ best=d; bestScore=score; }
+          }
+          if(best) draft=best;
+        }catch(e){}
+      }
       if(draft){
         const age=Math.round((Date.now()-new Date(draft.savedAt).getTime())/60000);
         const areaCount=Object.values(draft.areas||{}).flat().filter(a=>a.area_type).length;
