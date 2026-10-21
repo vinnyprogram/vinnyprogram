@@ -2922,7 +2922,6 @@ export default function ProjectEstimate() {
       // (or you come back to it), that would open a blank NEW estimate and the
       // next save would create a second project for the same customer. Point
       // the address bar at the saved project instead, so coming back reopens it.
-      try{ window.history.replaceState(window.history.state, "", `/project/${proj.id}`); }catch(e){}
       try{ localStorage.setItem("cub_last_saved_project", JSON.stringify({id:proj.id, lead_id:effectiveLeadId, name:projectName||"", address:projectAddress||"", at:Date.now()})); }catch(e){}
 
       // If started from "By Drawings", import the drawing draft into the new estimate
@@ -2948,6 +2947,12 @@ export default function ProjectEstimate() {
           }
         }catch(e){ console.warn("Drawing draft import error:",e.message); }
       }
+      // Tell the ROUTER (not just the address bar) that this is now the saved
+      // project. Editing the address bar by hand left the app's own navigation
+      // state still on "/project/new", so leaving and coming back could reopen
+      // a blank new estimate for the same customer. This swaps the history
+      // entry in place, so Back / return always lands on the saved project.
+      navigate(`/project/${proj.id}`,{replace:true});
     }catch(err){console.error(err);logEvent(`❌ SAVE FAILED: ${err.message||JSON.stringify(err)}`);setHasUnsavedChanges(true);if(!silent)alert("Error: "+(err.message||JSON.stringify(err)));}
     finally{if(!silent)setSaving(false);}
   }
