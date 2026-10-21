@@ -11,6 +11,7 @@ import VoiceAreaCapture from "../components/VoiceAreaCapture";
 import { sortFloors } from "../lib/floorSort";
 import { getMyCompany } from "../lib/myCompany";
 import { loadFormDraft, saveFormDraft, clearFormDraft } from "../lib/formDraft";
+import { isFreshLoad } from "../utils/freshLoad";
 
 const C = {
   bg: "#f4f5f7", white: "#fff", ink: "#0f172a",
@@ -1615,6 +1616,8 @@ export default function ProjectEstimate() {
   // whenever the component first mounted.
   const saveProjectRef = useRef(null);
   saveProjectRef.current = saveProject;
+  const savedIdRef = useRef(null);
+  savedIdRef.current = projectId || savedProjectId;
   // Real synchronous lock for pushToBoardPlaster - see its own comment.
   const pushBPLockRef = useRef(false);
 
@@ -1669,7 +1672,10 @@ export default function ProjectEstimate() {
   // 3-second timer would have fired.
   useEffect(()=>{
     const onHide = ()=>{
-      if(document.visibilityState==="hidden" && pendingAutosaveRef.current){
+      // Only for a project that already exists. A brand-new, never-saved estimate
+      // is protected by its on-device draft - silently INSERTING a project just
+      // because the phone switched apps is how duplicates got created.
+      if(document.visibilityState==="hidden" && pendingAutosaveRef.current && savedIdRef.current){
         pendingAutosaveRef.current = false;
         clearTimeout(autoSaveTimer.current);
         saveProjectRef.current?.({silent:true});
@@ -1681,6 +1687,38 @@ export default function ProjectEstimate() {
       document.removeEventListener("visibilitychange", onHide);
       window.removeEventListener("pagehide", onHide);
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[]);
+
+  // RELOADED ONTO A BLANK "NEW ESTIMATE": phones free background tabs, and when
+  // the page comes back it reloads the address it was on. If an estimate for this
+  // customer was saved a few minutes ago, offer it instead of starting a second,
+  // empty one. Only runs for a page that was just (re)loaded - never when you
+  // tapped "+ New" inside the app.
+  useEffect(()=>{
+    if(isEditing || resumeMode || !isFreshLoad()) return;
+    let cancelled=false;
+    (async()=>{
+      try{
+        let found=null;
+        const since=new Date(Date.now()-30*60000).toISOString();
+        if(leadId){
+          const {data}=await supabase.from("projects").select("id,name,address,created_at")
+            .eq("lead_id",Number(leadId)).gte("created_at",since).order("created_at",{ascending:false}).limit(1);
+          found=data?.[0]||null;
+        } else {
+          const ptr=JSON.parse(localStorage.getItem("cub_last_saved_project")||"null");
+          if(ptr && ptr.id && Date.now()-ptr.at < 30*60000) found=ptr;
+        }
+        if(!found || cancelled) return;
+        const who=found.name?` for ${found.name}`:"";
+        const where=found.address?` at ${found.address}`:"";
+        if(window.confirm(`You saved an estimate${who}${where} a few minutes ago.\n\nOpen that one? (Cancel starts a blank new estimate.)`)){
+          navigate(`/project/${found.id}`,{replace:true});
+        }
+      }catch(e){}
+    })();
+    return ()=>{cancelled=true;};
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[]);
 
@@ -2885,6 +2923,7 @@ export default function ProjectEstimate() {
       // next save would create a second project for the same customer. Point
       // the address bar at the saved project instead, so coming back reopens it.
       try{ window.history.replaceState(window.history.state, "", `/project/${proj.id}`); }catch(e){}
+      try{ localStorage.setItem("cub_last_saved_project", JSON.stringify({id:proj.id, lead_id:effectiveLeadId, name:projectName||"", address:projectAddress||"", at:Date.now()})); }catch(e){}
 
       // If started from "By Drawings", import the drawing draft into the new estimate
       if(fromDrawing){

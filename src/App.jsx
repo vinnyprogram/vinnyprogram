@@ -5,6 +5,7 @@ import Login from "./pages/Login";
 import Onboarding from "./pages/Onboarding";
 import CRM from "./pages/CRM";
 import Clients from "./pages/Clients";
+import { trackNavigation } from "./utils/freshLoad";
 import ProjectEstimate from "./pages/ProjectEstimate";
 import CRMCustomer from "./pages/CRMCustomer";
 import CRMHome from "./pages/CRMHome";
@@ -55,6 +56,7 @@ function Jobs()      { return <Navigate to="/estimates/search" replace />; }
 function ProtectedApp() {
   const { user, company, loading } = useAuth();
   const location = useLocation();
+  trackNavigation(location.key); // before any page renders, so pages can tell a reload from in-app navigation
 
   if(loading) return (
     <div style={{ minHeight:"100vh", display:"flex", alignItems:"center",
