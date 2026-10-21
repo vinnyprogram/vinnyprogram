@@ -153,6 +153,7 @@ export default function BoardPlasterEstimate(){
   const [searchParams] = useSearchParams();
   const paramLeadId = searchParams.get("leadId")||"";
   const paramAddress = searchParams.get("address")||"";
+  const fromProjectId = searchParams.get("from")||"";
   const isEditing = !!estimateId;
 
   const [loading, setLoading] = useState(isEditing);
@@ -852,7 +853,7 @@ export default function BoardPlasterEstimate(){
         // on estimateId (from useParams) reflects the real saved row, so
         // autosave and the flush-on-unmount below start targeting it too,
         // the same way Insulation only autosaves a new job once it has an id.
-        navigate(`/board-plaster/${data.id}`, { replace:true });
+        navigate(`/board-plaster/${data.id}${fromProjectId?`?from=${fromProjectId}`:""}`, { replace:true });
       }
       bpLog("✅ Save completed successfully");
       clearDraft();
@@ -875,6 +876,7 @@ export default function BoardPlasterEstimate(){
       <div style={{position:"sticky",top:0,zIndex:100,background:C.white,borderBottom:`1px solid ${C.border}`,
           padding:"8px 12px",display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}>
         <button onClick={()=>navigate(-1)} style={Btn}>← Back</button>
+        {fromProjectId && <button onClick={async()=>{ try{ await saveEstimate({silent:true}); }catch(e){} navigate(`/project/${fromProjectId}`); }} style={{...Btn,background:"#eff6ff",color:"#1d4ed8"}}>🧰 Estimate</button>}
         <span style={{fontWeight:700,fontSize:14,flex:1,textAlign:"center"}}>🧱 Board &amp; Plaster {isEditing?"Estimate":"— New"}</span>
         <div style={{display:"flex",gap:6}}>
           <DebugLogButton />

@@ -2986,6 +2986,19 @@ export default function ProjectEstimate() {
     finally{if(!silent)setSaving(false);}
   }
 
+  // Merge instead of replace: whatever was added directly in Board & Plaster
+  // stays. Areas from an earlier push (tagged source:"insulation") are
+  // refreshed with the new ones. Older pushes made before the tag existed are
+  // matched by floor + type + size so they are not added a second time.
+  function mergeBPAreas(existing, pushed){
+    const old = Array.isArray(existing) ? existing : [];
+    const kept = old.filter(a=>a && a.source!=="insulation");
+    const same = (x,y)=> x.floor===y.floor && x.area_type===y.area_type && Math.abs(Number(x.sqft||0)-Number(y.sqft||0))<0.01;
+    const hadTagged = old.some(a=>a && a.source==="insulation");
+    const fresh = hadTagged ? pushed : pushed.filter(p=>!kept.some(k=>same(k,p)));
+    return [...kept, ...fresh];
+  }
+
   async function pushToBoardPlaster(){
     if(!selectedLeadId) return;
     // Real synchronous lock (unlike React state, which only disables the
@@ -3011,15 +3024,17 @@ export default function ProjectEstimate() {
     const pushAreas = floors.flatMap(floor=>(areas[floor]||[])
       .filter(a=>a.area_type && RELEVANT.includes(a.area_type) && a.sqft>0)
       .map(a=>({
-        id:Date.now()+Math.random(), floor, area_type:a.area_type, sqft:a.sqft,
+        id:Date.now()+Math.random(), source:"insulation", floor, area_type:a.area_type, sqft:a.sqft,
         thickness:'1/2"', thicknessOther:"", layers:1,
         measurements:(a.measurements||[]).map(m=>({h:m.h,l:m.l,q:m.q||1,sqft:m.sqft})),
         mh:"", ml:"", mq:"1", deduct:a.deduct_sqft||"", note:"",
         finish:"Smooth skim coat",
       })));
 
+    const backId = projectId || savedProjectId;
+    if(!backId){ alert("Tap Save first, so you can come back to this estimate from Board & Plaster."); pushBPLockRef.current=false; return; }
     if(!pushAreas.length){ alert("No wall/ceiling/fire-blocking areas to push."); pushBPLockRef.current=false; return; }
-    if(!window.confirm(`Push ${pushAreas.length} area(s) to Board & Plaster?\n\nIf a Board & Plaster estimate already exists for this customer/address, its measurements will be replaced with these. If none exists, a new one will be created.`)){ pushBPLockRef.current=false; return; }
+    if(!window.confirm(`Push ${pushAreas.length} area(s) to Board & Plaster?\n\nAreas you added directly in Board & Plaster are kept. Areas from an earlier push are refreshed with these. If none exists yet, a new Board & Plaster estimate is created.`)){ pushBPLockRef.current=false; return; }
     try {
       // Pushing requires a real connection anyway, so if this customer was
       // created offline and hasn't synced yet, resolve it to a real id
@@ -3033,12 +3048,12 @@ export default function ProjectEstimate() {
       if(!companyIdForPush) throw new Error("Could not find your company. Check your connection and try again.");
 
       const { data:existing } = await supabase.from("board_plaster_estimates")
-        .select("id,address").eq("customer_id",Number(effectiveLeadId)).order("created_at",{ascending:false}).limit(5);
+        .select("id,address,areas").eq("customer_id",Number(effectiveLeadId)).order("created_at",{ascending:false}).limit(5);
       let target = (existing||[]).find(e=>(e.address||"").toLowerCase().includes((projectAddress||"").split(",")[0].toLowerCase()))||(existing||[])[0];
 
       if(target){
         const { error } = await supabase.from("board_plaster_estimates")
-          .update({ areas: pushAreas, address: projectAddress||target.address, updated_at:new Date().toISOString() })
+          .update({ areas: mergeBPAreas(target.areas, pushAreas), address: projectAddress||target.address, updated_at:new Date().toISOString() })
           .eq("id", target.id);
         if(error) throw error;
       } else {
@@ -3050,7 +3065,7 @@ export default function ProjectEstimate() {
         target = created;
       }
       alert(`✅ Pushed to Board & Plaster.`);
-      navigate(`/board-plaster/${target.id}`);
+      navigate(`/board-plaster/${target.id}?from=${backId}`);
     } catch(err){
       alert("Error pushing: "+(err.message||JSON.stringify(err)));
     } finally {
