@@ -110,7 +110,23 @@ export default function FieldReport() {
     load();
   },[projectId]);
 
+    // Floors that were never used (no areas on them) are only an empty name in
+    // the database. Clean them up when the estimate goes to the office. Checks
+    // the saved data itself, never touches a floor that has even one area, only
+    // looks at this project, and does nothing if it would leave no floors at all.
+    async function removeEmptyFloors() {
+      try{
+        const { data:fl } = await supabase.from("floors").select("id").eq("project_id", projectId);
+        const { data:ar } = await supabase.from("areas").select("floor_id").eq("project_id", projectId);
+        const used = new Set((ar||[]).map(a=>a.floor_id));
+        const empty = (fl||[]).filter(f=>!used.has(f.id)).map(f=>f.id);
+        if(empty.length===0 || empty.length===(fl||[]).length) return;
+        await supabase.from("floors").delete().in("id", empty).eq("project_id", projectId);
+      }catch(e){ console.warn("Empty floor cleanup skipped:", e?.message); }
+    }
+
     async function sendEmail() {
+      await removeEmptyFloors();
       if((project?.pipeline_status||"Draft")==="Measured"){
         await supabase.from("projects").update({pipeline_status:"Sent to Office"}).eq("id",projectId);
         setProject(p=>({...p, pipeline_status:"Sent to Office"}));
