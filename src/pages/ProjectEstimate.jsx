@@ -3048,8 +3048,14 @@ export default function ProjectEstimate() {
       if(!companyIdForPush) throw new Error("Could not find your company. Check your connection and try again.");
 
       const { data:existing } = await supabase.from("board_plaster_estimates")
-        .select("id,address,areas").eq("customer_id",Number(effectiveLeadId)).order("created_at",{ascending:false}).limit(5);
-      let target = (existing||[]).find(e=>(e.address||"").toLowerCase().includes((projectAddress||"").split(",")[0].toLowerCase()))||(existing||[])[0];
+        .select("id,address,areas,status").eq("customer_id",Number(effectiveLeadId)).order("created_at",{ascending:false}).limit(5);
+      // Only reuse a Board & Plaster estimate that is still open (Draft or
+      // Sent). One that was Accepted or Declined belongs to a finished job, so
+      // a new insulation estimate for the same customer and address starts a
+      // fresh Board & Plaster estimate instead of being added to the old one.
+      const openOnes = (existing||[]).filter(e=>["Draft","Sent",null,undefined,""].includes(e.status));
+      let target = openOnes.find(e=>(e.address||"").toLowerCase().includes((projectAddress||"").split(",")[0].toLowerCase()))||openOnes[0];
+      let addedToExisting = !!target;
 
       if(target){
         const { error } = await supabase.from("board_plaster_estimates")
@@ -3064,7 +3070,9 @@ export default function ProjectEstimate() {
         if(error) throw error;
         target = created;
       }
-      alert(`✅ Pushed to Board & Plaster.`);
+      alert(addedToExisting
+        ? `✅ Added to the existing Board & Plaster estimate (${target.address||"no address"}).`
+        : `✅ Created a new Board & Plaster estimate (${projectAddress||"no address"}).`);
       navigate(`/board-plaster/${target.id}?from=${backId}`);
     } catch(err){
       alert("Error pushing: "+(err.message||JSON.stringify(err)));
