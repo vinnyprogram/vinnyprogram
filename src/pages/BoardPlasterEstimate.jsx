@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { normalizeBPStatus } from "../lib/bpStatus";
 import { createPortal } from "react-dom";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
@@ -252,7 +253,7 @@ export default function BoardPlasterEstimate(){
   // line items
   const [lineItems, setLineItems] = useState([{ id: uid(), service_name:"", price:"", qty:"1" }]);
   const [notes, setNotes] = useState("");
-  const [status, setStatus] = useState("Draft");
+  const [status, setStatus] = useState("In Progress");
   const [taxRate, setTaxRate] = useState("0");
 
   const [markupOpen, setMarkupOpen] = useState(false);
@@ -316,7 +317,7 @@ export default function BoardPlasterEstimate(){
     if(draft.floorNames?.length) setFloorNames(sortFloors(draft.floorNames));
     if(draft.lineItems?.length) setLineItems(draft.lineItems);
     if(draft.notes) setNotes(draft.notes);
-    if(draft.status) setStatus(draft.status);
+    if(draft.status) setStatus(normalizeBPStatus(draft.status));
     if(draft.taxRate) setTaxRate(draft.taxRate);
     if(draft.markupOpen){ setMarkupOpen(true); setMarkupType(draft.markupType||"percent"); setMarkupValue(draft.markupValue||""); }
     if(draft.discountOpen){ setDiscountOpen(true); setDiscountType(draft.discountType||"percent"); setDiscountValue(draft.discountValue||""); }
@@ -392,7 +393,7 @@ export default function BoardPlasterEstimate(){
           setActiveFloor(restoredFloor);
           setLineItems(est.line_items?.length?est.line_items:[{ id: uid(), service_name:"", price:"", qty:"1" }]);
           setNotes(est.notes||"");
-          setStatus(est.status||"Draft");
+          setStatus(normalizeBPStatus(est.status));
           setTaxRate(String(est.tax_rate||0));
           if(est.payment_schedule?.length){ setScheduleOpen(true); setPaymentSchedule(est.payment_schedule); }
           if(est.customer_id) setCustMode("selected");
@@ -764,8 +765,16 @@ export default function BoardPlasterEstimate(){
   function installmentAmount(s){ return s.type==="percent" ? grandTotal*(Number(s.value)||0)/100 : Number(s.value)||0; }
   const scheduledTotal = paymentSchedule.reduce((s,it)=>s+installmentAmount(it),0);
 
-  function emailOffice(){
+  async function emailOffice(){
     if(!selectedLead){ alert("Select a customer first."); return; }
+    // Same as insulation: sending to the office moves a job that is still
+    // "In Progress" to "Sent to Office". Later statuses are never moved back.
+    if(normalizeBPStatus(status)==="In Progress"){
+      setStatus("Sent to Office");
+      if(estimateId){
+        try{ await supabase.from("board_plaster_estimates").update({status:"Sent to Office"}).eq("id",estimateId); }catch(e){}
+      }
+    }
     const lines = [];
     lines.push(`Board & Plaster measurements — ${address||"job site"}`);
     lines.push(`Customer: ${selectedLead.name}${selectedLead.phone?" — "+selectedLead.phone:""}`);

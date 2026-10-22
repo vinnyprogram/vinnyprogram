@@ -12,6 +12,7 @@ import { sortFloors } from "../lib/floorSort";
 import { getMyCompany } from "../lib/myCompany";
 import { loadFormDraft, saveFormDraft, clearFormDraft } from "../lib/formDraft";
 import { isFreshLoad } from "../utils/freshLoad";
+import { isOpenBPStatus } from "../lib/bpStatus";
 
 const C = {
   bg: "#f4f5f7", white: "#fff", ink: "#0f172a",
@@ -3053,7 +3054,7 @@ export default function ProjectEstimate() {
       // Sent). One that was Accepted or Declined belongs to a finished job, so
       // a new insulation estimate for the same customer and address starts a
       // fresh Board & Plaster estimate instead of being added to the old one.
-      const openOnes = (existing||[]).filter(e=>["Draft","Sent",null,undefined,""].includes(e.status));
+      const openOnes = (existing||[]).filter(e=>isOpenBPStatus(e.status));
       let target = openOnes.find(e=>(e.address||"").toLowerCase().includes((projectAddress||"").split(",")[0].toLowerCase()))||openOnes[0];
       let addedToExisting = !!target;
 

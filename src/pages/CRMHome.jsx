@@ -33,7 +33,7 @@ function rankOf(status) {
   if (s.includes("paid")) return 4;
   if (s.includes("accept") || s.includes("won") || s.includes("approved") || s.includes("signed")) return 3;
   if (s.includes("office")) return 1;
-  if (s.includes("sent") || s.includes("proposal") || s.includes("negotiat")) return 2;
+  if (s.includes("sent") || s.includes("emailed") || s.includes("proposal") || s.includes("negotiat")) return 2;
   return 1;
 }
 // The old board's hand-set status, used as a starting point only.

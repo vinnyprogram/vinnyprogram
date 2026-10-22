@@ -1,13 +1,9 @@
 import { useState, useEffect } from "react";
+import { BP_STATUSES, BP_STATUS_COLORS, normalizeBPStatus } from "../lib/bpStatus";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 
-const STATUS_COLORS = {
-  "Draft":    { bg:"#f1f5f9", text:"#64748b" },
-  "Sent":     { bg:"#eff6ff", text:"#3b82f6" },
-  "Accepted": { bg:"#dcfce7", text:"#059669" },
-  "Declined": { bg:"#fee2e2", text:"#dc2626" },
-};
+const STATUS_COLORS = BP_STATUS_COLORS;
 
 function fmt(n) {
   return Number(n||0).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2});
@@ -143,15 +139,12 @@ export default function BoardPlasterSearch() {
                 background:ei===0?"#f0fdf4":"white"}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
                 <div>
-                  <select value={e.status||"Draft"} onChange={ev=>updateStatus(e.id, ev.target.value)}
+                  <select value={normalizeBPStatus(e.status)} onChange={ev=>updateStatus(e.id, ev.target.value)}
                     style={{fontSize:10,padding:"2px 7px",borderRadius:10,fontWeight:700,
                       border:"none",cursor:"pointer",
-                      background:(STATUS_COLORS[e.status]||STATUS_COLORS.Draft).bg,
-                      color:(STATUS_COLORS[e.status]||STATUS_COLORS.Draft).text}}>
-                    <option value="Draft">Draft</option>
-                    <option value="Sent">Sent</option>
-                    <option value="Accepted">Accepted</option>
-                    <option value="Declined">Declined</option>
+                      background:(STATUS_COLORS[normalizeBPStatus(e.status)]||STATUS_COLORS["In Progress"]).bg,
+                      color:(STATUS_COLORS[normalizeBPStatus(e.status)]||STATUS_COLORS["In Progress"]).text}}>
+                    {BP_STATUSES.map(st=><option key={st} value={st}>{st}</option>)}
                   </select>
                   {e.address && (
                     <div style={{fontSize:14,fontWeight:700,color:"#0f172a",marginTop:4}}>
