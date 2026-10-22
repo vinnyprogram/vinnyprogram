@@ -71,11 +71,23 @@ export default function BoardPlasterSearch() {
   const [copying, setCopying] = useState(false);
   async function newVersion(estimateId){
     if(copying) return;
+    // Not while the current one is still being worked on: a new version only
+    // makes sense once this one has gone out (to the office or the customer).
+    const shown = groups.flatMap(g=>g.estimates).find(x=>x.id===estimateId);
+    if(shown && normalizeBPStatus(shown.status)==="In Progress"){
+      alert("This estimate is still In Progress. Send it to the office or the customer first, then you can create a new version.");
+      return;
+    }
     if(!window.confirm("Create a new version of this estimate?\n\nIt starts with the same measurements and line items so you can change what is needed. The current version stays as it is.")) return;
     setCopying(true);
     try{
       const { data:orig, error:oe } = await supabase.from("board_plaster_estimates").select("*").eq("id",estimateId).single();
       if(oe||!orig) throw new Error(oe?.message||"Could not load the estimate.");
+      // Re-check against the saved status, in case the list on screen is stale.
+      if(normalizeBPStatus(orig.status)==="In Progress"){
+        alert("This estimate is still In Progress. Send it to the office or the customer first, then you can create a new version.");
+        setCopying(false); return;
+      }
       const copy = { ...orig, status:"In Progress" };
       delete copy.id; delete copy.created_at; delete copy.updated_at;
       const { data:created, error:ce } = await supabase.from("board_plaster_estimates").insert([copy]).select().single();
@@ -188,12 +200,14 @@ export default function BoardPlasterSearch() {
                     cursor:"pointer",fontSize:12,fontWeight:700}}>
                   ✏️ Open
                 </button>
+                {(()=>{ const inProg = normalizeBPStatus(e.status)==="In Progress"; return (
                 <button onClick={()=>newVersion(e.id)} disabled={copying}
-                  style={{flex:1,border:"1px solid #bfdbfe",background:"#eff6ff",
-                    color:"#1d4ed8",padding:"7px 0",borderRadius:7,
-                    cursor:"pointer",fontSize:12,fontWeight:700}}>
+                  title={inProg?"Send it to the office or the customer first":"Create a new version"}
+                  style={{flex:1,border:"1px solid "+(inProg?"#e2e8f0":"#bfdbfe"),background:inProg?"#f8fafc":"#eff6ff",
+                    color:inProg?"#94a3b8":"#1d4ed8",padding:"7px 0",borderRadius:7,
+                    cursor:inProg?"not-allowed":"pointer",fontSize:12,fontWeight:700}}>
                   ＋ New version
-                </button>
+                </button>); })()}
               </div>
             </div>
           ))}
