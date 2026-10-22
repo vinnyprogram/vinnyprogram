@@ -1378,7 +1378,7 @@ export default function BoardPlasterEstimate(){
           <div style={{fontSize:10,fontWeight:800,color:C.faint,textTransform:"uppercase",letterSpacing:0.5}}>Summary</div>
           <div style={{display:"flex",gap:8}}>
             <button onClick={emailOffice} title="Email customer, address, and measurements to the office"
-              style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:14}}>📧</button>
+              style={{border:"none",background:"#2563eb",color:"#fff",cursor:"pointer",fontSize:14,fontWeight:800,padding:"9px 16px",borderRadius:9}}>📧 Office</button>
             <button onClick={()=>window.print()} title="Print/Save as PDF - for double-checking measurements only, not used for pricing"
               style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:14}}>🖨️</button>
           </div>
@@ -1394,7 +1394,7 @@ export default function BoardPlasterEstimate(){
           <span style={{fontSize:10,fontWeight:800,color:C.faint,textTransform:"uppercase",letterSpacing:0.5}}>Summary</span>
           <div style={{display:"flex",alignItems:"center",gap:8}}>
             <button onClick={(e)=>{e.stopPropagation();emailOffice();}} title="Email customer, address, and measurements to the office"
-              style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:14,padding:0}}>📧</button>
+              style={{border:"none",background:"#2563eb",color:"#fff",cursor:"pointer",fontSize:15,fontWeight:800,padding:"10px 20px",borderRadius:10}}>📧 Office</button>
             <button onClick={(e)=>{e.stopPropagation();window.print();}} title="Print/Save as PDF"
               style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:14,padding:0}}>🖨️</button>
             <span style={{fontSize:9,color:C.faint}}>{bottomPanelOpen?"▼":"▲"}</span>

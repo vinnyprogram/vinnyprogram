@@ -65,6 +65,27 @@ export default function BoardPlasterSearch() {
     })));
   }
 
+  // New version of an estimate: same customer, address, measurements and line
+  // items, saved as a separate estimate (and so a separate document). The
+  // original stays exactly as it is. The copy starts at "In Progress".
+  const [copying, setCopying] = useState(false);
+  async function newVersion(estimateId){
+    if(copying) return;
+    if(!window.confirm("Create a new version of this estimate?\n\nIt starts with the same measurements and line items so you can change what is needed. The current version stays as it is.")) return;
+    setCopying(true);
+    try{
+      const { data:orig, error:oe } = await supabase.from("board_plaster_estimates").select("*").eq("id",estimateId).single();
+      if(oe||!orig) throw new Error(oe?.message||"Could not load the estimate.");
+      const copy = { ...orig, status:"In Progress" };
+      delete copy.id; delete copy.created_at; delete copy.updated_at;
+      const { data:created, error:ce } = await supabase.from("board_plaster_estimates").insert([copy]).select().single();
+      if(ce||!created) throw new Error(ce?.message||"Could not create the new version.");
+      navigate(`/board-plaster/${created.id}`);
+    }catch(err){
+      alert("Error creating new version: "+(err.message||err));
+    }finally{ setCopying(false); }
+  }
+
   const filtered = groups.filter(g=>{
     if(!search.trim()) return true;
     const s = search.toLowerCase();
@@ -160,12 +181,20 @@ export default function BoardPlasterSearch() {
                   ${fmt(estimateTotal(e))}
                 </div>
               </div>
-              <button onClick={()=>navigate(`/board-plaster/${e.id}`)}
-                style={{width:"100%",border:"1px solid #e2e8f0",background:"white",
-                  color:"#0f172a",padding:"7px 0",borderRadius:7,
-                  cursor:"pointer",fontSize:12,fontWeight:700}}>
-                ✏️ Open
-              </button>
+              <div style={{display:"flex",gap:8}}>
+                <button onClick={()=>navigate(`/board-plaster/${e.id}`)}
+                  style={{flex:1,border:"1px solid #e2e8f0",background:"white",
+                    color:"#0f172a",padding:"7px 0",borderRadius:7,
+                    cursor:"pointer",fontSize:12,fontWeight:700}}>
+                  ✏️ Open
+                </button>
+                <button onClick={()=>newVersion(e.id)} disabled={copying}
+                  style={{flex:1,border:"1px solid #bfdbfe",background:"#eff6ff",
+                    color:"#1d4ed8",padding:"7px 0",borderRadius:7,
+                    cursor:"pointer",fontSize:12,fontWeight:700}}>
+                  ＋ New version
+                </button>
+              </div>
             </div>
           ))}
         </div>
