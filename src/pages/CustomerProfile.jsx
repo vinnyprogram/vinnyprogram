@@ -200,7 +200,7 @@ export default function CustomerProfile() {
         const { data:areas } = await supabase.from("areas").select("id").in("floor_id", floorIds);
         const areaIds = (areas||[]).map(a=>a.id);
         if(areaIds.length){
-          const { error:e1 } = await supabase.from("segments").delete().in("area_id", areaIds);
+          const { error:e1 } = await supabase.from("segments").delete().in("area_id", areaIds).select("id");
           if(e1) throw e1;
         }
         const { error:e2 } = await supabase.from("areas").delete().in("floor_id", floorIds);
@@ -210,8 +210,11 @@ export default function CustomerProfile() {
       }
       const { error:e4 } = await supabase.from("quotes").delete().eq("project_id", job.id);
       if(e4) throw e4;
-      const { error:e5 } = await supabase.from("projects").delete().eq("id", job.id);
+      const { data:gone, error:e5 } = await supabase.from("projects").delete().eq("id", job.id).select("id");
       if(e5) throw e5;
+      // A permission rule can block a delete without returning an error:
+      // check a row was really removed instead of assuming it worked.
+      if(!gone || gone.length===0) throw new Error("The database refused to delete this estimate (permission rule). Nothing was removed.");
       load();
     } catch(err) {
       alert("Could not delete: "+(err?.message||err));
