@@ -161,6 +161,10 @@ export default function CustomerProfile() {
       } else if(Object.keys(addrMap).length>0){
         setActiveJob(Object.keys(addrMap)[0]);
       }
+    } else {
+      // Last estimate was deleted: clear the list, otherwise the old one stays on screen.
+      setProjects([]);
+      setActiveJob(null);
     }
 
     // photos
