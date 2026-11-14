@@ -184,6 +184,12 @@ function FloorsEditor({ floors, onChange, onCommit, unitLabel }) {
               style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:16,flexShrink:0}}>✕</button>
           </div>
 
+          <button onClick={()=>addMeasurement(activeLabel)}
+            style={{...Btn,width:"100%",justifyContent:"center",marginBottom:12,fontSize:12,height:34,
+              border:`1px dashed ${C.green}`,color:C.green,background:C.greenBg||"#f0fdf4"}}>
+            + Add measurement to {activeLabel}{unitLabel?` (${unitLabel})`:""}
+          </button>
+
           {activeRows.map((f,i)=>{
             const cfa=(Number(f.width)||0)*(Number(f.length)||0);
             const vol=cfa*(Number(f.height)||0);
@@ -215,8 +221,6 @@ function FloorsEditor({ floors, onChange, onCommit, unitLabel }) {
               </div>
             );
           })}
-
-          <button onClick={()=>addMeasurement(activeLabel)} style={{...Btn,marginTop:10,fontSize:12}}>+ Add measurement to {activeLabel}{unitLabel?` (${unitLabel})`:""}</button>
 
           {activeRows.length>1 && (
             <div style={{display:"flex",justifyContent:"space-between",marginTop:10,paddingTop:10,borderTop:`1px solid ${C.border}`,fontSize:12,fontWeight:700}}>
@@ -1010,6 +1014,25 @@ function useCalcResult(field) {
 // ── EstimatePanel ─────────────────────────────────────────────────────────────
 
 // ── Windows editor ──
+// Wraps one field and shows its name above it while the cursor is in it, so
+// the compact fields (which only have a short placeholder) are always
+// identifiable when you're typing. Floats over the card, so nothing shifts.
+function FocusLabel({ text, style, className, children }) {
+  const [on, setOn] = useState(false);
+  return (
+    <div className={className} style={{position:"relative",...style}}
+      onFocus={()=>setOn(true)} onBlur={()=>setOn(false)}>
+      {on && (
+        <span style={{position:"absolute",top:-13,left:2,fontSize:9,fontWeight:700,color:"#059669",
+          textTransform:"uppercase",letterSpacing:0.3,whiteSpace:"nowrap",pointerEvents:"none",zIndex:5}}>
+          {text}
+        </span>
+      )}
+      {children}
+    </div>
+  );
+}
+
 function WindowsEditor({ windows, onChange, onCommit, floorOptions, unitLabel }) {
   // Learns the building's facing the first time a Side (Front/Right/Rear/Left)
   // and Orientation (N/NE/E/etc) are paired together on any window, then
@@ -1113,6 +1136,17 @@ function WindowsEditor({ windows, onChange, onCommit, floorOptions, unitLabel })
         .no-spinner::-webkit-outer-spin-button,
         .no-spinner::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
         .no-spinner { -moz-appearance: textfield; }
+        /* Computer screens only - phone layout is untouched. */
+        @media (min-width: 700px) {
+          .wf-row1 { flex-wrap: nowrap !important; gap: 6px !important; }
+          .wf-floor { width: 64px !important; }
+          .wf-side { width: 78px !important; }
+          .wf-orient { width: 64px !important; }
+          .wf-num { width: 58px !important; }
+          .wf-qty { width: 46px !important; }
+          .wf-del { margin-left: auto !important; }
+          .wf-row1 select { padding-left: 4px !important; padding-right: 0 !important; }
+        }
       `}</style>
       <div style={{fontSize:11,fontWeight:700,color:C.faint,textTransform:"uppercase",letterSpacing:0.4,marginBottom:10}}>Windows</div>
       <button onClick={add} style={{...Btn,width:"100%",justifyContent:"center",marginBottom:10}}>+ Add Window{unitLabel?` (${unitLabel})`:""}</button>
@@ -1122,39 +1156,47 @@ function WindowsEditor({ windows, onChange, onCommit, floorOptions, unitLabel })
       {windows.map((w,idx)=>(
         <div key={w.id} style={{border:"2px solid #0f172a",borderRadius:8,padding:"8px 10px",marginBottom:8}}>
 
-          {/* Row 1: Floor, Side, Orientation, U-Factor, SHGC, Qty */}
-          <div style={{display:"flex",gap:5,marginBottom:6,alignItems:"center",flexWrap:"wrap"}}>
-            <input data-window-first={w.id} list="window-floor-options" value={w.floor||""} onChange={e=>updAndCommit(idx,"floor",e.target.value)}
-              title="Which floor/level this window is on — type any name, or pick a suggestion"
-              placeholder="Floor…" style={{...I,width:60,height:28,fontSize:11,flexShrink:0}} />
-            <select value={w.elevation||""} onChange={e=>pickSide(idx,e.target.value)}
-              title="Building side / elevation — picking this fills in Orientation automatically once the building's facing is known"
-              style={{...I,width:58,height:28,fontSize:11,flexShrink:0}}>
-              <option value="">Side…</option>
-              <option value="Front">Front</option>
-              <option value="Right">Right</option>
-              <option value="Left">Left</option>
-              <option value="Rear">Rear</option>
-            </select>
-            <select value={w.orientation} onChange={e=>pickOrientation(idx,e.target.value,w.elevation)}
-              title="Compass orientation (for Ekotrope)"
-              style={{...I,width:60,height:28,fontSize:12,flexShrink:0}}>
-              {ORIENTATIONS.map(o=><option key={o} value={o}>{o}</option>)}
-            </select>
-            <div style={{width:54,flexShrink:0}}>
+          {/* Row 1: Floor, Side, Orientation, U-Factor, SHGC, Qty, Del.
+              Phone: unchanged. Computer (wide screens): roomier fields so the
+              Side / Orientation text is not cut off, Del pinned to the far right. */}
+          <div className="wf-row1" style={{display:"flex",gap:5,marginTop:12,marginBottom:6,alignItems:"center",flexWrap:"wrap"}}>
+            <FocusLabel text="Floor / level" className="wf-floor" style={{width:60,flexShrink:0}}>
+              <input data-window-first={w.id} list="window-floor-options" value={w.floor||""} onChange={e=>updAndCommit(idx,"floor",e.target.value)}
+                title="Which floor/level this window is on — type any name, or pick a suggestion"
+                placeholder="Floor…" style={{...I,width:"100%",height:28,fontSize:11}} />
+            </FocusLabel>
+            <FocusLabel text="Side" className="wf-side" style={{width:58,flexShrink:0}}>
+              <select value={w.elevation||""} onChange={e=>pickSide(idx,e.target.value)}
+                title="Building side / elevation — picking this fills in Orientation automatically once the building's facing is known"
+                style={{...I,width:"100%",height:28,fontSize:11}}>
+                <option value="">Side…</option>
+                <option value="Front">Front</option>
+                <option value="Right">Right</option>
+                <option value="Left">Left</option>
+                <option value="Rear">Rear</option>
+              </select>
+            </FocusLabel>
+            <FocusLabel text="Orientation" className="wf-orient" style={{width:60,flexShrink:0}}>
+              <select value={w.orientation} onChange={e=>pickOrientation(idx,e.target.value,w.elevation)}
+                title="Compass orientation (for Ekotrope)"
+                style={{...I,width:"100%",height:28,fontSize:12}}>
+                {ORIENTATIONS.map(o=><option key={o} value={o}>{o}</option>)}
+              </select>
+            </FocusLabel>
+            <FocusLabel text="U-Factor" className="wf-num" style={{width:54,flexShrink:0}}>
               <input {...noSpin} type="number" step="0.01" value={w.u_factor||""} onChange={e=>upd(idx,"u_factor",e.target.value)} onBlur={onCommit}
-                placeholder="U-Fac" title="U-Factor" style={{...I,height:30,fontSize:12,textAlign:"center"}} />
-            </div>
-            <div style={{width:54,flexShrink:0}}>
+                placeholder="U-Fac" title="U-Factor" style={{...I,height:30,fontSize:12,textAlign:"center",width:"100%"}} />
+            </FocusLabel>
+            <FocusLabel text="SHGC" className="wf-num" style={{width:54,flexShrink:0}}>
               <input {...noSpin} type="number" step="0.01" value={w.shgc||""} onChange={e=>upd(idx,"shgc",e.target.value)} onBlur={onCommit}
-                placeholder="SHGC" title="SHGC" style={{...I,height:30,fontSize:12,textAlign:"center"}} />
-            </div>
-            <div style={{width:34,flexShrink:0}}>
+                placeholder="SHGC" title="SHGC" style={{...I,height:30,fontSize:12,textAlign:"center",width:"100%"}} />
+            </FocusLabel>
+            <FocusLabel text="Quantity" className="wf-qty" style={{width:34,flexShrink:0}}>
               <input {...noSpin} type="number" value={w.qty||""} onChange={e=>upd(idx,"qty",e.target.value)} onBlur={onCommit}
                 placeholder="Qty" title="Quantity — how many identical windows"
-                style={{...I,height:28,fontSize:12,textAlign:"center"}} />
-            </div>
-            <button onClick={()=>{ if(window.confirm(`Delete ${w.label||"this window"}? This can't be undone.`)) rem(idx); }}
+                style={{...I,height:28,fontSize:12,textAlign:"center",width:"100%"}} />
+            </FocusLabel>
+            <button className="wf-del" onClick={()=>{ if(window.confirm(`Delete ${w.label||"this window"}? This can't be undone.`)) rem(idx); }}
               style={{border:"1px solid #dc2626",background:"#fee2e2",color:"#dc2626",cursor:"pointer",fontSize:11,fontWeight:700,flexShrink:0,borderRadius:6,padding:"0 10px",height:28}}>
               Del
             </button>
@@ -1163,8 +1205,10 @@ function WindowsEditor({ windows, onChange, onCommit, floorOptions, unitLabel })
           {/* Row 2: Label, Width, Height together — Width/Height keep their labels since
               the auto bottom-to-overhang calc depends on Height being entered correctly */}
           <div style={{display:"flex",gap:6,marginBottom:8,alignItems:"flex-end"}}>
-            <input value={w.label} onChange={e=>upd(idx,"label",e.target.value)} onBlur={onCommit} placeholder="e.g. Living room"
-              style={{...I,flex:"2 1 0",height:32,fontSize:12,minWidth:0}} />
+            <FocusLabel text="Window name" style={{flex:"2 1 0",minWidth:0}}>
+              <input value={w.label} onChange={e=>upd(idx,"label",e.target.value)} onBlur={onCommit} placeholder="e.g. Living room"
+                style={{...I,width:"100%",height:32,fontSize:12,minWidth:0}} />
+            </FocusLabel>
             <div style={{flex:"1 1 0",minWidth:0}}>
               <div style={lbl}>Width (ft)</div>
               <input {...noSpin} type="number" value={w.width} onChange={e=>upd(idx,"width",e.target.value)} onBlur={onCommit}
