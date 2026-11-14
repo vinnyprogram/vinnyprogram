@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { logEvent as sharedLogEvent } from "../utils/debugLog";
@@ -344,6 +344,78 @@ export default function HersEstimate() {
   const [scheduleOpen, setScheduleOpen] = useState(false);
   const [paymentSchedule, setPaymentSchedule] = useState([]);
 
+  // ── Unsaved-work protection ──────────────────────────────────────────
+  // Whatever is typed here is kept on this device as a draft, so leaving the
+  // screen (or the app) without pressing Save no longer loses it. Coming back
+  // to the same estimate puts everything and the scroll position back.
+  const draftKey = "hers_est_draft_" + (estimateId || ("new_" + paramLeadId));
+  const baselineRef = useRef(null);   // what the server version looked like
+  const restoredRef = useRef(false);
+  const [draftRestored, setDraftRestored] = useState(false);
+  function draftSnapshot(){
+    return JSON.stringify({
+      selectedLeadId, address, lineItems, taxRate, notes, status, unitCount,
+      markupOpen, markupType, markupValue, discountOpen, discountType, discountValue,
+      depositOpen, depositType, depositValue, scheduleOpen, paymentSchedule,
+    });
+  }
+  function applyDraft(d){
+    if(d.selectedLeadId!==undefined) setSelectedLeadId(d.selectedLeadId);
+    if(d.address!==undefined) setAddress(d.address);
+    if(Array.isArray(d.lineItems) && d.lineItems.length) setLineItems(d.lineItems);
+    if(d.taxRate!==undefined) setTaxRate(d.taxRate);
+    if(d.notes!==undefined) setNotes(d.notes);
+    if(d.status!==undefined) setStatus(d.status);
+    if(d.unitCount!==undefined) setUnitCount(d.unitCount);
+    if(d.markupOpen!==undefined){ setMarkupOpen(d.markupOpen); setMarkupType(d.markupType); setMarkupValue(d.markupValue); }
+    if(d.discountOpen!==undefined){ setDiscountOpen(d.discountOpen); setDiscountType(d.discountType); setDiscountValue(d.discountValue); }
+    if(d.depositOpen!==undefined){ setDepositOpen(d.depositOpen); setDepositType(d.depositType); setDepositValue(d.depositValue); }
+    if(d.scheduleOpen!==undefined){ setScheduleOpen(d.scheduleOpen); }
+    if(Array.isArray(d.paymentSchedule)) setPaymentSchedule(d.paymentSchedule);
+  }
+  // Once the saved version has finished loading, remember it as the baseline
+  // and bring back any newer unsaved draft.
+  useEffect(()=>{
+    if(restoredRef.current || loading || !companyId) return;
+    restoredRef.current = true;
+    baselineRef.current = draftSnapshot();
+    try{
+      const raw = localStorage.getItem(draftKey);
+      if(raw){
+        const d = JSON.parse(raw);
+        if(d?.data && JSON.stringify(d.data)!==baselineRef.current && !existingInvoiceId){
+          applyDraft(JSON.parse(JSON.stringify(d.data)));
+          setDraftRestored(true);
+          setTimeout(()=>{ if(d.scrollY>0) window.scrollTo(0, d.scrollY); }, 250);
+        }
+      }
+    }catch(e){}
+  });
+  // Keep the draft up to date while editing (and drop it if you undo back to the saved version).
+  useEffect(()=>{
+    if(!restoredRef.current) return;
+    const t = setTimeout(()=>{
+      try{
+        const snap = draftSnapshot();
+        if(snap===baselineRef.current) localStorage.removeItem(draftKey);
+        else localStorage.setItem(draftKey, JSON.stringify({ data:JSON.parse(snap), scrollY:window.scrollY||0, at:Date.now() }));
+      }catch(e){}
+    }, 400);
+    return ()=>clearTimeout(t);
+  });
+  // Remember where you were scrolled to.
+  useEffect(()=>{
+    function onScroll(){
+      if(!restoredRef.current) return;
+      try{
+        const raw = localStorage.getItem(draftKey);
+        if(raw){ const d=JSON.parse(raw); d.scrollY=window.scrollY||0; localStorage.setItem(draftKey, JSON.stringify(d)); }
+      }catch(e){}
+    }
+    window.addEventListener("scroll", onScroll, { passive:true });
+    return ()=>window.removeEventListener("scroll", onScroll);
+  },[draftKey]);
+
   useEffect(()=>{ load(); },[]);
 
   async function load() {
@@ -521,6 +593,9 @@ export default function HersEstimate() {
         navigate(`/hers/${data.id}`, { replace:true });
       }
       hersEstLog("✅ Save completed successfully");
+      // Saved: the local draft is no longer needed.
+      try{ localStorage.removeItem(draftKey); baselineRef.current = draftSnapshot(); }catch(e){}
+      setDraftRestored(false);
       setSaved(true);
       setTimeout(()=>setSaved(false),2500);
     } catch(err){
@@ -648,6 +723,14 @@ export default function HersEstimate() {
             background:"#059669",color:"#fff",padding:"8px 16px",borderRadius:20,fontSize:12,fontWeight:700,
             boxShadow:"0 4px 16px rgba(0,0,0,.15)"}}>
           ✅ Saved!
+        </div>
+      )}
+
+      {draftRestored && (
+        <div style={{background:"#fffbeb",borderBottom:"1px solid #fde68a",color:"#92400e",
+            padding:"6px 16px",fontSize:12,fontWeight:600,display:"flex",justifyContent:"space-between",gap:8}}>
+          <span>↩️ Your unsaved changes were restored. Press Save to keep them.</span>
+          <button onClick={()=>setDraftRestored(false)} style={{border:"none",background:"none",cursor:"pointer",color:"#92400e",fontWeight:700}}>✕</button>
         </div>
       )}
 
