@@ -1708,6 +1708,13 @@ export default function HersFieldMeasurements() {
   }
 
   // ── Push to insulation ──
+  // The material lines of an area: one per combo layer, or just the one.
+  function insLines(a){
+    const ml = (a.mat_lines||[]).filter(l=>l && (l.material||l.thickness_in||l.r_value));
+    if(ml.length) return ml.map(l=>({material:l.material==="__combo__"?"":(l.material||""),thickness_in:l.thickness_in||"",r_value:l.r_value||""}));
+    return [{material:a.material==="__combo__"?"":(a.material||""),thickness_in:a.thickness_in||"",r_value:a.r_value||""}];
+  }
+
   async function pushToInsulation(){
     if(!invoice?.customer_id) return;
     if(pushLockRef.current) return; // already pushing - block a second overlapping call synchronously
@@ -1734,9 +1741,10 @@ export default function HersFieldMeasurements() {
           if(!combined[floorName]) combined[floorName]=[];
           floorAreas.filter(a=>a.area_type&&a.sqft>0).forEach(a=>{
             const pieces = (a.measurements||[]).map(m=>({h:m.h,l:m.l,q:m.q||1,sqft:m.sqft}));
-            const existing = combined[floorName].find(x=>x.area_type===a.area_type && x.material===(a.material||"") && x.thickness_in===(a.thickness_in||"") && x.r_value===(a.r_value||""));
+            const lineKey = JSON.stringify(insLines(a).map(l=>[l.material,l.thickness_in,l.r_value]));
+            const existing = combined[floorName].find(x=>x.area_type===a.area_type && x._lineKey===lineKey);
             if(existing){ existing.sqft += Number(a.sqft); existing.measurements.push(...pieces); }
-            else { combined[floorName].push({ area_type:a.area_type, sqft:Number(a.sqft), material:a.material||"", thickness_in:a.thickness_in||"", r_value:a.r_value||"", measurements:pieces }); }
+            else { combined[floorName].push({ ...a, sqft:Number(a.sqft), measurements:pieces, _lineKey:lineKey }); }
           });
         });
       });
@@ -1800,7 +1808,8 @@ export default function HersFieldMeasurements() {
       // Get existing areas to avoid duplicates
       const { data:existing } = await supabase.from("areas").select("id,area_type,floor_id,order_index").eq("project_id",proj.id);
       const existingMap = {};
-      (existing||[]).forEach(a=>{ const k=`${a.area_type}__${a.floor_id}`; if(!existingMap[k]) existingMap[k]=a; });
+      (existing||[]).filter(a=>(Number(a.order_index)||0)%10===0).sort((x,y)=>(Number(x.order_index)||0)-(Number(y.order_index)||0))
+        .forEach(a=>{ const k=`${a.area_type}__${a.floor_id}`; if(!existingMap[k]) existingMap[k]=a; });
       // New rows go after everything already in the estimate (the insulation
       // screen reads rows at multiples of 10 as the main area rows).
       let nextOrder = ((existing||[]).reduce((m,a)=>Math.max(m,Number(a.order_index)||0),-10)+10);
@@ -1829,33 +1838,54 @@ export default function HersFieldMeasurements() {
 
         for(const area of floorAreas.filter(a=>a.area_type&&a.sqft>0)){
           const key = `${area.area_type}__${floorId}`;
-          const payload = {
-            sqft: Math.round(area.sqft*100)/100,
-            material: area.material||"",
-            thickness_in: area.thickness_in||"",
-            r_value: area.r_value||"",
-          };
+          const lines = insLines(area);
           const pieces = (area.measurements||[]).map(m=>({h:m.h,l:m.l,q:m.q||1,sqft:m.sqft}));
+          // The first row carries everything about the area (options, deduct,
+          // paint, note, phase, optional); extra combo layers are extra rows
+          // at order_index +1, +2... exactly as the insulation estimate saves them.
+          const rowFor = (ln, first) => ({
+            project_id: proj.id,
+            floor_id: floorId,
+            company_id: invoice.company_id,
+            area_type: area.area_type,
+            sqft: Math.round(area.sqft*100)/100,
+            material: ln.material,
+            thickness_in: ln.thickness_in || null,
+            r_value: ln.r_value,
+            options: first ? (area.options||[]) : [],
+            paint_sqft: first ? Number(area.paint_sqft||0) : 0,
+            deduct_sqft: first ? Number(area.deduct_sqft||0) : 0,
+            phase: first ? (area.phase||null) : null,
+            is_optional: first ? (area.is_optional||false) : false,
+            optional_note: first ? (area.optional_note||"") : "",
+            note: first ? (area.note||"") : "",
+          });
+
+          let primaryId, baseOrder;
           if(existingMap[key] && !usedKeys.has(key)){
             usedKeys.add(key);
-            await supabase.from("areas").update(payload).eq("id",existingMap[key].id);
-            await writeSegments(existingMap[key].id, pieces);
+            primaryId = existingMap[key].id;
+            baseOrder = Number(existingMap[key].order_index)||0;
+            const { project_id, floor_id, company_id, ...upd } = rowFor(lines[0], true);
+            const { error:uErr } = await supabase.from("areas").update(upd).eq("id",primaryId);
+            if(uErr) throw uErr;
+            // clear the old combo layers of this area before writing the new ones
+            await supabase.from("areas").delete().eq("project_id",proj.id).eq("floor_id",floorId).gt("order_index",baseOrder).lt("order_index",baseOrder+10);
             updated++;
           } else {
             usedKeys.add(key);
-            const { data:newArea, error:insErr } = await supabase.from("areas").insert([{
-              project_id: proj.id,
-              floor_id: floorId,
-              company_id: invoice.company_id,
-              area_type: area.area_type,
-              order_index: nextOrder,
-              ...payload,
-            }]).select().single();
+            baseOrder = nextOrder;
+            const { data:newArea, error:insErr } = await supabase.from("areas").insert([{ ...rowFor(lines[0], true), order_index: baseOrder }]).select().single();
             if(insErr) throw insErr;
+            primaryId = newArea?.id;
             nextOrder += 10;
-            await writeSegments(newArea?.id, pieces);
             created++;
           }
+          for(let li=1; li<lines.length && li<10; li++){
+            const { error:cErr } = await supabase.from("areas").insert([{ ...rowFor(lines[li], false), order_index: baseOrder+li }]);
+            if(cErr) throw cErr;
+          }
+          await writeSegments(primaryId, pieces);
         }
       }
 
