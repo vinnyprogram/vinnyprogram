@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { compareFloors } from "../lib/floorSort";
+import useScrollMemory from "../lib/useScrollMemory";
 
 function parseArr(v){ return Array.isArray(v)?v:(typeof v==="string"?JSON.parse(v||"[]"):[]); }
 function fmt(n,d=1){ return Number(n||0).toLocaleString("en-US",{minimumFractionDigits:d,maximumFractionDigits:d}); }
@@ -314,6 +315,9 @@ export default function EkotropeReport() {
     }
     load();
   },[invoiceId, estimateId, mode, requestedUnit]);
+
+  // Come back to the same spot after leaving and returning
+  useScrollMemory("scroll_ekotrope_"+(estimateId||invoiceId||"")+"_"+(requestedUnit||""), !loading);
 
   if(loading) return (
     <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"system-ui",color:"#64748b"}}>
