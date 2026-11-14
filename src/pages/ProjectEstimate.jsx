@@ -13,6 +13,7 @@ import { getMyCompany } from "../lib/myCompany";
 import { loadFormDraft, saveFormDraft, clearFormDraft } from "../lib/formDraft";
 import { isFreshLoad } from "../utils/freshLoad";
 import { isOpenBPStatus } from "../lib/bpStatus";
+import { mergeBPAreas } from "../lib/bpPush";
 
 const C = {
   bg: "#f4f5f7", white: "#fff", ink: "#0f172a",
@@ -2987,19 +2988,6 @@ export default function ProjectEstimate() {
     finally{if(!silent)setSaving(false);}
   }
 
-  // Merge instead of replace: whatever was added directly in Board & Plaster
-  // stays. Areas from an earlier push (tagged source:"insulation") are
-  // refreshed with the new ones. Older pushes made before the tag existed are
-  // matched by floor + type + size so they are not added a second time.
-  function mergeBPAreas(existing, pushed){
-    const old = Array.isArray(existing) ? existing : [];
-    const kept = old.filter(a=>a && a.source!=="insulation");
-    const same = (x,y)=> x.floor===y.floor && x.area_type===y.area_type && Math.abs(Number(x.sqft||0)-Number(y.sqft||0))<0.01;
-    const hadTagged = old.some(a=>a && a.source==="insulation");
-    const fresh = hadTagged ? pushed : pushed.filter(p=>!kept.some(k=>same(k,p)));
-    return [...kept, ...fresh];
-  }
-
   async function pushToBoardPlaster(){
     if(!selectedLeadId) return;
     // Real synchronous lock (unlike React state, which only disables the
@@ -3060,7 +3048,7 @@ export default function ProjectEstimate() {
 
       if(target){
         const { error } = await supabase.from("board_plaster_estimates")
-          .update({ areas: mergeBPAreas(target.areas, pushAreas), address: projectAddress||target.address, updated_at:new Date().toISOString() })
+          .update({ areas: mergeBPAreas(target.areas, pushAreas, "insulation"), address: projectAddress||target.address, updated_at:new Date().toISOString() })
           .eq("id", target.id);
         if(error) throw error;
       } else {

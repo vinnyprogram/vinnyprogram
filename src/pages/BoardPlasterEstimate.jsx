@@ -514,7 +514,7 @@ export default function BoardPlasterEstimate(){
           ? await supabase.from("segments").select("*").in("area_id",keptIds)
           : { data: [] };
         const segsByArea = {};
-        (segRows||[]).forEach(s=>{ (segsByArea[s.area_id] ||= []).push({h:s.height, l:s.length, q:1, sqft:s.sqft}); });
+        (segRows||[]).forEach(s=>{ (segsByArea[s.area_id] ||= []).push({h:s.height, l:s.length, q:s.qty||1, sqft:s.sqft}); });
 
         imported = keptAreas.map(a=>({
             id: uid(), floor: floorMap[a.floor_id]||"Other", area_type: a.area_type, sqft: a.sqft,
@@ -539,7 +539,7 @@ export default function BoardPlasterEstimate(){
           supabase.from("hers_field_measurements").select("areas").eq("hers_estimate_id",cand.id).eq("unit_label",ul).maybeSingle()
         ));
 
-        const totals = {}; // key: floor||area_type -> summed sqft
+        const totals = {}; // key: floor||area_type -> { sqft, measurements }
         fmRows.forEach(({data:fm})=>{
           const savedAreas = Array.isArray(fm?.areas) ? fm.areas : (typeof fm?.areas==="string" ? JSON.parse(fm.areas||"[]") : []);
           let flatAreas = [];
@@ -552,15 +552,18 @@ export default function BoardPlasterEstimate(){
             && isFinishableForImport(a.area_type, a.floor))
             .forEach(a=>{
               const key = `${a.floor||"Other"}||${a.area_type}`;
-              totals[key] = (totals[key]||0) + Number(a.sqft);
+              if(!totals[key]) totals[key] = { sqft:0, measurements:[] };
+              totals[key].sqft += Number(a.sqft);
+              // keep every H x L piece (and its quantity) - not just the total
+              totals[key].measurements.push(...(a.measurements||[]).map(m=>({h:m.h,l:m.l,q:m.q||1,sqft:m.sqft})));
             });
         });
 
-        imported = Object.entries(totals).map(([key,sqft])=>{
+        imported = Object.entries(totals).map(([key,val])=>{
           const [floor,area_type] = key.split("||");
           return {
-            id: uid(), floor, area_type, sqft: Math.round(sqft*100)/100,
-            thickness: defaultThickness(area_type), thicknessOther: "", layers: 1, measurements: [], mh:"", ml:"", mq:"1", deduct:"", note:"", finish: FINISH_OPTIONS[0], _from_import:true,
+            id: uid(), floor, area_type, sqft: Math.round(val.sqft*100)/100,
+            thickness: defaultThickness(area_type), thicknessOther: "", layers: 1, measurements: val.measurements, mh:"", ml:"", mq:"1", deduct:"", note:"", finish: FINISH_OPTIONS[0], _from_import:true,
           };
         });
         sourceLabel = cand.address||"HERS estimate";

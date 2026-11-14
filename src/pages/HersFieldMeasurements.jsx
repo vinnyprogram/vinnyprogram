@@ -1,4 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import { isOpenBPStatus } from "../lib/bpStatus";
+import { mergeBPAreas } from "../lib/bpPush";
 import { createPortal } from "react-dom";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
@@ -237,166 +239,233 @@ function FloorsEditor({ floors, onChange, onCommit, unitLabel }) {
   );
 }
 
-// ── Single area row — mirrors AreaRow from insulation estimate, no pricing ──
-function AreaRow({ area, materials, onChange, onDelete, onCommit, areaTypes, thickOpts, rVals, floors, activeFloor, onCopy, onMove, onSaveCustomAreaType, onSaveCustomThickOpt, onSaveCustomRVal, onMaterialAdded }) {
-  const [calcOpen, setCalcOpen] = useState(false);
-  const [calcExpr, setCalcExpr] = useState("");
+// ── Area card: the same card the insulation estimate uses, without prices ──
+// (copied from the insulation estimate so the two stay the same: combo
+// materials, spacing, options, optional/phase, per-area note, paint, a
+// calculator that remembers what you typed). The only differences: no costs
+// or custom prices, and square feet keep two decimals because the rating
+// uses the exact number.
+const OC_OPTS = ['3"cc','7"oc','8"oc','12"oc','16"oc','24"oc','open cell'];
+const noArrow = { WebkitAppearance:"none", MozAppearance:"textfield" };
+const AC = { ...C, greenBg:"#f0fdf4", chip:"#f1f5f9" };
+const AI = {
+  height: 22, fontSize: 11, borderRadius: 4, border: `1px solid ${C.border}`,
+  background: C.white, padding: "0 5px", width: "100%",
+  boxSizing: "border-box", color: C.ink, outline: "none",
+  MozAppearance: "textfield",
+};
+function fmt0(n){ return Number(n || 0).toLocaleString("en-US", { maximumFractionDigits: 0 }); }
+// Display only: "R-30" shows as "R30"; the stored value keeps its dash.
+function formatRValue(v){ return (v || "").replace(/-/g, ""); }
+
+function AreaRow({ area, materials, onChange, onDelete, onCommit, areaTypes:baseAreaTypes, thickOpts:dbThickOpts, rVals:dbRVals, floors, activeFloor, onCopy, onMove, onSaveCustomAreaType, onSaveCustomThickOpt, onSaveCustomRVal, onMaterialAdded }) {
+  // HERS has no pricing: no catalog price lookups, no custom per-sqft price.
+  const matTypesLive = null;
+  const saveOptionsOnly = () => onCommit?.();
+  const effectiveThickOpts = (dbThickOpts&&dbThickOpts.length>0) ? dbThickOpts : THICK_OPTS;
+  const effectiveRVals     = (dbRVals&&dbRVals.length>0) ? dbRVals : R_VALS;
+  const [expanded, setExpanded] = useState(!area._collapsed);
   const [copyMenuOpen, setCopyMenuOpen] = useState(false);
   const [copyTargets, setCopyTargets] = useState([]);
-  const [overrideOpen, setOverrideOpen] = useState(!!area.price_override);
-  const [movingTo, setMovingTo] = useState(false);
-  const meas = area.measurements||[];
-  const sqft = area.sqft||0;
-  const liveH = parseFloat(area.mh)||0;
-  const liveL = parseFloat(area.ml)||0;
-  const liveQ = parseFloat(area.mq)||1;
-  const preview = liveH&&liveL ? Math.round(liveH*liveL*liveQ*100)/100 : 0;
 
-  // expanded lives on the area object itself, not local component state,
-  // so it survives the component remounting when the area moves between
-  // the "in progress" and "completed" filtered lists in the parent.
-  const expanded = area._expanded !== false; // default true (open) unless explicitly closed
-  function setExpanded(v){ onChange("_expanded", v); }
+  // Calculator state is restored/persisted per-area so an in-progress
+  // expression survives navigating to another page (or the phone
+  // closing/reopening the browser) before you hit "=" and apply it.
+  const calcStorageKey = `calc_state_${area.id ?? area.temp_id}`;
+  const [calcOpen, setCalcOpen] = useState(()=>{
+    try{ return JSON.parse(localStorage.getItem(calcStorageKey)||"null")?.open || false; }catch(e){ return false; }
+  });
+  const [calcExpr, setCalcExpr] = useState(()=>{
+    try{ return JSON.parse(localStorage.getItem(calcStorageKey)||"null")?.expr || ""; }catch(e){ return ""; }
+  });
+  const [calcError, setCalcError] = useState(false);
 
-  // mat_lines: [{id, material, thickness_in, r_value}] — supports combo
-  const matLines = (area.mat_lines&&area.mat_lines.length>0)
-    ? area.mat_lines
-    : [{id:1, material:area.material||"", thickness_in:area.thickness_in||"", r_value:area.r_value||""}];
-  const isComboMode = matLines.length>1 || matLines[0]?.material==="__combo__";
-
-  function updateMatLine(idx, field, val){
-    const lines = matLines.map((l,i)=>i===idx?{...l,[field]:val}:l);
-    onChange("mat_lines", lines);
-    if(idx===0&&!isComboMode) onChange(field, val);
-  }
-  function addMatLine(){
-    const last = matLines[matLines.length-1];
-    onChange("mat_lines",[...matLines,{id:Date.now(),material:last.material||"",thickness_in:last.thickness_in||"",r_value:last.r_value||""}]);
-  }
-  function removeMatLine(idx){
-    if(matLines.length<=2) return;
-    const lines = matLines.filter((_,i)=>i!==idx);
-    onChange("mat_lines",lines);
-  }
-
-  // Saves a typed-in custom material into the SAME shared materials catalog
-  // Insulation uses - so it's remembered for next time and shows up as a
-  // real option in both trades, instead of only existing as free text on
-  // this one area.
-  async function saveCustomMaterial(val, idx){
-    if(!val) return;
-    if(idx===0 && !isComboMode) onChange("material",val);
-    updateMatLine(idx, "material", val);
+  useEffect(()=>{
     try{
+      if(calcOpen || calcExpr) localStorage.setItem(calcStorageKey, JSON.stringify({open:calcOpen, expr:calcExpr}));
+      else localStorage.removeItem(calcStorageKey);
+    }catch(e){}
+  },[calcOpen, calcExpr]);
+  const [movingTo, setMovingTo] = useState(false);
+
+  useEffect(()=>{
+    if(area._collapsed) setExpanded(false);
+  },[area._collapsed]);
+
+  const areaOptions = area.options||[];
+
+  const XS = {
+    height:30, fontSize:12, borderRadius:5, border:`1px solid ${AC.border}`,
+    background:AC.white, padding:"0 4px", boxSizing:"border-box", color:AC.ink,
+    minWidth:0, width:"100%",
+  };
+  const GS = {
+    height:28, fontSize:12, border:"none", background:"transparent",
+    padding:"0 2px", boxSizing:"border-box", color:AC.ink,
+    minWidth:0, width:"100%", fontWeight:600,
+    WebkitAppearance:"none", MozAppearance:"none", appearance:"none",
+    backgroundImage:`url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%2364748b'/%3E%3C/svg%3E")`,
+    backgroundRepeat:"no-repeat", backgroundPosition:"right 2px center", paddingRight:14, cursor:"pointer",
+  };
+
+  const matLines = (area.mat_lines && area.mat_lines.length > 0)
+    ? area.mat_lines
+    : [{ id:1, material:area.material||"", thickness_in:area.thickness_in||"", r_value:area.r_value||"", oc:area.oc||"" }];
+  
+  const computedSqft = (()=>{
+  const raw=(area.measurements||[]).reduce((s,m)=>s+(m.sqft||0),0);
+  const d=parseFloat(area.deduct_sqft)||0;
+  return Math.max(0,Math.round((raw-d)*100)/100);
+})();
+
+  // Intumescent paint only applies over SPRAY FOAM (closed/open cell) -
+  // if a material change leaves an area with no foam line left at all,
+  // any paint_sqft that was set while it WAS foam becomes stale: it stops
+  // showing in this area's own collapsed summary (which already checks
+  // for foam), but it was still sitting in the saved data, silently
+  // charging for paint in the cost total and appearing on the printed
+  // Field Report, on an area with no foam and nothing visibly set in the
+  // editor. Clearing it the moment the material changes away from foam
+  // stops that stale value from ever being created again.
+  function hasFoamMaterial(lines){
+    return lines.some(ml=>{
+      const m=(ml.material||"").toLowerCase();
+      return m.includes("closed")||m.includes("open cell")||m.includes("open-cell");
+    });
+  }
+  function setMatLines(lines){
+    onChange("mat_lines", lines);
+    if(!hasFoamMaterial(lines) && Number(area.paint_sqft)>0) onChange("paint_sqft","");
+  }
+
+  function updateMatLine(idx, field, value) {
+    const lines = matLines.map((l,i)=> i===idx ? {...l,[field]:value} : l);
+    setMatLines(lines);
+    if(idx===0 && !isComboMode) onChange(field, value);
+  }
+
+  function addMatLine() {
+    const last = matLines[matLines.length-1];
+    const lines = [...matLines, { id:Date.now(), material:last.material||"", thickness_in:last.thickness_in||"", r_value:last.r_value||"", oc:"" }];
+    setMatLines(lines);
+  }
+
+  function removeMatLine(idx) {
+    if(matLines.length===1) return;
+    const lines = matLines.filter((_,i)=>i!==idx);
+    setMatLines(lines);
+    onChange("material", lines[0].material||"");
+    onChange("thickness_in", lines[0].thickness_in||"");
+    onChange("r_value", lines[0].r_value||"");
+    onChange("oc", lines[0].oc||"");
+  }
+
+
+  const firstMat = matLines[0].material;
+  const isComplete = !!(area.area_type && area.sqft > 0);
+
+  function commitMeasurement() {
+    const h = parseFloat(area.mh) || 0;
+    const l = parseFloat(area.ml) || 0;
+    const q = parseFloat(area.mq) || 1;
+    if (!h || !l) return;
+    const sqft = Math.round(h * l * q * 100) / 100;
+    const meas = [...(area.measurements||[]), { h, l, q, sqft }];
+    const d = parseFloat(area.deduct_sqft) || 0;
+    const total = Math.max(0, Math.round((meas.reduce((s,m)=>s+m.sqft,0) - d)*100)/100);
+    onChange("measurements", meas);
+    onChange("sqft", total);
+    onChange("mh", ""); onChange("ml", ""); onChange("mq", "1");
+    onCommit?.();
+  }
+
+ function calcPress(val) {
+  if(val==="C") { setCalcExpr(""); setCalcError(false); return; }
+  if(val==="⌫") { setCalcExpr(p=>p.slice(0,-1)); setCalcError(false); return; }
+  if(val==="="){
+    try {
+      const safe = calcExpr.replace(/[^0-9+\-*/.()]/g,"");
+      const result = Function(`"use strict";return (${safe||0})`)();
+      setCalcExpr(String(Math.round(result*100)/100));
+      setCalcError(false);
+    } catch(e){ setCalcError(true); } // keep the typed expression as-is so nothing is lost - just flag it
+    return;
+  }
+  setCalcExpr(p=>p+val);
+  setCalcError(false);
+}
+function useCalcResult(field) {
+  const n = parseFloat(calcExpr);
+  if(!isNaN(n)) onChange(field, String(n));
+  setCalcOpen(false);
+  setCalcExpr("");
+}
+
+  function delMeas(i) {
+    const meas = (area.measurements||[]).filter((_,j)=>j!==i);
+    const d = parseFloat(area.deduct_sqft)||0;
+    onChange("measurements", meas);
+    onChange("sqft", Math.max(0, Math.round((meas.reduce((s,m)=>s+m.sqft,0)-d)*100)/100));
+    onCommit?.();
+  }
+
+  async function saveCustomMaterial(val, idx=0) {
+    if(!val) return;
+    updateMatLine(idx, "material", val);
+    try {
       const {data:{user}} = await supabase.auth.getUser();
       if(!user) return;
       const {data:cd} = await getMyCompany(user.id);
       if(!cd) return;
       const {data:existing} = await supabase.from("materials").select("id").eq("company_id",cd.id).eq("name",val).maybeSingle();
       if(!existing){
-        await supabase.from("materials").insert([{company_id:cd.id,name:val,unit:"board_ft",price_per_unit:0}]);
-      }
-      onMaterialAdded?.();
-    }catch(e){ console.error("saveCustomMaterial error:",e); }
+        const {data:newMat} = await supabase.from("materials").insert([{company_id:cd.id,name:val,unit:"board_ft",price_per_unit:0}]).select().single();
+        onMaterialAdded?.(newMat);
+      } else { onMaterialAdded?.(); }
+    } catch(e){ console.error("saveCustomMaterial error:",e); }
   }
 
-  const totalR = matLines.reduce((s,ml)=>{
-    const r = parseInt((ml.r_value||"").replace(/\D/g,""))||0;
-    return s+r;
-  },0);
+  const liveH = parseFloat(area.mh)||0;
+  const liveL = parseFloat(area.ml)||0;
+  const liveQ = parseFloat(area.mq)||1;
+  const livePreview = (liveH>0&&liveL>0) ? Math.round(liveH*liveL*liveQ*100)/100 : 0;
+  const isComboMode = matLines.length > 1 || matLines[0].material === "__combo__";
 
-  const GS = {
-    height:32, fontSize:13, borderRadius:6, border:`1px solid ${C.border}`,
-    background:C.white, padding:"0 6px", boxSizing:"border-box",
-    color:C.ink, outline:"none", cursor:"pointer",
-  };
-
-  function computeTotalSqft(measList){
-    const raw = measList.reduce((acc,m)=>acc+m.sqft,0);
-    const d = parseFloat(area.deduct_sqft)||0;
-    return Math.max(0, Math.round((raw-d)*100)/100);
-  }
-  function commit(){
-    if(!liveH||!liveL) return;
-    const s = Math.round(liveH*liveL*liveQ*100)/100;
-    const newMeas = [...meas,{h:liveH,l:liveL,q:liveQ,sqft:s}];
-    onChange("measurements", newMeas);
-    onChange("sqft", computeTotalSqft(newMeas));
-    onChange("mh",""); onChange("ml",""); onChange("mq","1");
-    if(onCommit) onCommit();
-  }
-  function delMeas(i){
-    const newMeas = meas.filter((_,j)=>j!==i);
-    onChange("measurements", newMeas);
-    onChange("sqft", computeTotalSqft(newMeas));
-  }
-  function updateDeduct(val){
-    onChange("deduct_sqft", val);
-    const d = parseFloat(val)||0;
-    const raw = meas.reduce((acc,m)=>acc+m.sqft,0);
-    onChange("sqft", Math.max(0, Math.round((raw-d)*100)/100));
-  }
-  function calcPress(val){
-    if(val==="C"){ setCalcExpr(""); return; }
-    if(val==="⌫"){ setCalcExpr(p=>p.slice(0,-1)); return; }
-    if(val==="="){
-      try {
-        const safe = calcExpr.replace(/[^0-9+\-*/.()]/g,"");
-        const result = Function(`"use strict";return (${safe||0})`)();
-        setCalcExpr(String(Math.round(result*100)/100));
-      } catch{ setCalcExpr("Err"); }
-      return;
-    }
-    setCalcExpr(p=>p+val);
-  }
-  function applyCalc(field){
-    const n = parseFloat(calcExpr);
-    if(!isNaN(n)) onChange(field, String(n));
-    setCalcOpen(false); setCalcExpr("");
-  }
-  const CALC_BTNS = ["7","8","9","⌫","4","5","6","C","1","2","3","+","0",".","×","-"];
-
-  const isComplete = !!(area.area_type && sqft>0);
-
-  const copyModal = copyMenuOpen && createPortal(
-    <div onClick={()=>setCopyMenuOpen(false)}
-      style={{position:"fixed",inset:0,zIndex:9999,background:"rgba(15,23,42,0.45)",
-        display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
-      <div onClick={e=>e.stopPropagation()}
-        style={{background:"#fff",borderRadius:12,padding:16,width:"100%",maxWidth:280,
-          maxHeight:"70vh",overflowY:"auto",boxShadow:"0 12px 32px rgba(0,0,0,.25)"}}>
-        <div style={{fontSize:13,fontWeight:800,color:C.ink,marginBottom:2}}>Copy "{area.area_type||"this area"}"</div>
-        <div style={{fontSize:11,color:C.muted,marginBottom:10}}>Same material, thickness &amp; R-value — just fill in measurements on the floors you pick.</div>
-        {(floors||[]).filter(f=>f!==activeFloor).map(f=>(
-          <label key={f} style={{display:"flex",alignItems:"center",gap:8,fontSize:13,color:C.ink,padding:"6px 2px",cursor:"pointer",borderBottom:`1px solid ${C.border}`}}>
-            <input type="checkbox" checked={copyTargets.includes(f)}
-              onChange={()=>setCopyTargets(t=>t.includes(f)?t.filter(x=>x!==f):[...t,f])} />
-            {f}
-          </label>
-        ))}
-        <div style={{display:"flex",gap:8,marginTop:12}}>
-          <button onClick={()=>setCopyMenuOpen(false)} style={{flex:1,border:`1px solid ${C.border}`,background:"#fff",color:C.muted,borderRadius:7,padding:"8px 0",fontSize:12,fontWeight:600,cursor:"pointer"}}>Cancel</button>
-          <button
-            disabled={copyTargets.length===0}
-            onClick={()=>{ onCopy?.(copyTargets); setCopyMenuOpen(false); setCopyTargets([]); }}
-            style={{flex:1,border:"none",background:copyTargets.length?"#2563eb":"#cbd5e1",color:"#fff",borderRadius:7,padding:"8px 0",fontSize:12,fontWeight:700,cursor:copyTargets.length?"pointer":"default"}}>
-            Copy to {copyTargets.length||""} floor{copyTargets.length===1?"":"s"}
-          </button>
-        </div>
-      </div>
-    </div>,
-    document.body
-  );
-
-  // Collapsed
-  if(isComplete && !expanded) return (
-    <div style={{background:"#f0fdf4",border:"1px solid #86efac",borderLeft:"3px solid #059669",
-        borderRadius:7,padding:"5px 10px",marginBottom:4}}>
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:2}}>
-        <span style={{fontSize:12,fontWeight:700,color:C.ink}}>{area.area_type}{area.customLabel?` — ${area.customLabel}`:""}</span>
-        <div style={{display:"flex",alignItems:"center",gap:8}}>
-          <span style={{fontSize:12,fontWeight:700,color:C.green}}>{fmt(sqft,0)} ft²</span>
-          {onCopy && floors && floors.length>1 && (
+  // ── COLLAPSED ──
+  if (isComplete && !expanded) return (
+  <div
+    style={{ background:area.is_optional?"#fffbeb":"#f8fffe", border:`1px solid ${area.is_optional?"#fde68a":"#bbf7d0"}`, borderLeft:`3px solid ${area.is_optional?"#f59e0b":"#86efac"}`, borderRadius:7, padding:"4px 8px", marginBottom:3, opacity:0.85 }}>
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:2, gap:6 }}>
+        {/* Phase toggle — always visible, no need to open the card */}
+        <button
+          onClick={e=>{
+            e.stopPropagation();
+            if(area.phase===1){
+              // Clear ALL phases from the entire job — customer changed mind
+              onChange("phase","__clear_all__");
+            } else {
+              // Set this as Phase 1 — rest auto-become Phase 2
+              onChange("phase",1);
+            }
+          }}
+          title={area.phase===1?"Tap to remove all phases (customer changed mind)":area.phase===2?"Tap to move 1st phase here":"Tap to mark as 1st phase"}
+          style={{
+            border:"none", borderRadius:4, padding:"2px 6px", fontSize:9, fontWeight:800,
+            cursor:"pointer", flexShrink:0, whiteSpace:"nowrap",
+            background: area.phase===1?"#3b82f6":area.phase===2?"#8b5cf6":"#e5e7eb",
+            color: area.phase?"#fff":"#94a3b8",
+          }}>
+          {area.phase===1?"🔵 Ph.1 ✕":area.phase===2?"🟣 Ph.2":"◯ Ph."}
+        </button>
+        <span onClick={()=>{ setExpanded(true); onChange("_collapsed",false); }}
+          style={{ fontSize:11, fontWeight:700, color:AC.ink, flex:1, cursor:"pointer" }}>
+          {area.is_optional&&<span style={{color:"#f59e0b",marginRight:4}}>⭐</span>}
+          {area.area_type||"—"}
+        </span>
+        <div onClick={()=>{ setExpanded(true); onChange("_collapsed",false); }}
+          style={{ display:"flex", alignItems:"center", gap:6, cursor:"pointer" }}>
+          <span style={{ fontSize:11, fontWeight:700, color:"#059669" }}>{fmt0(computedSqft)} ft²</span>
+          {onCopy && floors.length>1 && (
             <span
               onClick={e=>{ e.stopPropagation(); setCopyTargets([]); setCopyMenuOpen(true); }}
               title="Copy this area's material/spec to another floor"
@@ -404,415 +473,541 @@ function AreaRow({ area, materials, onChange, onDelete, onCommit, areaTypes, thi
               📋
             </span>
           )}
-          <button onClick={()=>setExpanded(true)} style={{border:"none",background:"none",color:C.green,cursor:"pointer",fontSize:14,padding:"0 2px"}}>✏️</button>
+          <span style={{ color:"#059669", fontSize:14, padding:"0 2px" }}>✏️</span>
         </div>
       </div>
-      <div style={{fontSize:10,color:C.muted}}>
-        {matLines.map((ml,i)=>[ml.material,ml.thickness_in,ml.r_value].filter(Boolean).join(" · ")||(i===0?"—":"")).join(" + ")}
-        {meas.length>0 && <span style={{marginLeft:6,color:C.faint}}>({meas.map(m=>`${m.h}×${m.l}${m.q>1?`×${m.q}`:""}`).join("  ")})</span>}
-        {totalR>0 && isComboMode && <span style={{marginLeft:8,color:"#059669",fontWeight:700}}>Total R-{totalR}</span>}
+      <div onClick={()=>{ setExpanded(true); onChange("_collapsed",false); }} style={{cursor:"pointer"}}>
+      {matLines.map((ml,i)=>(
+        <div key={i} style={{ fontSize:10, color:AC.muted, lineHeight:1.6 }}>
+          {[ml.material, ml.thickness_in, formatRValue(ml.r_value), ml.oc].filter(Boolean).join(" · ")}
+          {i===0 && (
+            <span style={{ marginLeft:6, color:AC.faint }}>
+              {fmt0(computedSqft)} ft²
+              {(area.measurements||[]).length>0 && <span style={{ marginLeft:4 }}>({area.measurements.map(m=>`${m.h}×${m.l}${m.q>1?`×${m.q}`:""}`).join("  ")})</span>}
+              {area.deduct_sqft>0 && <span style={{color:"#ef4444"}}> −{area.deduct_sqft}</span>}
+              {Number(area.paint_sqft)>0 && (()=>{
+                const mls=(area.mat_lines&&area.mat_lines.length>0)?area.mat_lines:[{material:area.material||""}];
+                const hasFoam=mls.some(ml=>{const m=(ml.material||"").toLowerCase();return m.includes("closed")||m.includes("open cell")||m.includes("open-cell");});
+                return hasFoam?<span style={{color:"#c2410c",marginLeft:4}}>🎨 {area.paint_sqft} ft²</span>:null;
+              })()}
+            </span>
+          )}
+        </div>
+      ))}
+      {areaOptions.map((opt,i)=>{
+        const optLines=(opt.mat_lines||[]).length>0?opt.mat_lines:[{material:opt.material||"",thickness_in:opt.thickness_in||area.thickness_in||"",r_value:opt.r_value||"",oc:opt.oc||""}];
+        return (
+          <div key={i} style={{fontSize:10,color:"#f97316",marginTop:2}}>
+            ⚡ Option {i+1}: {optLines.map(ol=>[ol.material,ol.thickness_in,formatRValue(ol.r_value),ol.oc].filter(Boolean).join(" ")).join(" + ")}
+          </div>
+        );
+      })}
       </div>
-      {copyModal}
+      {copyMenuOpen && createPortal(
+        <div
+          onClick={()=>setCopyMenuOpen(false)}
+          style={{position:"fixed",inset:0,zIndex:9999,background:"rgba(15,23,42,0.45)",
+            display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+          <div onClick={e=>e.stopPropagation()}
+            style={{background:"#fff",borderRadius:12,padding:16,width:"100%",maxWidth:280,
+              maxHeight:"70vh",overflowY:"auto",boxShadow:"0 12px 32px rgba(0,0,0,.25)"}}>
+            <div style={{fontSize:13,fontWeight:800,color:AC.ink,marginBottom:2}}>Copy "{area.area_type}"</div>
+            <div style={{fontSize:11,color:AC.muted,marginBottom:10}}>Same material, thickness &amp; R-value — just fill in measurements on the floors you pick.</div>
+            {floors.filter(f=>f!==activeFloor).map(f=>(
+              <label key={f} style={{display:"flex",alignItems:"center",gap:8,fontSize:13,color:AC.ink,padding:"6px 2px",cursor:"pointer",borderBottom:`1px solid ${AC.border}`}}>
+                <input type="checkbox" checked={copyTargets.includes(f)}
+                  onChange={()=>setCopyTargets(t=>t.includes(f)?t.filter(x=>x!==f):[...t,f])} />
+                {f}
+              </label>
+            ))}
+            <div style={{display:"flex",gap:8,marginTop:12}}>
+              <button onClick={()=>setCopyMenuOpen(false)} style={{flex:1,border:`1px solid ${AC.border}`,background:"#fff",color:AC.muted,borderRadius:7,padding:"8px 0",fontSize:12,fontWeight:600,cursor:"pointer"}}>Cancel</button>
+              <button
+                disabled={copyTargets.length===0}
+                onClick={()=>{ onCopy(copyTargets); setCopyMenuOpen(false); setCopyTargets([]); }}
+                style={{flex:1,border:"none",background:copyTargets.length?"#2563eb":"#cbd5e1",color:"#fff",borderRadius:7,padding:"8px 0",fontSize:12,fontWeight:700,cursor:copyTargets.length?"pointer":"default"}}>
+                Copy to {copyTargets.length||""} floor{copyTargets.length===1?"":"s"}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
     </div>
   );
 
-  // Expanded
+  // ── EXPANDED ──
   return (
-    <div style={{background:"#f0fdf4",border:"1px solid #86efac",borderLeft:"3px solid #059669",
-        borderRadius:8,padding:"8px 10px",marginBottom:6}}>
+    <div style={{ background:"#fff",
+        border:"2px solid #059669",
+        borderRadius:9, padding:"6px 8px", marginBottom:4,
+        boxShadow:"0 4px 16px rgba(5,150,105,0.18), 0 1px 4px rgba(0,0,0,0.08)",
+        position:"relative", zIndex:2 }}>
 
-      {/* Done / Delete row */}
-      {isComplete && (
-        <div style={{background:"#059669",margin:"-8px -10px 8px -10px",borderRadius:"7px 7px 0 0"}}>
-          <div style={{display:"flex",gap:6,padding:"8px 10px 4px"}}>
-            <button onClick={()=>setExpanded(false)}
-              style={{border:"none",background:"rgba(255,255,255,0.25)",color:"#fff",padding:"7px 18px",borderRadius:6,cursor:"pointer",fontSize:13,fontWeight:700,flex:1}}>✓ Done</button>
-            <button onClick={onDelete}
-              style={{border:"none",background:"rgba(255,0,0,0.35)",color:"#fff",padding:"7px 14px",borderRadius:6,cursor:"pointer",fontSize:13,fontWeight:700}}>🗑 Delete</button>
-          </div>
-          <div style={{display:"flex",alignItems:"center",padding:"0 10px 8px",gap:5,flexWrap:"wrap"}}>
-            <button onClick={()=>onChange("is_optional",!area.is_optional)}
-              title="Mark as optional item"
-              style={{border:"none",borderRadius:6,cursor:"pointer",fontSize:11,fontWeight:700,padding:"5px 10px",flex:1,
-                background:area.is_optional?"#fbbf24":"rgba(255,255,255,0.2)",
-                color:area.is_optional?"#78350f":"#fff"}}>
-              {area.is_optional?"⭐ Optional":"☆ Optional"}
-            </button>
-            <button onClick={()=>{ if(overrideOpen){ onChange("price_override",""); } setOverrideOpen(p=>!p); }}
-              title="Override price per sqft for this area"
-              style={{border:"none",borderRadius:6,cursor:"pointer",fontSize:11,fontWeight:700,padding:"5px 10px",flex:1,
-                background:overrideOpen?"#7c3aed":"rgba(255,255,255,0.2)",color:"#fff"}}>
-              💲 {overrideOpen?"✕ Price":"Price"}
-            </button>
-            <button
-              onClick={()=>onChange("phase", area.phase===1 ? "__clear_all__" : area.phase===2 ? null : 1)}
-              title={area.phase===1?"Tap to remove all phases (customer changed mind)":"Set phase (1st before inspection, 2nd after)"}
-              style={{border:"none",borderRadius:6,cursor:"pointer",fontSize:11,fontWeight:800,padding:"5px 10px",flex:1,
-                background:area.phase===1?"#3b82f6":area.phase===2?"#8b5cf6":"rgba(255,255,255,0.2)",
-                color:"#fff"}}>
-              {area.phase===1?"🔵 Ph.1":area.phase===2?"🟣 Ph.2":"◯ Phase"}
-            </button>
-            {onMove && floors && floors.length>1 && (
-              movingTo
-                ? <select autoFocus
-                    style={{height:30,borderRadius:6,border:"none",background:"#1d4ed8",color:"#fff",padding:"0 6px",fontSize:11,fontWeight:700,cursor:"pointer",flex:1}}
-                    onChange={e=>{ if(e.target.value){ onMove(e.target.value); setMovingTo(false); } }}
-                    onBlur={()=>setMovingTo(false)}>
-                    <option value="">Move to…</option>
-                    {floors.filter(f=>f!==activeFloor).map(f=>(
-                      <option key={f} value={f}>{f}</option>
-                    ))}
-                  </select>
-                : <button onClick={()=>setMovingTo(true)}
-                    title="Move this area to another floor"
-                    style={{border:"none",background:"rgba(255,255,255,0.2)",color:"#fff",
-                      padding:"5px 10px",borderRadius:6,cursor:"pointer",fontSize:11,fontWeight:700,flex:1}}>
-                    ↗ Move
-                  </button>
-            )}
-          </div>
-        </div>
-      )}
-
-      {overrideOpen && (
-        <div style={{background:"#f5f3ff",border:"1px solid #ddd6fe",borderRadius:7,padding:"8px 10px",marginBottom:6}}>
-          <div style={{fontSize:10,color:"#6d28d9",fontWeight:700,textTransform:"uppercase",marginBottom:4}}>
-            Custom price for this job
-          </div>
-          <div style={{display:"flex",alignItems:"center",gap:6}}>
-            <span style={{fontSize:12,color:"#6d28d9"}}>$</span>
-            <input type="number" placeholder="0.00" value={area.price_override||""}
-              onChange={e=>onChange("price_override",e.target.value)}
-              style={{...I,width:90,height:30}} />
-            <span style={{fontSize:11,color:"#6d28d9"}}>/ sqft × {fmt(sqft,0)} ft²</span>
-          </div>
-        </div>
-      )}
-
-      {/* Area type + label */}
-      <div style={{display:"flex",gap:6,marginBottom:6,alignItems:"center",borderBottom:`1px solid ${C.border}`,paddingBottom:6}}>
-        <select value={area.area_type||""} onChange={e=>{
-            const val=e.target.value;
-            if(val==="__other_area__"){ onChange("_show_custom_area", true); onChange("area_type",""); }
-            else { onChange("_show_custom_area", false); onChange("area_type",val); }
-          }}
-          style={{...GS,flex:1}}>
-          <option value="">Area type…</option>
-          {(areaTypes||AREA_TYPES).map(t=><option key={t} value={t}>{t}</option>)}
-          <option value="__other_area__">✏️ Other (custom)</option>
-        </select>
-        {!isComplete && (
-          <button onClick={onDelete} style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:18,padding:"0 4px",lineHeight:1,flexShrink:0}}>✕</button>
+     {isComplete && (
+    <div style={{ margin:"-6px -8px 8px -8px", background:"#059669", borderRadius:"7px 7px 0 0" }}>
+      {/* Row 1: primary actions */}
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"8px 10px 4px", gap:5 }}>
+        <button onClick={()=>{ setExpanded(false); onChange("_collapsed", true); }}
+          style={{border:"none",background:"rgba(255,255,255,0.25)",color:"#fff",
+            padding:"7px 18px",borderRadius:6,cursor:"pointer",fontSize:13,fontWeight:700,flex:1}}>
+          ✓ Done
+        </button>
+        <button onClick={onDelete}
+          style={{border:"none",background:"rgba(255,0,0,0.35)",color:"#fff",
+            padding:"7px 14px",borderRadius:6,cursor:"pointer",fontSize:13,fontWeight:700}}>
+          🗑 Delete
+        </button>
+      </div>
+      {/* Row 2: secondary actions */}
+      <div style={{ display:"flex", alignItems:"center", padding:"0 10px 8px", gap:5, flexWrap:"wrap" }}>
+        <button onClick={()=>onChange("is_optional",!area.is_optional)}
+          title="Mark as optional item"
+          style={{border:"none",borderRadius:6,cursor:"pointer",fontSize:11,fontWeight:700,padding:"5px 10px",flex:1,
+            background:area.is_optional?"#fbbf24":"rgba(255,255,255,0.2)",
+            color:area.is_optional?"#78350f":"#fff"}}>
+          {area.is_optional?"⭐ Optional":"☆ Optional"}
+        </button>
+        <button
+          onClick={()=>onChange("phase", area.phase===1 ? "__clear_all__" : area.phase===2 ? null : 1)}
+          title={area.phase===1?"Tap to remove all phases (customer changed mind)":"Set phase (1st before inspection, 2nd after)"}
+          style={{border:"none",borderRadius:6,cursor:"pointer",fontSize:11,fontWeight:800,padding:"5px 10px",flex:1,
+            background:area.phase===1?"#3b82f6":area.phase===2?"#8b5cf6":"rgba(255,255,255,0.2)",
+            color:"#fff"}}>
+          {area.phase===1?"🔵 Ph.1":area.phase===2?"🟣 Ph.2":"◯ Phase"}
+        </button>
+        {onMove && floors && floors.length>1 && (
+          movingTo
+            ? <select autoFocus
+                style={{height:30,borderRadius:6,border:"none",background:"#1d4ed8",color:"#fff",padding:"0 6px",fontSize:11,fontWeight:700,cursor:"pointer",flex:1}}
+                onChange={e=>{ if(e.target.value){ onMove(e.target.value); setMovingTo(false); } }}
+                onBlur={()=>setMovingTo(false)}>
+                <option value="">Move to…</option>
+                {floors.filter(f=>f!==activeFloor).map(f=>(
+                  <option key={f} value={f}>{f}</option>
+                ))}
+              </select>
+            : <button onClick={()=>setMovingTo(true)}
+                title="Move this area to another floor"
+                style={{border:"none",background:"rgba(255,255,255,0.2)",color:"#fff",
+                  padding:"5px 10px",borderRadius:6,cursor:"pointer",fontSize:11,fontWeight:700,flex:1}}>
+                ↗ Move
+              </button>
         )}
       </div>
-      {(area._show_custom_area || (area.area_type && !(areaTypes||AREA_TYPES).includes(area.area_type))) && (
-        <input autoFocus placeholder="Type new area type…"
-          style={{...I,height:32,marginBottom:6,border:"2px solid #059669",borderRadius:6,fontSize:13}}
-          value={area.area_type||""} onChange={e=>onChange("area_type",e.target.value)}
-          onBlur={e=>{ const v=e.target.value.trim(); if(v) onSaveCustomAreaType?.(v); }}
-          onKeyDown={e=>{ if(e.key==="Enter"){ const v=e.target.value.trim(); if(v){ onSaveCustomAreaType?.(v); e.target.blur(); } }}} />
-      )}
-      <input value={area.customLabel||""} onChange={e=>onChange("customLabel",e.target.value)}
-        placeholder="Optional label (e.g. Garage, North side)"
-        style={{...I,height:28,fontSize:11,marginBottom:8,color:C.muted,
-          background:"transparent",border:"none",borderBottom:`1px dashed ${C.border}`,
-          borderRadius:0,paddingLeft:0}} />
+    </div>
+    )}
 
-      {/* MATERIAL — single mode */}
+      {/* area type */}
+      <div style={{ display:"flex", gap:4, marginBottom:2, alignItems:"center", borderBottom:`1px solid ${AC.border}`, paddingBottom:3 }}>
+        <select className="area-select" style={{...GS, flex:1}}
+          value={area._show_custom_area ? "__other__" : (area.area_type||"")}
+          onChange={e=>{
+            if(e.target.value==="__other__"){ onChange("area_type",""); onChange("_show_custom_area",true); }
+            else { onChange("area_type",e.target.value); onChange("_show_custom_area",false); }
+          }}>
+          <option value="">Area type</option>
+          {(baseAreaTypes||AREA_TYPES).map(a=><option key={a}>{a}</option>)}
+          <option value="__other__">✏️ Other (custom)</option>
+        </select>
+        {!isComplete && (
+        <button onClick={onDelete} style={{ border:"none", background:"none", color:AC.faint, cursor:"pointer", fontSize:16, padding:"0 2px", lineHeight:1, flexShrink:0 }}>✕</button>
+      )}
+      </div>
+      {(area._show_custom_area || (area.area_type && !(baseAreaTypes||AREA_TYPES).includes(area.area_type))) && (
+        <input placeholder="Type area name… (saved for reuse)" style={{...XS, width:"100%", marginBottom:3}}
+          value={area.area_type||""}
+          onChange={e=>onChange("area_type",e.target.value)}
+          onBlur={e=>{ if(e.target.value.trim()) onSaveCustomAreaType?.(e.target.value.trim()); }} />
+      )}
+
+      {/* MATERIAL — single */}
       {!isComboMode && (
-        <div style={{marginBottom:6,borderBottom:`1px solid ${C.border}`,paddingBottom:6}}>
-          <div style={{display:"flex",gap:4,marginBottom:4}}>
-            <select style={{...GS,flex:2}}
-              value={area.material==="__custom_mat__"?"__custom_mat__":(matLines[0].material||"")}
+        <div style={{marginBottom:4}}>
+          <div style={{ display:"flex", gap:4, marginBottom:2, borderBottom:`1px solid ${AC.border}`, paddingBottom:3 }}>
+            <select className="area-select" style={{...GS, flex:1.7}}
+              value={matLines[0].material==="__custom_mat__"?"__custom_mat__":(matLines[0].material||"")}
               onChange={e=>{
                 const val=e.target.value;
                 if(val==="__combo__"){
-                  onChange("mat_lines",[{id:1,material:"",thickness_in:"",r_value:""},{id:2,material:"",thickness_in:"",r_value:""}]);
+                  setMatLines([{id:1,material:"",thickness_in:"",r_value:"",oc:""},{id:2,material:"",thickness_in:"",r_value:"",oc:""}]);
                   onChange("material","__combo__");
                 } else if(val==="__custom_mat__"){
-                  onChange("mat_lines",[{id:1,material:"__custom_mat__",thickness_in:matLines[0].thickness_in||"",r_value:matLines[0].r_value||""}]);
+                  setMatLines([{id:1,material:"__custom_mat__",thickness_in:matLines[0].thickness_in||"",r_value:matLines[0].r_value||"",oc:matLines[0].oc||""}]);
                   onChange("material","__custom_mat__"); onChange("custom_material","");
                 } else {
-                  updateMatLine(0,"material",val);
+                  setMatLines([{id:1,material:val,thickness_in:matLines[0].thickness_in||"",r_value:matLines[0].r_value||"",oc:matLines[0].oc||""}]);
+                  onChange("material",val);
                 }
               }}>
               <option value="">Material</option>
-              {materials.map(m=><option key={m.id}>{m.name}</option>)}
+              {(matTypesLive&&matTypesLive.length>0?matTypesLive:materials).map(m=><option key={m.id||m.name}>{m.name}</option>)}
               <option value="__combo__">⚡ Combo</option>
               <option value="__custom_mat__">✏️ Other</option>
             </select>
-            <select style={{...GS,width:80,flexShrink:0}}
-              value={(thickOpts||THICK_OPTS).includes(matLines[0].thickness_in)?matLines[0].thickness_in:(matLines[0]._custom_thick?"__other_thick__":(matLines[0].thickness_in||""))}
+            <select className="area-select" style={{...GS, flex:"0 0 62px"}}
+              value={area._custom_thick?"__other__":(matLines[0].thickness_in||"")}
               onChange={e=>{
-                if(e.target.value==="__other_thick__") updateMatLine(0,"_custom_thick",true);
-                else { updateMatLine(0,"_custom_thick",false); updateMatLine(0,"thickness_in",e.target.value); }
+                if(e.target.value==="__other__"){ updateMatLine(0,"thickness_in",""); onChange("_custom_thick",true); }
+                else { updateMatLine(0,"thickness_in",e.target.value); onChange("_custom_thick",false); }
               }}>
               <option value="">Thick</option>
-              {(thickOpts||THICK_OPTS).map(t=><option key={t}>{t}</option>)}
-              <option value="__other_thick__">✏️ Other</option>
-            </select>
-            <select style={{...GS,width:80,flexShrink:0}}
-              value={(rVals||R_VALS).includes(matLines[0].r_value)?matLines[0].r_value:(matLines[0]._custom_rval?"__other_rval__":(matLines[0].r_value||""))}
-              onChange={e=>{
-                if(e.target.value==="__other_rval__") updateMatLine(0,"_custom_rval",true);
-                else { updateMatLine(0,"_custom_rval",false); updateMatLine(0,"r_value",e.target.value); }
-              }}>
-              <option value="">R-Val</option>
-              {(rVals||R_VALS).map(r=><option key={r}>{r}</option>)}
-              <option value="__other_rval__">✏️ Other</option>
+              {effectiveThickOpts.map(t=><option key={t}>{t}</option>)}
+              <option value="__other__">✏️</option>
             </select>
           </div>
-          {(matLines[0]._custom_thick) && (
-            <input autoFocus placeholder="Custom thickness e.g. 3in" style={{...I,height:30,marginBottom:4,fontSize:12}}
-              value={matLines[0].thickness_in||""} onChange={e=>updateMatLine(0,"thickness_in",e.target.value)}
-              onBlur={e=>{ const v=e.target.value.trim(); if(v) onSaveCustomThickOpt?.(v); }} />
-          )}
-          {(matLines[0]._custom_rval) && (
-            <input autoFocus placeholder="Custom R-Val e.g. R-22" style={{...I,height:30,marginBottom:4,fontSize:12}}
-              value={matLines[0].r_value||""} onChange={e=>updateMatLine(0,"r_value",e.target.value)}
-              onBlur={e=>{ const v=e.target.value.trim(); if(v) onSaveCustomRVal?.(v); }} />
-          )}
-          {area.material==="__custom_mat__" && (
-            <input autoFocus placeholder="Type material name…"
-              style={{...I,height:32,marginBottom:4,border:"2px solid #059669",borderRadius:6,fontSize:13}}
+          {matLines[0].material==="__custom_mat__" && (
+            <input autoFocus placeholder="Type material name, press Enter…"
+              style={{...XS,width:"100%",marginBottom:3,border:"2px solid #059669",borderRadius:6,padding:"0 8px",height:34,fontSize:13}}
               value={area.custom_material||""}
               onChange={e=>onChange("custom_material",e.target.value)}
-              onBlur={()=>{ const v=(area.custom_material||"").trim(); if(v) saveCustomMaterial(v,0); }}
-              onKeyDown={e=>{ if(e.key==="Enter"){ const v=(area.custom_material||"").trim(); if(v){ saveCustomMaterial(v,0); e.target.blur(); }}}} />
+              onBlur={()=>{ const v=(area.custom_material||"").trim(); if(v) saveCustomMaterial(v); }}
+              onKeyDown={e=>{ if(e.key==="Enter"){ const v=(area.custom_material||"").trim(); if(v) saveCustomMaterial(v); e.target.blur(); }}} />
+          )}
+          {area._custom_thick && (
+            <input placeholder="Thickness e.g. 3in" style={{...XS,width:"100%",marginBottom:3}}
+              value={matLines[0].thickness_in||""} onChange={e=>updateMatLine(0,"thickness_in",e.target.value)}
+              onBlur={e=>{ const v=e.target.value.trim(); if(v) onSaveCustomThickOpt?.(v); }} />
           )}
         </div>
       )}
 
-      {/* MATERIAL — combo mode */}
+      {/* MATERIAL — combo */}
       {isComboMode && (
-        <div style={{background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:8,padding:"8px 10px",marginBottom:6}}>
-          <div style={{fontSize:10,fontWeight:700,color:"#0369a1",marginBottom:6,textTransform:"uppercase",letterSpacing:0.4,
-              display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+        <div style={{background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:8,padding:"8px 10px",marginBottom:4,marginTop:2}}>
+          <div style={{fontSize:10,fontWeight:700,color:"#0369a1",marginBottom:6,textTransform:"uppercase",letterSpacing:0.4,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
             <span>⚡ Combo</span>
-            {totalR>0 && <span style={{color:"#059669",fontWeight:800}}>Total R-{totalR}</span>}
-            <button onClick={()=>{ onChange("mat_lines",[{id:1,material:"",thickness_in:"",r_value:""}]); onChange("material",""); }}
-              style={{border:"none",background:"none",color:"#94a3b8",cursor:"pointer",fontSize:11,padding:0}}>× remove combo</button>
+            {(()=>{
+              const totalR = matLines.reduce((sum,ml)=>{
+                const r = parseInt((ml.r_value||"").replace(/\D/g,""))||0;
+                return sum+r;
+              },0);
+              return totalR>0 ? <span style={{color:"#059669",fontWeight:800}}>Total R{totalR}</span> : null;
+            })()}
+            <button onClick={()=>{ setMatLines([{id:1,material:"",thickness_in:"",r_value:"",oc:""}]); onChange("material",""); }}
+              style={{border:"none",background:"none",color:"#94a3b8",cursor:"pointer",fontSize:11,marginLeft:8,padding:0}}>× remove combo</button>
           </div>
           {matLines.map((ml,idx)=>(
-            <div key={ml.id||idx} style={{marginBottom:8,paddingBottom:8,borderBottom:idx<matLines.length-1?"1px solid #e0f2fe":"none"}}>
+            <div key={ml.id||idx} style={{marginBottom:8,paddingBottom:8,borderBottom:idx<matLines.length-1?`1px solid #e0f2fe`:"none"}}>
               <div style={{display:"flex",gap:4,marginBottom:4,alignItems:"center"}}>
-                <select style={{...GS,flex:1}}
-                  value={ml.material||""}
-                  onChange={e=>updateMatLine(idx,"material",e.target.value)}>
+                <select style={{...XS,flex:1}} value={ml.material==="__custom__"?"__custom__":(ml.material||"")}
+                  onChange={e=>{
+                    console.log("Material onChange fired, idx:",idx,"value:",e.target.value);
+                    if(e.target.value==="__custom__") updateMatLine(idx,"material","__custom__");
+                    else updateMatLine(idx,"material",e.target.value);
+                  }}>
                   <option value="">Material {idx+1}</option>
-                  {materials.map(m=><option key={m.id}>{m.name}</option>)}
+                  {(matTypesLive&&matTypesLive.length>0?matTypesLive:materials).map(m=><option key={m.id||m.name}>{m.name}</option>)}
                   <option value="__custom__">✏️ Other</option>
                 </select>
-                {matLines.length>2 && (
-                  <button onClick={()=>removeMatLine(idx)}
-                    style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:14,padding:"0 2px",flexShrink:0}}>✕</button>
+                {ml.material==="__custom__" && (
+                  <input placeholder="Type material…" style={{...XS,flex:1}}
+                    value={ml.custom_material||""}
+                    onChange={e=>updateMatLine(idx,"custom_material",e.target.value)}
+                    onBlur={()=>{ const v=(ml.custom_material||"").trim(); if(v) saveCustomMaterial(v,idx); }}
+                    onKeyDown={e=>{ if(e.key==="Enter"){ const v=(ml.custom_material||"").trim(); if(v){ saveCustomMaterial(v,idx); e.target.blur(); } }}} />
                 )}
+                {matLines.length>2 && <button onClick={()=>removeMatLine(idx)} style={{border:"none",background:"none",color:AC.faint,cursor:"pointer",fontSize:14,padding:"0 2px",lineHeight:1,flexShrink:0}}>✕</button>}
               </div>
-              {ml.material==="__custom__" && (
-                <input autoFocus placeholder="Type material name…"
-                  style={{...I,height:30,marginBottom:4,border:"2px solid #059669",borderRadius:6,fontSize:12}}
-                  value={ml._custom_material_text||""}
-                  onChange={e=>updateMatLine(idx,"_custom_material_text",e.target.value)}
-                  onBlur={()=>{ const v=(ml._custom_material_text||"").trim(); if(v) saveCustomMaterial(v,idx); }}
-                  onKeyDown={e=>{ if(e.key==="Enter"){ const v=(ml._custom_material_text||"").trim(); if(v){ saveCustomMaterial(v,idx); e.target.blur(); }}}} />
-              )}
-              <div style={{display:"flex",gap:4}}>
-                <select style={{...GS,flex:1}}
-                  value={(thickOpts||THICK_OPTS).includes(ml.thickness_in)?ml.thickness_in:(ml._custom_thick?"__other_thick__":(ml.thickness_in||""))}
-                  onChange={e=>{
-                    if(e.target.value==="__other_thick__") updateMatLine(idx,"_custom_thick",true);
-                    else { updateMatLine(idx,"_custom_thick",false); updateMatLine(idx,"thickness_in",e.target.value); }
+              <div style={{display:"flex",gap:4,marginBottom:2,flexWrap:"wrap"}}>
+                <select style={{...XS,flex:1}}
+                  value={(ml._custom_thick || (ml.thickness_in && !effectiveThickOpts.includes(ml.thickness_in)))?"__other__":(ml.thickness_in||"")}
+                 onChange={e=>{
+                    if(e.target.value==="__other__"){
+                      const lines = matLines.map((l,i)=> i===idx ? {...l,_custom_thick:true} : l);
+                      onChange("mat_lines", lines);
+                    } else {
+                      const lines = matLines.map((l,i)=> i===idx ? {...l,thickness_in:e.target.value,_custom_thick:false} : l);
+                      onChange("mat_lines", lines);
+                    }
                   }}>
-                  <option value="">Thick</option>{(thickOpts||THICK_OPTS).map(t=><option key={t}>{t}</option>)}
-                  <option value="__other_thick__">✏️ Other</option>
+                  <option value="">Thick</option>{effectiveThickOpts.map(t=><option key={t}>{t}</option>)}
+                  <option value="__other__">✏️ Other</option>
                 </select>
-                <select style={{...GS,flex:1}}
-                  value={(rVals||R_VALS).includes(ml.r_value)?ml.r_value:(ml._custom_rval?"__other_rval__":(ml.r_value||""))}
+                <select style={{...XS,flex:1}}
+                  value={(ml._custom_rval || (ml.r_value && !effectiveRVals.includes(ml.r_value)))?"__other__":(ml.r_value||"")}
                   onChange={e=>{
-                    if(e.target.value==="__other_rval__") updateMatLine(idx,"_custom_rval",true);
-                    else { updateMatLine(idx,"_custom_rval",false); updateMatLine(idx,"r_value",e.target.value); }
+                    if(e.target.value==="__other__"){
+                      const lines = matLines.map((l,i)=> i===idx ? {...l,_custom_rval:true} : l);
+                      onChange("mat_lines", lines);
+                    } else {
+                      const lines = matLines.map((l,i)=> i===idx ? {...l,r_value:e.target.value,_custom_rval:false} : l);
+                      onChange("mat_lines", lines);
+                    }
                   }}>
-                  <option value="">R-Val</option>{(rVals||R_VALS).map(r=><option key={r}>{r}</option>)}
-                  <option value="__other_rval__">✏️ Other</option>
+                  <option value="">R-Val</option>{effectiveRVals.map(r=><option key={r}>{r}</option>)}
+                  <option value="__other__">✏️ Other</option>
+                </select>
+                <select style={{...XS,flex:1}} value={ml.oc||""} onChange={e=>updateMatLine(idx,"oc",e.target.value)}>
+                  <option value="">Spacing</option>{OC_OPTS.map(o=><option key={o}>{o}</option>)}
                 </select>
               </div>
-              {ml._custom_thick && (
-                <input autoFocus placeholder="Custom thickness e.g. 3in" style={{...I,height:30,marginTop:4,fontSize:12}}
-                  value={ml.thickness_in||""} onChange={e=>updateMatLine(idx,"thickness_in",e.target.value)}
-                  onBlur={e=>{ const v=e.target.value.trim(); if(v) onSaveCustomThickOpt?.(v); }} />
-              )}
-              {ml._custom_rval && (
-                <input autoFocus placeholder="Custom R-Val e.g. R-22" style={{...I,height:30,marginTop:4,fontSize:12}}
+              {(ml._custom_thick || (ml.thickness_in && !effectiveThickOpts.includes(ml.thickness_in))) && (
+              <input placeholder="Custom thickness e.g. 3in" style={{...XS,width:"100%",marginBottom:2}}
+                value={ml.thickness_in||""} onChange={e=>updateMatLine(idx,"thickness_in",e.target.value)}
+                onBlur={e=>{ const v=e.target.value.trim(); if(v) onSaveCustomThickOpt?.(v); }} />
+            )}
+             {(ml._custom_rval || (ml.r_value && !effectiveRVals.includes(ml.r_value))) && (
+                <input placeholder="Custom R-Val e.g. R-22" style={{...XS,width:"100%",marginBottom:2}}
                   value={ml.r_value||""} onChange={e=>updateMatLine(idx,"r_value",e.target.value)}
                   onBlur={e=>{ const v=e.target.value.trim(); if(v) onSaveCustomRVal?.(v); }} />
               )}
             </div>
           ))}
-          <button onClick={addMatLine}
-            style={{width:"100%",padding:"6px",borderRadius:6,border:"1px dashed #7dd3fc",
-              background:"none",color:"#0369a1",cursor:"pointer",fontSize:11,fontWeight:600,height:"auto"}}>
-            + Add material to combo
-          </button>
+          <button onClick={addMatLine} style={{width:"100%",padding:"7px",borderRadius:6,border:"1px dashed #7dd3fc",background:"none",color:"#0369a1",cursor:"pointer",fontSize:11,fontWeight:600,height:"auto"}}>+ Add material to combo</button>
         </div>
       )}
 
-      {/* Measurement chips */}
-      {meas.length>0 && (
-        <div style={{display:"flex",flexWrap:"wrap",gap:4,marginBottom:8}}>
-          {meas.map((m,i)=>(
-            <span key={i} style={{background:"#dcfce7",color:"#166534",borderRadius:6,
-                padding:"2px 8px",fontSize:11,fontWeight:600,display:"inline-flex",alignItems:"center",gap:4}}>
-              <span
-                onClick={()=>onChange("paint_sqft", String(Math.round(((parseFloat(area.paint_sqft)||0)+m.sqft)*100)/100))}
-                title="Tap to add this measurement's sqft to Intumescent paint below"
-                style={{cursor:"pointer"}}>
-                {m.h}×{m.l}{m.q>1?`×${m.q}`:""} <span style={{color:"#4ade80",fontSize:10}}>={fmt(m.sqft,0)}</span>
-              </span>
-              <button onClick={e=>{e.stopPropagation();delMeas(i);}} style={{border:"none",background:"none",color:"#4ade80",cursor:"pointer",fontSize:12,padding:0}}>✕</button>
-            </span>
-          ))}
-        </div>
-      )}
+      {/* OPTIONS */}
+      <div style={{marginBottom:6}}>
+        {areaOptions.map((opt,oi)=>{
+          const isOptCombo=opt.material==="__combo__"||(opt.mat_lines||[]).length>1;
+          const optLines=(opt.mat_lines||[]).length>0?opt.mat_lines:[{id:1,material:opt.material||"",thickness_in:opt.thickness_in||matLines[0].thickness_in||"",r_value:opt.r_value||matLines[0].r_value||"",oc:""}];
+          function updateOpt(field,val){const opts=[...areaOptions];opts[oi]={...opts[oi],[field]:val};onChange("options",opts);}
+          function updateOptLine(li,field,val){const opts=[...areaOptions];const lines=[...optLines];lines[li]={...lines[li],[field]:val};opts[oi]={...opts[oi],mat_lines:lines,material:lines[0].material||"__combo__"};onChange("options",opts);}
+          return (
+            <div key={oi} style={{background:"#fff7ed",border:"1px solid #fed7aa",borderRadius:6,padding:"6px 8px",marginBottom:4}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+                <span style={{fontSize:10,fontWeight:700,color:"#92400e"}}>⚡ Option {oi+1}</span>
+                <div style={{display:"flex",gap:4,alignItems:"center"}}>
+                  <button onClick={()=>saveOptionsOnly()} style={{border:"1px solid #f97316",background:"#fff7ed",color:"#f97316",cursor:"pointer",fontSize:9,padding:"2px 5px",borderRadius:4,fontWeight:700}}>💾 Save</button>
+                  <button onClick={()=>onChange("options",areaOptions.filter((_,j)=>j!==oi))} style={{border:"none",background:"none",color:AC.faint,cursor:"pointer",fontSize:12,padding:0}}>✕</button>
+                </div>
+              </div>
+              {/* Option label and crew note */}
+              <input placeholder="Option label (e.g. Spray roofline instead of exterior wall)"
+                value={opt.label||""} onChange={e=>updateOpt("label",e.target.value)}
+                style={{...XS,width:"100%",fontSize:11,marginBottom:4,fontWeight:600}}/>
+              <input placeholder="📝 Crew note (optional — e.g. use 2lb foam, access from attic)"
+                value={opt.note||""} onChange={e=>updateOpt("note",e.target.value)}
+                style={{...XS,width:"100%",fontSize:11,marginBottom:4,color:"#64748b"}}/>
+              {!isOptCombo?(
+                <div style={{display:"flex",gap:4,marginBottom:4}}>
+                  <select style={{...XS,flex:3}} value={opt.material||""} onChange={e=>{
+                    if(e.target.value==="__combo__"){
+                      const opts=[...areaOptions];
+                      opts[oi]={...opts[oi],material:"__combo__",mat_lines:[
+                        {id:1,material:"",thickness_in:matLines[0].thickness_in||"",r_value:matLines[0].r_value||"",oc:""},
+                        {id:2,material:"",thickness_in:matLines[0].thickness_in||"",r_value:matLines[0].r_value||"",oc:""}
+                      ]};
+                      onChange("options",opts);
+                    } else { updateOpt("material",e.target.value); }
+                  }}>
+                    <option value="">Material</option>{(matTypesLive&&matTypesLive.length>0?matTypesLive:materials).map(m=><option key={m.id||m.name}>{m.name}</option>)}<option value="__combo__">⚡ Combo</option>
+                  </select>
+                  <select style={{...XS,flex:1}} value={opt.thickness_in||matLines[0].thickness_in||""} onChange={e=>updateOpt("thickness_in",e.target.value)}><option value="">Thick</option>{effectiveThickOpts.map(t=><option key={t}>{t}</option>)}</select>
+                  <select style={{...XS,flex:1}} value={opt.r_value||matLines[0].r_value||""} onChange={e=>updateOpt("r_value",e.target.value)}><option value="">R-Val</option>{effectiveRVals.map(r=><option key={r}>{r}</option>)}</select>
+                </div>
+              ):(
+                <div style={{background:"#fff7ed",borderRadius:6,padding:"6px 8px",marginBottom:4}}>
+                  <div style={{fontSize:9,fontWeight:700,color:"#92400e",marginBottom:6,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                    <span>⚡ Combo</span>
+                    {(()=>{
+                      const optTotalR = optLines.reduce((sum,ol)=>{
+                        const r = parseInt((ol.r_value||"").replace(/\D/g,""))||0;
+                        return sum+r;
+                      },0);
+                      return optTotalR>0 ? <span style={{color:"#059669",fontWeight:800}}>Total R{optTotalR}</span> : null;
+                    })()}
+                    <button onClick={()=>{updateOpt("mat_lines",[{id:1,material:"",thickness_in:matLines[0].thickness_in||"",r_value:matLines[0].r_value||"",oc:""}]);updateOpt("material","");}} style={{border:"none",background:"none",color:"#94a3b8",cursor:"pointer",fontSize:10,padding:0}}>× remove combo</button>
+                  </div>
+                  {optLines.map((ol,li)=>(
+                    <div key={li} style={{marginBottom:6,paddingBottom:6,borderBottom:li<optLines.length-1?"1px dashed #fde68a":"none"}}>
+                      <div style={{display:"flex",gap:4,marginBottom:3,alignItems:"center"}}>
+                        <select style={{...XS,flex:1}} value={ol.material||""} onChange={e=>updateOptLine(li,"material",e.target.value)}><option value="">Material {li+1}</option>{(matTypesLive&&matTypesLive.length>0?matTypesLive:materials).map(m=><option key={m.id||m.name}>{m.name}</option>)}</select>
+                        {optLines.length>2&&<button onClick={()=>{const lines=optLines.filter((_,j)=>j!==li);const opts=[...areaOptions];opts[oi]={...opts[oi],mat_lines:lines};onChange("options",opts);}} style={{border:"none",background:"none",color:AC.faint,cursor:"pointer",fontSize:13,padding:0}}>✕</button>}
+                      </div>
+                      <div style={{display:"flex",gap:4}}>
+                        <select style={{...XS,flex:1}} value={ol.thickness_in||""} onChange={e=>updateOptLine(li,"thickness_in",e.target.value)}><option value="">Thick</option>{effectiveThickOpts.map(t=><option key={t}>{t}</option>)}</select>
+                        <select style={{...XS,flex:1}} value={ol.r_value||""} onChange={e=>updateOptLine(li,"r_value",e.target.value)}><option value="">R-Val</option>{effectiveRVals.map(r=><option key={r}>{r}</option>)}</select>
+                        <select style={{...XS,flex:1}} value={ol.oc||""} onChange={e=>updateOptLine(li,"oc",e.target.value)}><option value="">OC</option>{OC_OPTS.map(o=><option key={o}>{o}</option>)}</select>
+                      </div>
+                    </div>
+                  ))}
+                  <button onClick={()=>{const lines=[...optLines,{id:Date.now(),material:"",thickness_in:matLines[0].thickness_in||"",r_value:matLines[0].r_value||"",oc:""}];const opts=[...areaOptions];opts[oi]={...opts[oi],mat_lines:lines};onChange("options",opts);}} style={{width:"100%",padding:"5px",borderRadius:5,border:"1px dashed #fde68a",background:"none",color:"#92400e",cursor:"pointer",fontSize:10,fontWeight:600,height:"auto"}}>+ Add material to combo</button>
+                </div>
+              )}
 
-      {/* H × L × Qty input row + calculator */}
-      <div style={{position:"relative"}}>
-        <div style={{display:"flex",gap:6,alignItems:"center"}}>
-          {/* Calculator icon button */}
-          <button onClick={()=>setCalcOpen(p=>!p)} title="Calculator" type="button"
-            style={{border:`1px solid ${calcOpen?C.green:C.border}`,background:calcOpen?C.green:"#f8fafc",
-              borderRadius:6,width:36,height:36,
-              cursor:"pointer",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={calcOpen?"#fff":"#475569"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="4" y="2" width="16" height="20" rx="2" />
-              <line x1="8" y1="6" x2="16" y2="6" />
-              <line x1="8" y1="11" x2="8" y2="11.01" />
-              <line x1="12" y1="11" x2="12" y2="11.01" />
-              <line x1="16" y1="11" x2="16" y2="11.01" />
-              <line x1="8" y1="15" x2="8" y2="15.01" />
-              <line x1="12" y1="15" x2="12" y2="15.01" />
-              <line x1="16" y1="15" x2="16" y2="15.01" />
-              <line x1="8" y1="19" x2="8" y2="19.01" />
-              <line x1="12" y1="19" x2="12" y2="19.01" />
-              <line x1="16" y1="19" x2="16" y2="19.01" />
-            </svg>
+            </div>
+          );
+        })}
+        {areaOptions.length<3&&(
+          <button onClick={()=>{const opts=[...areaOptions];opts.push({material:"",thickness_in:matLines[0].thickness_in||"",r_value:matLines[0].r_value||"",mat_lines:[],label:"",note:"",extra_amount:""});onChange("options",opts);}}
+            style={{width:"100%",padding:"5px",borderRadius:6,border:"1px dashed #fed7aa",background:"#fff7ed",color:"#92400e",cursor:"pointer",fontSize:11,fontWeight:600,marginBottom:4,height:"auto"}}>
+            + Add Option
           </button>
-          <div style={{width:46,flexShrink:0}}>
-            <div style={lbl}>Qty</div>
-            <input type="number" inputMode="decimal" value={area.mq||""}
-              onChange={e=>onChange("mq",e.target.value)}
-              placeholder="1"
-              style={{...I,height:36,textAlign:"center",fontSize:13}} />
-          </div>
-          <div style={{flex:1,minWidth:0}}>
-            <div style={lbl}>H / W</div>
-            <input type="number" inputMode="decimal" value={area.mh||""}
-              onChange={e=>onChange("mh",e.target.value)}
-              placeholder="0"
-              style={{...I,height:36,textAlign:"right",fontSize:14}} />
-          </div>
-          <span style={{color:C.faint,fontSize:16,flexShrink:0,paddingTop:16}}>×</span>
-          <div style={{flex:1,minWidth:0}}>
-            <div style={lbl}>L</div>
-            <input type="number" inputMode="decimal" value={area.ml||""}
-              onChange={e=>onChange("ml",e.target.value)}
-              onBlur={()=>commit()}
-              onKeyDown={e=>e.key==="Enter"&&commit()} placeholder="0"
-              style={{...I,height:36,textAlign:"right",fontSize:14}} />
-          </div>
-        </div>
-        {preview>0 && (
-          <div style={{fontSize:11,color:C.green,fontWeight:700,textAlign:"right",marginTop:4}}>
-            = {fmt(preview,0)} ft² — saves automatically when you leave the L field
-          </div>
-        )}
-
-        {/* Calculator popup */}
-        {calcOpen && (
-          <div style={{position:"absolute",top:"100%",left:0,zIndex:200,
-              background:C.white,border:`1px solid ${C.border}`,borderRadius:10,
-              boxShadow:"0 8px 24px rgba(0,0,0,.15)",padding:10,marginTop:4,width:220}}>
-            <div style={{fontFamily:"monospace",fontSize:15,fontWeight:700,textAlign:"right",
-                padding:"6px 10px",background:"#f8fafc",borderRadius:6,marginBottom:8,
-                color:C.ink,minHeight:32,border:`1px solid ${C.border}`}}>
-              {calcExpr||"0"}
-            </div>
-            <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:4,marginBottom:8}}>
-              {CALC_BTNS.map(v=>(
-                <button key={v} onClick={()=>calcPress(v==="×"?"*":v)}
-                  style={{height:34,borderRadius:6,border:`1px solid ${C.border}`,
-                    background:v==="C"?"#fee2e2":v==="⌫"?"#fef9c3":C.white,
-                    color:v==="C"?"#dc2626":v==="⌫"?"#92400e":C.ink,
-                    cursor:"pointer",fontWeight:700,fontSize:14}}>
-                  {v}
-                </button>
-              ))}
-            </div>
-            <button onClick={()=>calcPress("=")}
-              style={{...BtnD,width:"100%",justifyContent:"center",marginBottom:6,background:"#059669"}}>
-              =
-            </button>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
-              <button onClick={()=>applyCalc("mh")}
-                style={{...Btn,fontSize:11,justifyContent:"center",color:"#059669",borderColor:"#059669"}}>
-                → Use as H
-              </button>
-              <button onClick={()=>applyCalc("ml")}
-                style={{...Btn,fontSize:11,justifyContent:"center",color:"#059669",borderColor:"#059669"}}>
-                → Use as L
-              </button>
-            </div>
-          </div>
         )}
       </div>
 
-      {sqft>0 && (
-        <div style={{display:"flex",justifyContent:"flex-end",fontSize:11,color:C.green,fontWeight:700,marginTop:6}}>
-          Total: {fmt(sqft,0)} ft²
+      {/* Optional note — only shown when area is marked optional */}
+      {area.is_optional && (
+        <div style={{padding:"0 10px 8px"}}>
+          <input
+            value={area.optional_note||""}
+            onChange={e=>onChange("optional_note",e.target.value)}
+            placeholder="📝 Note for this option (e.g. instead of spray roofline, do below)"
+            style={{width:"100%",padding:"5px 8px",borderRadius:6,border:"1px solid #fde68a",
+              background:"#fffbeb",color:"#92400e",fontSize:11,boxSizing:"border-box"}}
+          />
         </div>
       )}
 
-      <div style={{display:"flex",alignItems:"center",gap:6,marginTop:8}}>
-        <span style={{fontSize:11,color:C.muted}}>− deduct</span>
-        <input type="number" placeholder="0" inputMode="decimal" value={area.deduct_sqft||""}
-          onChange={e=>updateDeduct(e.target.value)}
-          style={{...I,width:60,height:28,fontSize:12,padding:"0 6px"}} />
-        <span style={{fontSize:11,color:C.muted}}>ft²</span>
+      {/* measurements */}
+      <div style={{ borderTop:`1px solid ${AC.border}`, paddingTop:4, marginTop:2, position:"relative" }}>
+  {calcOpen && (
+    <div style={{position:"absolute",bottom:"100%",left:0,right:0,zIndex:50,
+        background:"#fff",border:`2px solid ${AC.ink}`,borderRadius:10,
+        padding:8,boxShadow:"0 -4px 16px rgba(0,0,0,.2)",marginBottom:4}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+        <span style={{fontSize:10,fontWeight:700,color:AC.muted}}>🧮 Calculator</span>
+        <button onClick={()=>{setCalcOpen(false);setCalcExpr("");}}
+          style={{border:"none",background:"none",color:AC.faint,fontSize:16,cursor:"pointer",padding:0}}>✕</button>
       </div>
-
-      {/* Intumescent paint — shown only for spray foam (open/closed cell),
-          same condition Insulation uses. No pricing behind it here since
-          HERS doesn't do cost calculations - it's just tracked as sqft. */}
-      {(()=>{
-        const allMats = isComboMode
-          ? matLines.map(ml=>(ml.material||"").toLowerCase())
-          : [(matLines[0]?.material||"").toLowerCase()];
-        const isSprayFoam = allMats.some(m=>m.includes("closed")||m.includes("open cell")||m.includes("open-cell"));
-        if(!isSprayFoam) return null;
-        return (
-          <div style={{display:"flex",alignItems:"center",gap:6,marginTop:6,
-              background:"#fff7ed",border:"1px solid #fed7aa",borderRadius:6,padding:"4px 8px"}}>
-            <span style={{fontSize:10,color:"#c2410c",whiteSpace:"nowrap",fontWeight:600}}>🎨 Intumescent paint</span>
-            <input type="number" placeholder="0" inputMode="decimal" value={area.paint_sqft||""}
-              onChange={e=>onChange("paint_sqft",e.target.value)}
-              title="Type a number directly, or tap the green measurement chips above to add them in"
-              style={{...I,width:70,padding:"0 6px",height:26,fontSize:12}} />
-            <span style={{fontSize:10,color:"#c2410c"}}>ft²</span>
-            {Number(area.paint_sqft)>0 && (
-              <button onClick={()=>onChange("paint_sqft","")} title="Clear"
-                style={{border:"none",background:"none",color:"#c2410c",cursor:"pointer",fontSize:11,padding:0}}>↺</button>
+      {calcError && <div style={{color:"#dc2626",fontSize:10,fontWeight:600,marginBottom:2}}>⚠️ Not a valid expression — check for a trailing +, ×, etc. and fix it below, nothing was lost</div>}
+      <input readOnly value={calcExpr||"0"}
+        style={{...XS,width:"100%",marginBottom:6,textAlign:"right",fontSize:18,fontWeight:700,height:36}} />
+      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:4,marginBottom:6}}>
+        {["7","8","9","÷","4","5","6","×","1","2","3","−","C","0",".","+"].map(k=>(
+          <button key={k} onClick={()=>calcPress(k==="÷"?"/":k==="×"?"*":k==="−"?"-":k)}
+            style={{height:32,borderRadius:6,border:`1px solid ${AC.border}`,background:"#f8fafc",
+              fontSize:14,fontWeight:600,cursor:"pointer",color:AC.ink}}>{k}</button>
+        ))}
+      </div>
+      <div style={{display:"flex",gap:4,marginBottom:6}}>
+        <button onClick={()=>calcPress("⌫")} style={{flex:1,height:32,borderRadius:6,border:`1px solid ${AC.border}`,background:"#f8fafc",fontSize:13,fontWeight:600,cursor:"pointer"}}>⌫</button>
+        <button onClick={()=>calcPress("=")} style={{flex:1,height:32,borderRadius:6,border:"none",background:AC.ink,color:"#fff",fontSize:13,fontWeight:700,cursor:"pointer"}}>=</button>
+      </div>
+      <div style={{display:"flex",gap:4}}>
+        <button onClick={()=>useCalcResult("mh")} style={{flex:1,height:30,borderRadius:6,border:"none",background:"#059669",color:"#fff",fontSize:11,fontWeight:700,cursor:"pointer"}}>→ Use as H</button>
+        <button onClick={()=>useCalcResult("ml")} style={{flex:1,height:30,borderRadius:6,border:"none",background:"#059669",color:"#fff",fontSize:11,fontWeight:700,cursor:"pointer"}}>→ Use as L</button>
+      </div>
+    </div>
+  )}
+  <div style={{ display:"flex", gap:3, alignItems:"center", marginBottom:4 }}>
+    <button onClick={()=>setCalcOpen(p=>!p)} type="button"
+      style={{border:`1px solid ${AC.border}`,background:calcOpen?AC.ink:"#f8fafc",
+        color:calcOpen?"#fff":AC.muted,borderRadius:5,width:28,height:30,
+        cursor:"pointer",fontSize:14,flexShrink:0,padding:0}}>🧮</button>
+         {isComboMode ? (
+              (()=>{
+                const totalR = matLines.reduce((sum,ml)=>{
+                  const r = parseInt((ml.r_value||"").replace(/\D/g,""))||0;
+                  return sum+r;
+                },0);
+                return (
+                  <div style={{...GS, flex:"0 0 60px", display:"flex",alignItems:"center",justifyContent:"center",
+                      background:"#f0fdf4",borderRadius:5,fontWeight:800,color:"#059669",fontSize:12,cursor:"default"}}>
+                    {totalR>0?`R-${totalR}`:"R-Val"}
+                  </div>
+                );
+              })()
+            ) : (
+              <>
+                <select className="area-select" style={{...GS, flex:"0 0 60px"}}
+                  value={area._custom_rval?"__other__":(matLines[0].r_value||"")}
+                  onChange={e=>{
+                    if(e.target.value==="__other__"){ updateMatLine(0,"r_value",""); onChange("_custom_rval",true); }
+                    else { updateMatLine(0,"r_value",e.target.value); onChange("_custom_rval",false); }
+                  }}>
+                  <option value="">R-Val</option>
+                  {effectiveRVals.map(r=><option key={r}>{r}</option>)}
+                  <option value="__other__">✏️</option>
+                </select>
+               {area._custom_rval && (
+                <input placeholder="e.g. R-22" style={{...XS, width:70}}
+                  value={matLines[0].r_value||""} onChange={e=>updateMatLine(0,"r_value",e.target.value)}
+                  onBlur={e=>{ const v=e.target.value.trim(); if(v) onSaveCustomRVal?.(v); }} />
+              )}
+              </>
             )}
+          <input placeholder="1" inputMode="decimal" value={area.mq||""}
+            onChange={e=>onChange("mq",e.target.value)}
+            onBlur={commitMeasurement} onKeyDown={e=>e.key==="Enter"&&commitMeasurement()}
+            className="area-mq-input" style={{...AI,...noArrow,width:36,padding:"0 3px",textAlign:"center",height:30,fontSize:13}} />
+          <span style={{fontSize:11,color:AC.faint}}>×</span>
+          <input placeholder="H" inputMode="decimal" value={area.mh||""}
+            onChange={e=>onChange("mh",e.target.value)}
+            onBlur={commitMeasurement} onKeyDown={e=>e.key==="Enter"&&commitMeasurement()}
+            className="area-hl-input" style={{...AI,...noArrow,flex:1,padding:"0 4px",textAlign:"center",height:30,fontSize:13}} />
+          <span style={{fontSize:11,color:AC.faint}}>×</span>
+          <input placeholder="L" inputMode="decimal" value={area.ml||""}
+            onChange={e=>onChange("ml",e.target.value)}
+            onBlur={commitMeasurement} onKeyDown={e=>e.key==="Enter"&&commitMeasurement()}
+            className="area-hl-input" style={{...AI,...noArrow,flex:1,padding:"0 4px",textAlign:"center",height:30,fontSize:13}} />
+          <span style={{fontSize:11,fontWeight:700,color:livePreview>0?AC.green:AC.ink,whiteSpace:"nowrap"}}>
+            {livePreview>0?`${fmt0(livePreview)}→`:""}{fmt0(computedSqft)}ft²
+          </span>
+        </div>
+        {(area.measurements||[]).length>0 && (
+          <div style={{ display:"flex", flexWrap:"wrap", gap:3, marginBottom:4 }}>
+            {area.measurements.map((m,i)=>(
+              <span key={i} style={{ display:"inline-flex", alignItems:"center", gap:2,
+                  background:isComplete?"#dcfce7":AC.chip, borderRadius:4, padding:"2px 6px", fontSize:10, color:AC.muted }}>
+                <span
+                  onClick={()=>onChange("paint_sqft", String(Math.round(((parseFloat(area.paint_sqft)||0)+m.sqft)*100)/100))}
+                  title="Tap to add this measurement's sqft to Intumescent paint below"
+                  style={{cursor:"pointer"}}>
+                  {m.h}×{m.l}{m.q>1?`×${m.q}`:""}&nbsp;<b style={{color:AC.ink}}>{fmt0(m.sqft)}</b>
+                </span>
+                <button onClick={e=>{e.stopPropagation();delMeas(i);}} style={{border:"none",background:"none",cursor:"pointer",color:AC.faint,fontSize:11,padding:0,lineHeight:1}}>✕</button>
+              </span>
+            ))}
           </div>
-        );
-      })()}
+        )}
+        <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+          <span style={{fontSize:10,color:AC.faint,whiteSpace:"nowrap"}}>− deduct</span>
+          <input placeholder="ft²" inputMode="decimal" value={area.deduct_sqft||""}
+            onChange={e=>{
+              const d=parseFloat(e.target.value)||0;
+              onChange("deduct_sqft",e.target.value);
+              const raw=(area.measurements||[]).reduce((s,m)=>s+m.sqft,0);
+              onChange("sqft",Math.max(0,Math.round((raw-d)*100)/100));
+            }}
+            className="area-deduct" style={{...AI,...noArrow,width:70,padding:"0 6px",height:30,fontSize:12}} />
+        </div>
 
-      <input placeholder="📝 Note for this area (optional)"
-        value={area.note||""} onChange={e=>onChange("note",e.target.value)}
-        style={{...I,width:"100%",marginTop:8,fontSize:11,color:"#92400e",background:"#fffbeb",borderColor:"#fde68a"}} />
+        {/* Intumescent paint — shown only for spray foam (open/closed cell) when
+            the foam isn't covered for fire rating and needs painting.
+            In combo mode, area.material is '__combo__' so we check mat_lines. */}
+        {(()=>{
+          const allMats = isComboMode
+            ? matLines.map(ml=>(ml.material||"").toLowerCase())
+            : [(area.material||"").toLowerCase()];
+          const isSprayFoam = allMats.some(m=>m.includes("closed")||m.includes("open cell")||m.includes("open-cell"));
+          if(!isSprayFoam) return null;
+          return (
+            <div style={{display:"flex",alignItems:"center",gap:6,marginTop:4,
+                background:"#fff7ed",border:"1px solid #fed7aa",borderRadius:6,padding:"4px 8px"}}>
+              <span style={{fontSize:10,color:"#c2410c",whiteSpace:"nowrap",fontWeight:600}}>🎨 Intumescent paint</span>
+              <input type="number" placeholder="0" inputMode="decimal" value={area.paint_sqft||""}
+                onChange={e=>onChange("paint_sqft",e.target.value)}
+                title="Type a number directly, or tap the green measurement chips above to add them in"
+                style={{...AI,...noArrow,width:70,padding:"0 6px",height:26,fontSize:12}} />
+              <span style={{fontSize:10,color:"#c2410c"}}>ft²</span>
+              {Number(area.paint_sqft)>0 && (
+                <button onClick={()=>onChange("paint_sqft","")} title="Clear"
+                  style={{border:"none",background:"none",color:"#c2410c",cursor:"pointer",fontSize:11,padding:0}}>↺</button>
+              )}
+            </div>
+          );
+        })()}
 
-      {copyModal}
+        {/* Per-area note - shown in the estimate panel, office print, and
+            office email under this area, for anything the crew or office
+            needs to know that doesn't fit into the material/measurement
+            fields (e.g. "access from attic only", "customer wants extra
+            care around recessed lights"). */}
+        <div style={{marginTop:4}}>
+          <input placeholder="📝 Note for this area (optional) — shows on panel, print & email"
+            value={area.note||""} onChange={e=>onChange("note",e.target.value)}
+            style={{...AI,width:"100%",fontSize:11,color:"#92400e",background:"#fffbeb",borderColor:"#fde68a"}} />
+        </div>
+      </div>
     </div>
   );
 }
+
+// ── EstimatePanel ─────────────────────────────────────────────────────────────
 
 // ── Windows editor ──
 function WindowsEditor({ windows, onChange, onCommit, floorOptions, unitLabel }) {
@@ -1194,7 +1389,7 @@ export default function HersFieldMeasurements() {
         setActiveFloor(restoredFloor);
         const newAreas = {};
         savedAreas.forEach(f=>{
-          newAreas[f.floor_name] = (f.areas||[]).map(a=>({...withId(a),mh:"",ml:"",mq:"1"}));
+          newAreas[f.floor_name] = (f.areas||[]).map(a=>({...withId(a),mh:"",ml:"",mq:"1",_collapsed:!!(a.area_type&&a.sqft>0)}));
         });
         setAreas(newAreas);
       } else if(savedAreas.length){
@@ -1241,11 +1436,39 @@ export default function HersFieldMeasurements() {
 
   // Area helpers
   function addArea(floor){
-    const newArea = {id:uid(),area_type:"",customLabel:"",measurements:[],sqft:0,mh:"",ml:"",mq:"1",material:"",thickness_in:"",r_value:"",note:"",deduct_sqft:""};
+    const newArea = {id:uid(),area_type:"",customLabel:"",measurements:[],sqft:0,mh:"",ml:"",mq:"1",material:"",thickness_in:"",r_value:"",oc:"",note:"",deduct_sqft:"",options:[]};
     setAreas(p=>({...p,[floor]:[...((p[floor])||[]),newArea]}));
   }
   function updateArea(floor,idx,field,val){
-    setAreas(p=>({...p,[floor]:(p[floor]||[]).map((a,i)=>i===idx?{...a,[field]:val}:a)}));
+    setAreas(prev=>{
+      const upd=[...(prev[floor]||[])];
+      const existing=upd[idx]||{};
+      upd[idx]={...existing,[field]:val};
+      if(field!=="options") upd[idx].options=existing.options||[];
+      // Same as insulation: picking an area type fills in the material,
+      // thickness, R-value, spacing and combo from the last area of that type.
+      if(field==="area_type" && val){
+        const match=Object.values(prev).flat().reverse().find(a=>a!==existing && a.area_type===val && a.material && a.material!=="__custom_mat__");
+        if(match) upd[idx]={...upd[idx],material:match.material,thickness_in:match.thickness_in,r_value:match.r_value,oc:match.oc,
+          mat_lines:match.mat_lines?match.mat_lines.map(ml=>({...ml})):undefined,options:(match.options||[]).map(o=>({...o}))};
+      }
+      // Phase logic (same as insulation)
+      if(field==="phase"){
+        if(val==="__clear_all__"){
+          const cleared={};
+          Object.keys(prev).forEach(f=>{ cleared[f]=(prev[f]||[]).map(a=>({...a,phase:null})); });
+          return cleared;
+        }
+        if(val===1){
+          const next={...prev,[floor]:upd};
+          Object.keys(next).forEach(f=>{
+            next[f]=(next[f]||[]).map((a,i)=>(f===floor&&i===idx)?a:(a.phase?a:{...a,phase:2}));
+          });
+          return next;
+        }
+      }
+      return {...prev,[floor]:upd};
+    });
   }
   function deleteArea(floor,idx){
     const area = areas[floor]?.[idx];
@@ -1304,7 +1527,7 @@ export default function HersFieldMeasurements() {
           price_override: "", // per-area, not part of the spec
           is_optional: false, // "customer choice" status is per-area
           phase: null,        // phase/scheduling is per-area
-          _expanded: true,
+          _collapsed: false,
         };
         next[toFloor] = [...(next[toFloor]||[]), copy];
       });
@@ -1382,14 +1605,21 @@ export default function HersFieldMeasurements() {
       // page instead, not here.
       const areasV2 = floors.map(f=>({
         floor_name: f,
-        areas: (areas[f]||[]).map(a=>({
-          id:a.id, area_type:a.area_type||"", customLabel:a.customLabel||"",
-          measurements:(a.measurements||[]).map(m=>({h:m.h,l:m.l,q:m.q||1,sqft:m.sqft})),
-          sqft:a.sqft||0,
-          mat_lines: (a.mat_lines||[{material:a.material||"",thickness_in:a.thickness_in||"",r_value:a.r_value||""}])
-            .map(ml=>({material:ml.material||"",thickness_in:ml.thickness_in||"",r_value:ml.r_value||""})),
-          material:a.material||"", thickness_in:a.thickness_in||"", r_value:a.r_value||"",
-        })),
+        areas: (areas[f]||[]).map(a=>{
+          // Everything on the card is saved (deduct, note, spacing, options,
+          // optional, phase, paint, combo lines) - only the temporary
+          // on-screen state is left out.
+          const { mh, ml, mq, _expanded, _collapsed, _custom_thick, _custom_rval, _show_custom_area, custom_material, price_override, ...rest } = a;
+          return {
+            ...rest,
+            id:a.id, area_type:a.area_type||"", customLabel:a.customLabel||"",
+            measurements:(a.measurements||[]).map(m=>({h:m.h,l:m.l,q:m.q||1,sqft:m.sqft})),
+            sqft:a.sqft||0,
+            mat_lines: (a.mat_lines||[{material:a.material||"",thickness_in:a.thickness_in||"",r_value:a.r_value||""}])
+              .map(ml=>({id:ml.id, material:ml.material||"",thickness_in:ml.thickness_in||"",r_value:ml.r_value||"",oc:ml.oc||""})),
+            material:a.material||"", thickness_in:a.thickness_in||"", r_value:a.r_value||"",
+          };
+        }),
       }));
 
       const payload = {
@@ -1461,7 +1691,8 @@ export default function HersFieldMeasurements() {
         if(!newFloorSet.has(floorName)){ newFloorSet.add(floorName); newAreas[floorName]=[]; }
         const areaSegs = segs.filter(s=>s.area_id===a.id);
         const meas = areaSegs.length
-          ? areaSegs.map(s=>({h:Number(s.height)||0,l:Number(s.length)||0,q:1,sqft:Math.round((Number(s.height)||0)*(Number(s.length)||0)*100)/100}))
+          ? areaSegs.map(s=>{ const h=Number(s.height)||0, l=Number(s.length)||0, q=Number(s.qty)||1;
+              return {h,l,q,sqft:(s.sqft!=null&&s.sqft!=="")?Number(s.sqft):Math.round(h*l*q*100)/100}; })
           : parseArr(a.measurements).map(m=>({...m}));
         const sqft = meas.reduce((s,m)=>s+(m.sqft||0),0)||a.sqft||0;
         newAreas[floorName].push({id:uid(),area_type:a.area_type,customLabel:"",measurements:meas,sqft,mh:"",ml:"",mq:"1",material:a.material||"",thickness_in:a.thickness_in||"",r_value:a.r_value||""});
@@ -1502,9 +1733,10 @@ export default function HersFieldMeasurements() {
         Object.entries(flatByFloor).forEach(([floorName,floorAreas])=>{
           if(!combined[floorName]) combined[floorName]=[];
           floorAreas.filter(a=>a.area_type&&a.sqft>0).forEach(a=>{
+            const pieces = (a.measurements||[]).map(m=>({h:m.h,l:m.l,q:m.q||1,sqft:m.sqft}));
             const existing = combined[floorName].find(x=>x.area_type===a.area_type && x.material===(a.material||"") && x.thickness_in===(a.thickness_in||"") && x.r_value===(a.r_value||""));
-            if(existing){ existing.sqft += Number(a.sqft); }
-            else { combined[floorName].push({ area_type:a.area_type, sqft:Number(a.sqft), material:a.material||"", thickness_in:a.thickness_in||"", r_value:a.r_value||"" }); }
+            if(existing){ existing.sqft += Number(a.sqft); existing.measurements.push(...pieces); }
+            else { combined[floorName].push({ area_type:a.area_type, sqft:Number(a.sqft), material:a.material||"", thickness_in:a.thickness_in||"", r_value:a.r_value||"", measurements:pieces }); }
           });
         });
       });
@@ -1566,9 +1798,27 @@ export default function HersFieldMeasurements() {
       }
 
       // Get existing areas to avoid duplicates
-      const { data:existing } = await supabase.from("areas").select("id,area_type,floor_id").eq("project_id",proj.id);
+      const { data:existing } = await supabase.from("areas").select("id,area_type,floor_id,order_index").eq("project_id",proj.id);
       const existingMap = {};
-      (existing||[]).forEach(a=>{ existingMap[`${a.area_type}__${a.floor_id}`]=a; });
+      (existing||[]).forEach(a=>{ const k=`${a.area_type}__${a.floor_id}`; if(!existingMap[k]) existingMap[k]=a; });
+      // New rows go after everything already in the estimate (the insulation
+      // screen reads rows at multiples of 10 as the main area rows).
+      let nextOrder = ((existing||[]).reduce((m,a)=>Math.max(m,Number(a.order_index)||0),-10)+10);
+      nextOrder = Math.ceil(nextOrder/10)*10;
+      const usedKeys = new Set();
+
+      // Write the area's individual H x L pieces (with quantity) into the
+      // insulation estimate's segments. Without these the insulation screen only
+      // has the total and shows it as one piece, e.g. 1 x 600.
+      async function writeSegments(areaId, pieces){
+        if(!areaId || !pieces?.length) return;
+        await supabase.from("segments").delete().eq("area_id", areaId);
+        const { error:segErr } = await supabase.from("segments").insert(pieces.map(m=>({
+          area_id: areaId, height: m.h, length: m.l, qty: m.q||1, sqft: m.sqft,
+          source: "field", company_id: invoice.company_id,
+        })));
+        if(segErr) throw segErr;
+      }
 
       let updated=0, created=0;
 
@@ -1585,18 +1835,25 @@ export default function HersFieldMeasurements() {
             thickness_in: area.thickness_in||"",
             r_value: area.r_value||"",
           };
-          if(existingMap[key]){
+          const pieces = (area.measurements||[]).map(m=>({h:m.h,l:m.l,q:m.q||1,sqft:m.sqft}));
+          if(existingMap[key] && !usedKeys.has(key)){
+            usedKeys.add(key);
             await supabase.from("areas").update(payload).eq("id",existingMap[key].id);
+            await writeSegments(existingMap[key].id, pieces);
             updated++;
           } else {
-            await supabase.from("areas").insert([{
+            usedKeys.add(key);
+            const { data:newArea, error:insErr } = await supabase.from("areas").insert([{
               project_id: proj.id,
               floor_id: floorId,
               company_id: invoice.company_id,
               area_type: area.area_type,
-              order_index: created * 10,
+              order_index: nextOrder,
               ...payload,
-            }]);
+            }]).select().single();
+            if(insErr) throw insErr;
+            nextOrder += 10;
+            await writeSegments(newArea?.id, pieces);
             created++;
           }
         }
@@ -1646,37 +1903,40 @@ export default function HersFieldMeasurements() {
       });
       pushAreas = Object.entries(combined).map(([key,val])=>{
         const [floor,area_type] = key.split("||");
-        return { id:uid(), floor, area_type, sqft:Math.round(val.sqft*100)/100, thickness:defaultThickness(area_type), thicknessOther:"", layers:1, measurements:val.measurements, mh:"",ml:"",mq:"1", deduct:"", note:"", finish:"Smooth skim coat" };
+        return { id:uid(), source:"hers", floor, area_type, sqft:Math.round(val.sqft*100)/100, thickness:defaultThickness(area_type), thicknessOther:"", layers:1, measurements:val.measurements, mh:"",ml:"",mq:"1", deduct:"", note:"", finish:"Smooth skim coat" };
       });
     } else {
       // Single-family: current in-memory state for the one unit is enough
       pushAreas = Object.entries(areas).flatMap(([floorName,floorAreas])=>
         floorAreas.filter(a=>a.area_type && RELEVANT.includes(a.area_type) && a.sqft>0)
-          .map(a=>({ id:uid(), floor:floorName, area_type:a.area_type, sqft:a.sqft, thickness:defaultThickness(a.area_type), thicknessOther:"", layers:1,
+          .map(a=>({ id:uid(), source:"hers", floor:floorName, area_type:a.area_type, sqft:a.sqft, thickness:defaultThickness(a.area_type), thicknessOther:"", layers:1,
             measurements:(a.measurements||[]).map(m=>({h:m.h,l:m.l,q:m.q||1,sqft:m.sqft})), mh:"",ml:"",mq:"1", deduct:a.deduct_sqft||"", note:"", finish:"Smooth skim coat" }))
       );
     }
 
     if(!pushAreas.length){ alert("No wall/ceiling/fire-blocking areas to push."); return; }
-    if(!window.confirm(`Push ${pushAreas.length} area(s) to Board & Plaster?\n\nIf a Board & Plaster estimate already exists for this customer/address, its measurements will be replaced with these. If none exists, a new one will be created.`)) return;
+    if(!window.confirm(`Push ${pushAreas.length} area(s) to Board & Plaster?\n\nAreas you added directly in Board & Plaster are kept. Areas from an earlier HERS push are refreshed with these. If no open estimate exists yet, a new Board & Plaster estimate is created.`)) return;
     if(pushLockRef.current) return;
     pushLockRef.current = true;
     setPushing(true);
     hersLog(`Push to Board & Plaster requested (${pushAreas.length} areas)`);
     try {
       const { data:existing } = await supabase.from("board_plaster_estimates")
-        .select("id,address").eq("customer_id",invoice.customer_id).order("created_at",{ascending:false}).limit(5);
-      let target = (existing||[]).find(e=>(e.address||"").toLowerCase().includes((invoice.address||"").split(",")[0].toLowerCase()))||(existing||[])[0];
+        .select("id,address,areas,status").eq("customer_id",invoice.customer_id).order("created_at",{ascending:false}).limit(5);
+      // Only reuse an estimate that is still open; a finished one (Accepted/Lost)
+      // belongs to an earlier job, so this starts a fresh estimate instead.
+      const openOnes = (existing||[]).filter(e=>isOpenBPStatus(e.status));
+      let target = openOnes.find(e=>(e.address||"").toLowerCase().includes((invoice.address||"").split(",")[0].toLowerCase()))||openOnes[0];
 
       if(target){
         const { error } = await supabase.from("board_plaster_estimates")
-          .update({ areas: pushAreas, address: invoice.address||target.address, updated_at:new Date().toISOString() })
+          .update({ areas: mergeBPAreas(target.areas, pushAreas, "hers"), address: invoice.address||target.address, updated_at:new Date().toISOString() })
           .eq("id", target.id);
         if(error) throw error;
       } else {
         const { data:created, error } = await supabase.from("board_plaster_estimates").insert([{
           company_id: invoice.company_id, customer_id: invoice.customer_id,
-          address: invoice.address||"", status:"Draft", areas: pushAreas, line_items:[], payment_schedule:[],
+          address: invoice.address||"", status:"In Progress", areas: pushAreas, line_items:[], payment_schedule:[],
         }]).select().single();
         if(error) throw error;
         target = created;

@@ -188,6 +188,36 @@ export default function CustomerProfile() {
     setLoading(false);
   }
 
+  // Delete one insulation estimate and everything under it. HERS field
+  // measurements live in their own tables and are not touched.
+  async function deleteProject(job) {
+    const label = job.address || job.name || "this estimate";
+    if(!window.confirm(`Delete the insulation estimate for:\n${label}\n\nThis removes its floors, areas, measurements and quotes. HERS measurements are kept.\n\nThis cannot be undone.`)) return;
+    try {
+      const { data:floors } = await supabase.from("floors").select("id").eq("project_id", job.id);
+      const floorIds = (floors||[]).map(f=>f.id);
+      if(floorIds.length){
+        const { data:areas } = await supabase.from("areas").select("id").in("floor_id", floorIds);
+        const areaIds = (areas||[]).map(a=>a.id);
+        if(areaIds.length){
+          const { error:e1 } = await supabase.from("segments").delete().in("area_id", areaIds);
+          if(e1) throw e1;
+        }
+        const { error:e2 } = await supabase.from("areas").delete().in("floor_id", floorIds);
+        if(e2) throw e2;
+        const { error:e3 } = await supabase.from("floors").delete().eq("project_id", job.id);
+        if(e3) throw e3;
+      }
+      const { error:e4 } = await supabase.from("quotes").delete().eq("project_id", job.id);
+      if(e4) throw e4;
+      const { error:e5 } = await supabase.from("projects").delete().eq("id", job.id);
+      if(e5) throw e5;
+      load();
+    } catch(err) {
+      alert("Could not delete: "+(err?.message||err));
+    }
+  }
+
   async function duplicateProject(projectId) {
     try {
       // Fetch original project + floors + areas + segments
@@ -247,7 +277,7 @@ export default function CustomerProfile() {
         if(validSegs.length){
           await supabase.from("segments").insert(
             validSegs.map(s=>({
-              area_id:areaMap[s.area_id], height:s.height, length:s.length,
+              area_id:areaMap[s.area_id], height:s.height, length:s.length, qty:s.qty||1,
               sqft:s.sqft, source:s.source, company_id:s.company_id,
             }))
           );
@@ -634,6 +664,13 @@ export default function CustomerProfile() {
                         color:"#059669",padding:"8px 0",borderRadius:8,
                         cursor:"pointer",fontSize:12,fontWeight:700}}>
                       💰 Cost
+                    </button>
+                    <button onClick={()=>deleteProject(job)}
+                      title="Delete this estimate (insulation only - HERS measurements are not touched)"
+                      style={{flex:"0 0 auto",border:"1px solid #fecaca",background:"white",
+                        color:"#dc2626",padding:"8px 12px",borderRadius:8,
+                        cursor:"pointer",fontSize:12,fontWeight:700}}>
+                      🗑
                     </button>
                     {job.pipeline_status==="Accepted" && (
                       <button onClick={()=>navigate(`/schedule?project=${job.id}&name=${encodeURIComponent(job.customers?.name||job.name||"")}&address=${encodeURIComponent(job.address||"")}`)}
