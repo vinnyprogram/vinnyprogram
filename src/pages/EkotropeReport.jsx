@@ -275,7 +275,8 @@ export default function EkotropeReport() {
         if(!e){ setLoading(false); return; }
         context = e;
         const uc = Number(e.unit_count)||1;
-        unitLabels = e.unit_labels || (uc>1 ? Array.from({length:uc},(_,i)=>`Unit ${i+1}`) : []);
+        // A job set back to 1 unit is single-family again, even if old unit names are still stored.
+        unitLabels = uc>1 ? (e.unit_labels || Array.from({length:uc},(_,i)=>`Unit ${i+1}`)) : [];
         setAddress(e.address||"");
       } else {
         const { data:i } = await supabase.from("hers_invoices").select("*").eq("id",invoiceId).maybeSingle();

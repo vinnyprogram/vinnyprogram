@@ -1365,7 +1365,10 @@ export default function HersFieldMeasurements() {
       if(!e){ setLoading(false); return; }
       context = { id:null, customer_id:e.customer_id, address:e.address, company_id:e.company_id };
       const uc = Number(e.unit_count)||1;
-      setUnitLabels(e.unit_labels || (uc>1 ? Array.from({length:uc},(_,i)=>`Unit ${i+1}`) : []));
+      // Lowering the unit count back to 1 keeps the old unit names stored (so no
+      // data is orphaned), but a 1-unit job is a single-family job: ignore them,
+      // otherwise the job still behaves like a multi-unit one.
+      setUnitLabels(uc>1 ? (e.unit_labels || Array.from({length:uc},(_,i)=>`Unit ${i+1}`)) : []);
     } else {
       const { data:i } = await supabase.from("hers_invoices").select("*").eq("id",invoiceId).maybeSingle();
       if(!i){ setLoading(false); return; }
