@@ -13,7 +13,7 @@ import { getMyCompany } from "../lib/myCompany";
 import { loadFormDraft, saveFormDraft, clearFormDraft } from "../lib/formDraft";
 import { isFreshLoad } from "../utils/freshLoad";
 import { isOpenBPStatus } from "../lib/bpStatus";
-import { mergeBPAreas } from "../lib/bpPush";
+import { mergeBPAreas, pickBPTarget } from "../lib/bpPush";
 
 const C = {
   bg: "#f4f5f7", white: "#fff", ink: "#0f172a",
@@ -2085,8 +2085,30 @@ export default function ProjectEstimate() {
       const newAreas={};
       floorNames.forEach(f=>{newAreas[f]=[];});
       const sortedAreaRows=[...(areaRows||[])].sort((a,b)=>a.order_index-b.order_index);
-      const primaryRows=sortedAreaRows.filter(a=>a.order_index%10===0||a.order_index===0);
-      const secondaryRows=sortedAreaRows.filter(a=>a.order_index%10!==0&&a.order_index!==0);
+      let primaryRows=sortedAreaRows.filter(a=>a.order_index%10===0||a.order_index===0);
+      let secondaryRows=sortedAreaRows.filter(a=>a.order_index%10!==0&&a.order_index!==0);
+      // If the phone was switched away / locked in the middle of an autosave, the
+      // database can briefly hold a second, half-written copy of an area: same
+      // floor, type, material and size, but with NO measurements saved. Showing
+      // both made every area look duplicated (and a push to Board & Plaster then
+      // copied the duplicates). Hide that empty twin and remove it from the database.
+      {
+        const hasSegs = id => segRows.some(s=>s.area_id===id);
+        const sig = r => [r.floor_id, r.area_type||"", r.material||"", Math.round(Number(r.sqft||0)*100)].join("|");
+        const withSegs = new Set(primaryRows.filter(r=>hasSegs(r.id)).map(sig));
+        const orphans = primaryRows.filter(r=>!hasSegs(r.id) && Number(r.sqft)>0 && withSegs.has(sig(r)));
+        if(orphans.length){
+          const gone = new Set();
+          orphans.forEach(o=>{
+            gone.add(o.id);
+            secondaryRows.filter(s=>s.floor_id===o.floor_id&&s.order_index>o.order_index&&s.order_index<o.order_index+10).forEach(s=>gone.add(s.id));
+          });
+          primaryRows = primaryRows.filter(r=>!gone.has(r.id));
+          secondaryRows = secondaryRows.filter(r=>!gone.has(r.id));
+          logEvent(`Hid ${orphans.length} half-saved duplicate area(s) on load`);
+          supabase.from("areas").delete().in("id",[...gone]).then(({error})=>{ if(error) console.error("orphan cleanup",error); });
+        }
+      }
       const areaTypeOccurrence = {};
       primaryRows.forEach(a=>{
         const fl=floorRows.find(f=>f.id===a.floor_id);
@@ -3043,12 +3065,12 @@ export default function ProjectEstimate() {
       // a new insulation estimate for the same customer and address starts a
       // fresh Board & Plaster estimate instead of being added to the old one.
       const openOnes = (existing||[]).filter(e=>isOpenBPStatus(e.status));
-      let target = openOnes.find(e=>(e.address||"").toLowerCase().includes((projectAddress||"").split(",")[0].toLowerCase()))||openOnes[0];
+      let target = pickBPTarget(openOnes, projectAddress);
       let addedToExisting = !!target;
 
       if(target){
         const { error } = await supabase.from("board_plaster_estimates")
-          .update({ areas: mergeBPAreas(target.areas, pushAreas, "insulation"), address: projectAddress||target.address, updated_at:new Date().toISOString() })
+          .update({ areas: mergeBPAreas(target.areas, pushAreas, "insulation"), address: target.address||projectAddress, updated_at:new Date().toISOString() })
           .eq("id", target.id);
         if(error) throw error;
       } else {

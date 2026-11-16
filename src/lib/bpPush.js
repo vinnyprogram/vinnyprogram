@@ -12,3 +12,20 @@ export function mergeBPAreas(existing, pushed, source){
   const fresh = hadTagged ? pushed : pushed.filter(p=>!kept.some(k=>same(k,p)));
   return [...kept, ...fresh];
 }
+
+// Which open Board & Plaster estimate should a push go into?
+// Only one for the SAME street address. Falling back to "any open estimate of
+// this customer" put the new areas on top of a completely different job (and
+// renamed its address), so unrelated areas showed up mixed in. If nothing
+// matches, the caller creates a new estimate instead.
+export function pickBPTarget(openOnes, address) {
+  const street = s => String(s || "").split(",")[0].trim().toLowerCase().replace(/\s+/g, " ");
+  const want = street(address);
+  const list = Array.isArray(openOnes) ? openOnes : [];
+  if (want) {
+    const hit = list.find(e => street(e.address) === want);
+    if (hit) return hit;
+  }
+  // An open estimate that has no address yet is a safe place to land.
+  return list.find(e => !street(e.address)) || null;
+}

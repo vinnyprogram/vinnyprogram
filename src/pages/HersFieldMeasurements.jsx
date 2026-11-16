@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { isOpenBPStatus } from "../lib/bpStatus";
-import { mergeBPAreas } from "../lib/bpPush";
+import { mergeBPAreas, pickBPTarget } from "../lib/bpPush";
 import { createPortal } from "react-dom";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
@@ -2000,11 +2000,11 @@ export default function HersFieldMeasurements() {
       // Only reuse an estimate that is still open; a finished one (Accepted/Lost)
       // belongs to an earlier job, so this starts a fresh estimate instead.
       const openOnes = (existing||[]).filter(e=>isOpenBPStatus(e.status));
-      let target = openOnes.find(e=>(e.address||"").toLowerCase().includes((invoice.address||"").split(",")[0].toLowerCase()))||openOnes[0];
+      let target = pickBPTarget(openOnes, invoice.address);
 
       if(target){
         const { error } = await supabase.from("board_plaster_estimates")
-          .update({ areas: mergeBPAreas(target.areas, pushAreas, "hers"), address: invoice.address||target.address, updated_at:new Date().toISOString() })
+          .update({ areas: mergeBPAreas(target.areas, pushAreas, "hers"), address: target.address||invoice.address, updated_at:new Date().toISOString() })
           .eq("id", target.id);
         if(error) throw error;
       } else {
