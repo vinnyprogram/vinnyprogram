@@ -302,6 +302,12 @@ export default function EkotropeReport() {
         const byLabel = {};
         (allFm||[]).forEach(f=>{ byLabel[f.unit_label] = f; });
         const reports = unitLabels.map(label=>({ label, fm: byLabel[label]||null }));
+        // Measurements saved under a name that is not one of this job's units
+        // (most often "no unit selected") used to be ignored, so the report said
+        // nothing was saved even though the data was there. Show them too.
+        (allFm||[]).forEach(f=>{
+          if(!unitLabels.includes(f.unit_label)) reports.push({ label: f.unit_label || "No unit selected", fm: f });
+        });
         setUnitReports(reports);
       } else {
         // Regular single-family job
@@ -309,7 +315,19 @@ export default function EkotropeReport() {
           ? supabase.from("hers_field_measurements").select("*").eq("hers_estimate_id",estimateId).eq("unit_label","")
           : supabase.from("hers_field_measurements").select("*").eq("hers_invoice_id",invoiceId).eq("unit_label","");
         const { data:fmData } = await fmQuery.maybeSingle();
-        setUnitReports([{ label:"", fm:fmData||null }]);
+        if(fmData){
+          setUnitReports([{ label:"", fm:fmData }]);
+        } else {
+          // Nothing under the plain (no-unit) name. The measurements may have been
+          // saved under a unit label (e.g. the job had several units, or the unit
+          // count was changed later) - so look for ANY saved measurements for
+          // this job instead of wrongly saying nothing is saved.
+          const { data:anyFm } = await (mode==="estimate"
+            ? supabase.from("hers_field_measurements").select("*").eq("hers_estimate_id",estimateId)
+            : supabase.from("hers_field_measurements").select("*").eq("hers_invoice_id",invoiceId));
+          const rows = (anyFm||[]).slice().sort((a,b)=>String(a.unit_label||"").localeCompare(String(b.unit_label||""),undefined,{numeric:true}));
+          setUnitReports(rows.length ? rows.map(r=>({ label:r.unit_label||"", fm:r })) : [{ label:"", fm:null }]);
+        }
       }
       setLoading(false);
     }
