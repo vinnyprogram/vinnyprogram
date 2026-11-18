@@ -1946,7 +1946,6 @@ export default function HersFieldMeasurements() {
     if(pushLockRef.current) return; // shares the lock with pushToInsulation - these can't usefully run concurrently either
     // Push every area type, not just a pre-filtered "relevant" subset - let
     // the user delete whatever doesn't apply to plaster on the other side.
-    const RELEVANT = ["Roof Rafter w/ Strapping","Roof Rafter behind knee walls","Floor","Exterior Wall","Demising Wall","Rim Joist","Concrete Wall","Ceiling","Interior Walls","Fire Blocking","Other"];
     const defaultThickness = (t)=> t==="Demising Wall" ? '5/8"' : '1/2"';
 
     let pushAreas = [];
@@ -1970,7 +1969,7 @@ export default function HersFieldMeasurements() {
         } else {
           flatAreas = savedAreas.map(a=>({...a,floor:a.floor||"Other"}));
         }
-        flatAreas.filter(a=>a.area_type && RELEVANT.includes(a.area_type) && a.sqft>0)
+        flatAreas.filter(a=>a.area_type && a.sqft>0)
           .forEach(a=>{
             const key = `${a.floor||"Other"}||${a.area_type}`;
             if(!combined[key]) combined[key] = { sqft:0, measurements:[] };
@@ -1985,7 +1984,7 @@ export default function HersFieldMeasurements() {
     } else {
       // Single-family: current in-memory state for the one unit is enough
       pushAreas = Object.entries(areas).flatMap(([floorName,floorAreas])=>
-        floorAreas.filter(a=>a.area_type && RELEVANT.includes(a.area_type) && a.sqft>0)
+        floorAreas.filter(a=>a.area_type && a.sqft>0)
           .map(a=>({ id:uid(), source:"hers", floor:floorName, area_type:a.area_type, sqft:a.sqft, thickness:defaultThickness(a.area_type), thicknessOther:"", layers:1,
             measurements:(a.measurements||[]).map(m=>({h:m.h,l:m.l,q:m.q||1,sqft:m.sqft})), mh:"",ml:"",mq:"1", deduct:a.deduct_sqft||"", note:"", finish:"Smooth skim coat" }))
       );

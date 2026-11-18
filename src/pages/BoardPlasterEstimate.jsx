@@ -1065,6 +1065,7 @@ export default function BoardPlasterEstimate(){
                           <select value={a.area_type} onClick={e=>e.stopPropagation()} onChange={e=>updateArea(a.id,"area_type",e.target.value)}
                             style={{...I,width:220,flexShrink:0,height:26,fontSize:10,fontWeight:700,padding:"0 4px"}}>
                             {(companyAreaTypes.length?companyAreaTypes:RELEVANT_AREA_TYPES).map(t=><option key={t} value={t}>{t}</option>)}
+                            {a.area_type && !(companyAreaTypes.length?companyAreaTypes:RELEVANT_AREA_TYPES).includes(a.area_type) && <option value={a.area_type}>{a.area_type}</option>}
                           </select>
                           <select value={a.thickness} onClick={e=>e.stopPropagation()} onChange={e=>updateArea(a.id,"thickness",e.target.value)}
                             style={{...I,width:64,flexShrink:0,height:26,fontSize:10,padding:"0 2px"}}>

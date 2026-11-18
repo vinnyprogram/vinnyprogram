@@ -3024,7 +3024,6 @@ export default function ProjectEstimate() {
     // Push every area type, not just a pre-filtered "relevant" subset - let
     // the user delete whatever doesn't apply to plaster on the other side
     // (e.g. Rim Joist is sometimes needed, sometimes not).
-    const RELEVANT = ["Roof Rafter w/ Strapping","Roof Rafter behind knee walls","Floor","Exterior Wall","Demising Wall","Rim Joist","Concrete Wall","Ceiling","Interior Walls","Fire Blocking","Other"];
     // Each in-memory area is already one physical wall/ceiling (combo
     // materials live as mat_lines INSIDE one area object, not as separate
     // area objects) - so no dedup is needed here, unlike importing from the
@@ -3033,7 +3032,7 @@ export default function ProjectEstimate() {
     // flat total, so the breakdown shows up on the Board & Plaster side
     // too, not just one opaque number.
     const pushAreas = floors.flatMap(floor=>(areas[floor]||[])
-      .filter(a=>a.area_type && RELEVANT.includes(a.area_type) && a.sqft>0)
+      .filter(a=>a.area_type && a.sqft>0)
       .map(a=>({
         id:Date.now()+Math.random(), source:"insulation", floor, area_type:a.area_type, sqft:a.sqft,
         thickness:'1/2"', thicknessOther:"", layers:1,
