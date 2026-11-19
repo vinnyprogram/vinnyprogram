@@ -125,11 +125,16 @@ export default function FieldReport() {
       }catch(e){ console.warn("Empty floor cleanup skipped:", e?.message); }
     }
 
-    async function sendEmail() {
-      await removeEmptyFloors();
-      if((project?.pipeline_status||"Draft")==="Measured"){
-        await supabase.from("projects").update({pipeline_status:"Sent to Office"}).eq("id",projectId);
-        setProject(p=>({...p, pipeline_status:"Sent to Office"}));
+    // mode "notes": same text as the office email, shared to the phone's share
+    // sheet (Notes, Messages...). It changes nothing in the estimate - no status
+    // change and no floor clean-up - only the Email Office button does that.
+    async function sendEmail(mode) {
+      if(mode!=="notes"){
+        await removeEmptyFloors();
+        if((project?.pipeline_status||"Draft")==="Measured"){
+          await supabase.from("projects").update({pipeline_status:"Sent to Office"}).eq("id",projectId);
+          setProject(p=>({...p, pipeline_status:"Sent to Office"}));
+        }
       }
       const subject = encodeURIComponent(
         `Field Estimate - ${project?.address||project?.name||"New Project"}`
@@ -285,6 +290,17 @@ export default function FieldReport() {
     // No sign-off line here anymore - it was showing whoever's logged-in
     // account email (no display name set), which showed up as an unwanted
     // personal email address in client-facing correspondence.
+    if(mode==="notes"){
+      // The address is already the first line, so it becomes the note's title.
+      const text = lines.join("\n");
+      if(navigator.share){
+        try{ await navigator.share({ text }); }catch(e){ /* closed the share sheet */ }
+        return;
+      }
+      try{ await navigator.clipboard.writeText(text); alert("Copied. Paste it into your notes."); }
+      catch(e){ alert("Could not copy automatically. Use Email Office instead."); }
+      return;
+    }
     const body = encodeURIComponent(lines.join("\n"));
     // No default recipient - this used to hardcode one specific email
     // address for every company using CUB, which is wrong for a multi-
@@ -341,11 +357,16 @@ export default function FieldReport() {
           Field Report
         </span>
         <div style={{display:"flex",gap:8}}>
-          <button onClick={sendEmail}
+          <button onClick={()=>sendEmail()}
             style={{background:"#3b82f6",border:"none",color:"white",
               padding:"8px 14px",borderRadius:6,cursor:"pointer",
               fontSize:12,fontWeight:700}}>
             📧 Email Office
+          </button>
+          <button onClick={()=>sendEmail("notes")} title="Send a copy to Notes (or any app) - does not change the status"
+            style={{background:"#fff",border:"1px solid #cbd5e1",color:"#0f172a",
+              padding:"8px 12px",borderRadius:6,cursor:"pointer",fontSize:13}}>
+            📝
           </button>
           <button onClick={()=>window.print()}
             style={{background:"#f97316",border:"none",color:"white",

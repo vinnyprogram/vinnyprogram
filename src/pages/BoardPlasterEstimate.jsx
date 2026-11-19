@@ -312,6 +312,14 @@ export default function BoardPlasterEstimate(){
     draftRestoredRef.current = true;
     const draft = loadDraft(selectedLeadId ? `bp_draft_${selectedLeadId}` : "bp_draft_anon");
     if(!draft) return;
+    // A leftover draft from another job of the same customer must not bring its
+    // address (and areas) into a new estimate for a different address.
+    const street = s => String(s||"").split(",")[0].trim().toLowerCase().replace(/\s+/g," ");
+    if(paramAddress && draft.address && street(draft.address)!==street(paramAddress)){
+      bpLog("Ignored a leftover draft from a different address");
+      try{ localStorage.removeItem(selectedLeadId ? `bp_draft_${selectedLeadId}` : "bp_draft_anon"); }catch(e){}
+      return;
+    }
     if(draft.address) setAddress(draft.address);
     if(draft.areas?.length) setAreas(draft.areas);
     if(draft.floorNames?.length) setFloorNames(sortFloors(draft.floorNames));
