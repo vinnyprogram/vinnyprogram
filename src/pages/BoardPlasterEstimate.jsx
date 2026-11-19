@@ -782,9 +782,11 @@ export default function BoardPlasterEstimate(){
       }
     }
     const lines = [];
-    lines.push(`Board & Plaster measurements — ${address||"job site"}`);
+    // Address on the very first line: Notes (and most apps) use the first line
+    // as the title, so the job is recognisable in the list.
+    lines.push(`${address||"Job site"}`);
+    lines.push(`Board & Plaster measurements`);
     lines.push(`Customer: ${selectedLead.name}${selectedLead.phone?" — "+selectedLead.phone:""}`);
-    lines.push(`Address: ${address||""}`);
     lines.push("");
 
     // Same floor -> thickness -> area grouping as the Summary panel, so the
@@ -830,9 +832,9 @@ export default function BoardPlasterEstimate(){
 
     if(mode==="notes"){
       const text = lines.join("\n");
-      const title = `Board & Plaster measurements — ${address||selectedLead.name}`;
       if(navigator.share){
-        try{ await navigator.share({ title, text }); }catch(e){ /* closed the share sheet */ }
+        // text only (no separate title) so the address line stays the first line of the note
+        try{ await navigator.share({ text }); }catch(e){ /* closed the share sheet */ }
         return;
       }
       try{ await navigator.clipboard.writeText(text); alert("Copied. Paste it into your notes."); }
@@ -1434,6 +1436,8 @@ export default function BoardPlasterEstimate(){
           width or whether the mobile bottom panel happens to be expanded,
           so printing never produces a blank page. */}
       <div className="print-only-summary">
+        <div style={{fontSize:20,fontWeight:800,marginBottom:2}}>{address||"Job site"}</div>
+        <div style={{fontSize:13,marginBottom:10}}>Board & Plaster measurements{selectedLead?` — ${selectedLead.name}${selectedLead.phone?" · "+selectedLead.phone:""}`:""}</div>
         <SummaryPanel areas={areas} />
       </div>
 
