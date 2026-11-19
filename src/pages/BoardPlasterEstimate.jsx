@@ -768,11 +768,14 @@ export default function BoardPlasterEstimate(){
   function installmentAmount(s){ return s.type==="percent" ? grandTotal*(Number(s.value)||0)/100 : Number(s.value)||0; }
   const scheduledTotal = paymentSchedule.reduce((s,it)=>s+installmentAmount(it),0);
 
-  async function emailOffice(){
+  // mode "notes": same text as the office email, but shared to the phone's
+  // share sheet (Notes, Messages, ...) instead of opening an email. It does
+  // not change the estimate's status - only the Office email does that.
+  async function emailOffice(mode){
     if(!selectedLead){ alert("Select a customer first."); return; }
     // Same as insulation: sending to the office moves a job that is still
     // "In Progress" to "Sent to Office". Later statuses are never moved back.
-    if(normalizeBPStatus(status)==="In Progress"){
+    if(mode!=="notes" && normalizeBPStatus(status)==="In Progress"){
       setStatus("Sent to Office");
       if(estimateId){
         try{ await supabase.from("board_plaster_estimates").update({status:"Sent to Office"}).eq("id",estimateId); }catch(e){}
@@ -825,6 +828,17 @@ export default function BoardPlasterEstimate(){
     const total = areas.reduce((s,a)=>s+(Number(a.sqft)||0),0);
     lines.push(`Total: ${fmt(total)} ft²`);
 
+    if(mode==="notes"){
+      const text = lines.join("\n");
+      const title = `Board & Plaster measurements — ${address||selectedLead.name}`;
+      if(navigator.share){
+        try{ await navigator.share({ title, text }); }catch(e){ /* closed the share sheet */ }
+        return;
+      }
+      try{ await navigator.clipboard.writeText(text); alert("Copied. Paste it into your notes."); }
+      catch(e){ alert("Could not copy automatically. Use the Office button to email it instead."); }
+      return;
+    }
     const subject = encodeURIComponent(`Board & Plaster measurements — ${address||selectedLead.name}`);
     const body = encodeURIComponent(lines.join("\n"));
     window.location.href = `mailto:?subject=${subject}&body=${body}`;
@@ -1386,8 +1400,10 @@ export default function BoardPlasterEstimate(){
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
           <div style={{fontSize:10,fontWeight:800,color:C.faint,textTransform:"uppercase",letterSpacing:0.5}}>Summary</div>
           <div style={{display:"flex",gap:8}}>
-            <button onClick={emailOffice} title="Email customer, address, and measurements to the office"
+            <button onClick={()=>emailOffice()} title="Email customer, address, and measurements to the office"
               style={{border:"none",background:"#2563eb",color:"#fff",cursor:"pointer",fontSize:14,fontWeight:800,padding:"9px 16px",borderRadius:9}}>📧 Office</button>
+            <button onClick={()=>emailOffice("notes")} title="Send a copy to Notes (or any app) - does not change the status"
+              style={{border:"1px solid #cbd5e1",background:"#fff",cursor:"pointer",fontSize:14,padding:"9px 10px",borderRadius:9}}>📝</button>
             <button onClick={()=>window.print()} title="Print/Save as PDF - for double-checking measurements only, not used for pricing"
               style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:14}}>🖨️</button>
           </div>
@@ -1404,6 +1420,8 @@ export default function BoardPlasterEstimate(){
           <div style={{display:"flex",alignItems:"center",gap:8}}>
             <button onClick={(e)=>{e.stopPropagation();emailOffice();}} title="Email customer, address, and measurements to the office"
               style={{border:"none",background:"#2563eb",color:"#fff",cursor:"pointer",fontSize:15,fontWeight:800,padding:"10px 20px",borderRadius:10}}>📧 Office</button>
+            <button onClick={(e)=>{e.stopPropagation();emailOffice("notes");}} title="Send a copy to Notes (or any app) - does not change the status"
+              style={{border:"1px solid #cbd5e1",background:"#fff",cursor:"pointer",fontSize:16,padding:"9px 12px",borderRadius:10}}>📝</button>
             <button onClick={(e)=>{e.stopPropagation();window.print();}} title="Print/Save as PDF"
               style={{border:"none",background:"none",color:C.faint,cursor:"pointer",fontSize:14,padding:0}}>🖨️</button>
             <span style={{fontSize:9,color:C.faint}}>{bottomPanelOpen?"▼":"▲"}</span>
