@@ -130,7 +130,7 @@ function SummaryPanel({ areas }){
                           <span>{it.area_type} · {it.finish}</span>
                           <span style={{color:"#0f172a",fontWeight:600}}>{fmt(it.sqft)} ft²</span>
                         </div>
-                        {measStr && <div style={{fontSize:9,color:"#94a3b8",paddingLeft:2}}>{measStr}</div>}
+                        {measStr && <div className="bp-meas" style={{fontSize:10,color:"#64748b",paddingLeft:2}}>{measStr}</div>}
                       </div>
                     );
                   })}
@@ -798,8 +798,9 @@ export default function BoardPlasterEstimate(){
       const tg = fg.thickGroups[thickKey];
       tg.total += Number(a.sqft);
       const itemKey = `${a.area_type}||${a.finish}`;
-      if(!tg.items[itemKey]){ tg.items[itemKey] = { area_type:a.area_type, finish:a.finish, sqft:0 }; tg.order.push(itemKey); }
+      if(!tg.items[itemKey]){ tg.items[itemKey] = { area_type:a.area_type, finish:a.finish, sqft:0, measurements:[] }; tg.order.push(itemKey); }
       tg.items[itemKey].sqft += Number(a.sqft);
+      tg.items[itemKey].measurements.push(...(a.measurements||[]));
     });
     const sortedFloorNames = Object.keys(floorGroups).sort(compareFloors);
 
@@ -812,6 +813,10 @@ export default function BoardPlasterEstimate(){
         Object.keys(tg.items).forEach(ik=>{
           const it = tg.items[ik];
           lines.push(`    ${it.area_type} · ${it.finish} — ${fmt(it.sqft)} ft²`);
+          // The pieces that make up this area (height × length, × quantity),
+          // so the office can see how it was measured, not just the total.
+          const pieces = (it.measurements||[]).filter(m=>m && m.h!=="imported").map(m=>`${m.h}×${m.l}${m.q>1?`×${m.q}`:""}`);
+          if(pieces.length) lines.push(`        Measurements: ${pieces.join("  +  ")}`);
         });
       });
       lines.push("");
@@ -1420,6 +1425,8 @@ export default function BoardPlasterEstimate(){
           body * { visibility: hidden; }
           .print-only-summary, .print-only-summary * { visibility: visible; display: block; }
           .print-only-summary { position: absolute; top: 0; left: 0; width: 100%; font-size: 14px; padding: 20px; }
+          /* measurements must be readable on paper: dark and not tiny */
+          .print-only-summary .bp-meas { font-size: 12px !important; color: #000 !important; padding-left: 12px !important; }
         }
         @media (min-width: 900px) { .bp-bottom-panel { display: none !important; } }
         @media (max-width: 899px) { .bp-side-panel { display: none !important; } }
